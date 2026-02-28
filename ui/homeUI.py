@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap, QImage
 from PySide6.QtWidgets import (
 	QHBoxLayout, QVBoxLayout, QFrame,
-	QWidget
+	QFileDialog, QWidget
 )
 from qfluentwidgets import FluentIcon as FIF
 from qfluentwidgets import (
@@ -214,6 +214,9 @@ class LControlPanel(QFrame):
 		self.openExportFolder = PushButton('Export Folder', icon=FIF.FOLDER, parent=self)
 		self.openExportFolder.clicked.connect(self.openFolder)
 
+		self.reprocessSessionBtn = PushButton('Reprocess Session', icon=FIF.SYNC, parent=self)
+		self.reprocessSessionBtn.clicked.connect(self.runReprocessSession)
+
 		self.startScanning = PrimaryPushButton(FIF.PLAY, 'Start Scanning', self)
 		self.startScanning.clicked.connect(self.runScraper)
 
@@ -239,6 +242,7 @@ class LControlPanel(QFrame):
 		self.panelLayout.addStretch()
 		self.panelLayout.addWidget(self.closeLabel)
 		self.panelLayout.addWidget(self.openExportFolder)
+		self.panelLayout.addWidget(self.reprocessSessionBtn)
 		self.panelLayout.addWidget(self.startScanning)
 		
 		self.__setInitialValues()
@@ -317,6 +321,43 @@ class LControlPanel(QFrame):
 		path = Path(cfg.get(cfg.exportFolder))
 		path.mkdir(parents=True, exist_ok=True)
 		os.startfile(path)
+
+	def runReprocessSession(self):
+		"""Re-run OCR processing on a previously captured raw scan session."""
+		from scraping.processing.echoesProcessor import reprocessSession
+		from scraping.utils import savingScraped
+
+		folder = QFileDialog.getExistingDirectory(
+			self,
+			self.tr('Choose session folder to reprocess'),
+			cfg.get(cfg.exportFolder),
+		)
+		if not folder:
+			return
+
+		session_id = Path(folder).name
+		raw_base = Path(folder) / 'raw'
+
+		if not raw_base.exists():
+			self.signalNotifier.emit(
+				'warning', 'Warning',
+				f'No raw scan data found in the selected folder.\nExpected: {raw_base}',
+			)
+			return
+
+		try:
+			echoes = reprocessSession(session_id)
+			savingScraped(
+				{'echoes_wuwainventorykamera.json': (echoes, list)},
+				session_id,
+			)
+			self.signalNotifier.emit(
+				'success', 'Reprocess Complete',
+				f'Saved {len(echoes)} echoes for session "{session_id}".',
+			)
+		except Exception as e:
+			logger.error('Reprocess session failed: %s', e, exc_info=True)
+			self.signalNotifier.emit('error', 'Reprocess Failed', str(e))
 
 class TControlPanel(QFrame):
 	"""Top Control Panel Interface."""

@@ -266,6 +266,15 @@ def _buildEcho(
 # Debug image dumping
 # ---------------------------------------------------------------------------
 
+# BGR colours used for ROI annotation boxes and labels.
+_ROI_ANNOTATIONS: list[tuple] = [
+    # (attr_name_on_screenInfo.echoes,  BGR colour,       label)
+    ('echoCard',       (0,  200,   0), 'card'),
+    ('fullStatsName',  (255, 150,  0), 'stats_name'),
+    ('fullStatsValue', (0,   50, 255), 'stats_value'),
+]
+
+
 def _writeDebugCrops(
     scan: RawEchoScan,
     screenInfo: ScreenInfo,
@@ -280,27 +289,49 @@ def _writeDebugCrops(
 
     Files written
     -------------
-    card.png         — the echo card crop (name/level/rarity area)
-    stats_name.png   — the stat names panel crop (raw colour, before B&W)
-    stats_value.png  — the stat values panel crop (raw colour, before B&W)
-    sonata.png       — the pre-captured sonata region
+    full_annotated.png   — full screenshot with all ROI bounding boxes drawn
+    card.png             — the echo card crop (name/level/rarity area, colour)
+    stats_name.png       — the stat names panel crop (colour)
+    stats_name_bw.png    — the stat names panel crop (B&W, as seen by OCR)
+    stats_value.png      — the stat values panel crop (colour)
+    stats_value_bw.png   — the stat values panel crop (B&W, as seen by OCR)
+    sonata.png           — the pre-captured sonata region (colour)
     """
     debug_dir.mkdir(parents=True, exist_ok=True)
 
+    si = screenInfo.echoes
+
     name_crop = scan.full_screenshot[
-        screenInfo.echoes.fullStatsName.y : screenInfo.echoes.fullStatsName.y + screenInfo.echoes.fullStatsName.h,
-        screenInfo.echoes.fullStatsName.x : screenInfo.echoes.fullStatsName.x + screenInfo.echoes.fullStatsName.w,
+        si.fullStatsName.y : si.fullStatsName.y + si.fullStatsName.h,
+        si.fullStatsName.x : si.fullStatsName.x + si.fullStatsName.w,
     ]
     value_crop = scan.full_screenshot[
-        screenInfo.echoes.fullStatsValue.y : screenInfo.echoes.fullStatsValue.y + screenInfo.echoes.fullStatsValue.h,
-        screenInfo.echoes.fullStatsValue.x : screenInfo.echoes.fullStatsValue.x + screenInfo.echoes.fullStatsValue.w,
+        si.fullStatsValue.y : si.fullStatsValue.y + si.fullStatsValue.h,
+        si.fullStatsValue.x : si.fullStatsValue.x + si.fullStatsValue.w,
     ]
 
+    # -- Annotated full screenshot (ROI bounding boxes) ----------------------
+    annotated = cv2.cvtColor(scan.full_screenshot, cv2.COLOR_RGB2BGR)
+    for attr, colour, label in _ROI_ANNOTATIONS:
+        roi = getattr(si, attr)
+        x1, y1 = int(roi.x), int(roi.y)
+        x2, y2 = int(roi.x + roi.w), int(roi.y + roi.h)
+        cv2.rectangle(annotated, (x1, y1), (x2, y2), colour, 2)
+        cv2.putText(
+            annotated, label,
+            (x1, max(0, y1 - 6)),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 1, cv2.LINE_AA,
+        )
+    cv2.imwrite(str(debug_dir / "full_annotated.png"), annotated)
+
+    # -- Individual crops (colour + B&W) -------------------------------------
     # Screenshots are RGB in-memory; cv2.imwrite expects BGR.
-    cv2.imwrite(str(debug_dir / "card.png"),        cv2.cvtColor(echo_card,              cv2.COLOR_RGB2BGR))
-    cv2.imwrite(str(debug_dir / "stats_name.png"),  cv2.cvtColor(name_crop,              cv2.COLOR_RGB2BGR))
-    cv2.imwrite(str(debug_dir / "stats_value.png"), cv2.cvtColor(value_crop,             cv2.COLOR_RGB2BGR))
-    cv2.imwrite(str(debug_dir / "sonata.png"),      cv2.cvtColor(scan.sonata_screenshot, cv2.COLOR_RGB2BGR))
+    cv2.imwrite(str(debug_dir / "card.png"),            cv2.cvtColor(echo_card,              cv2.COLOR_RGB2BGR))
+    cv2.imwrite(str(debug_dir / "stats_name.png"),      cv2.cvtColor(name_crop,              cv2.COLOR_RGB2BGR))
+    cv2.imwrite(str(debug_dir / "stats_name_bw.png"),   convertToBlackWhite(name_crop))
+    cv2.imwrite(str(debug_dir / "stats_value.png"),     cv2.cvtColor(value_crop,             cv2.COLOR_RGB2BGR))
+    cv2.imwrite(str(debug_dir / "stats_value_bw.png"),  convertToBlackWhite(value_crop))
+    cv2.imwrite(str(debug_dir / "sonata.png"),          cv2.cvtColor(scan.sonata_screenshot, cv2.COLOR_RGB2BGR))
 
     logger.debug("Debug crops written to %s", debug_dir)
 

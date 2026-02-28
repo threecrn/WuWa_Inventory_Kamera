@@ -183,7 +183,7 @@ def echoScraper(controller, x, y, screenInfo, session_id) -> list[dict]:
 
 ---
 
-### Step 6 — Add structured debug dumping in the processor
+### ✅ Step 6 — Add structured debug dumping in the processor
 
 Log failures with a direct file path to the saved image so they are immediately
 openable:
@@ -201,7 +201,7 @@ When `logging.DEBUG`, write annotated failure images (ROI bounding boxes drawn w
 
 ---
 
-### Step 7 — Add offline reprocess entry point
+### ✅ Step 7 — Add offline reprocess entry point
 
 ```python
 # scraping/processing/echoesProcessor.py
