@@ -34,6 +34,7 @@ _processRawScan       — orchestrate helpers for one RawEchoScan
 
 from __future__ import annotations
 
+import json
 import logging
 import string
 from collections import defaultdict
@@ -121,7 +122,8 @@ def _extractStats(
     full_image: np.ndarray,
     screenInfo: ScreenInfo,
     _cache: dict,
-) -> tuple[int, dict]:
+    scan_index: int = 0,
+) -> tuple[int, dict, dict]:
     """
     OCR the stats panel from *full_image* and parse names, values, and tune level.
 
@@ -134,12 +136,15 @@ def _extractStats(
     _cache:
         Shared OCR result cache keyed by image hash.  Avoids re-OCR-ing identical
         crops that appear across multiple echoes in the same session.
+    scan_index:
+        Echo scan index included in log messages.
 
     Returns
     -------
-    tuple[int, dict]
-        ``(tune_level, stats_dict)`` where ``stats_dict`` has ``'main'`` and
-        ``'sub'`` keys, each mapping stat name → value.
+    tuple[int, dict, dict]
+        ``(tune_level, stats_dict, ocr_trace)`` where ``stats_dict`` has ``'main'``
+        and ``'sub'`` keys, and ``ocr_trace`` carries the raw OCR token lists for
+        debug dumps.
     """
     stats: dict = defaultdict(dict)
 
@@ -158,19 +163,19 @@ def _extractStats(
     value_hash = hash(value_crop_bw.tobytes())
 
     if name_hash in _cache:
-        names: list[str] = _cache[name_hash]
+        raw_names, names = _cache[name_hash]
     else:
         raw_names = imageToString(name_crop_bw, allowedChars=string.ascii_letters).lower().split('\n')
         names = _matchStats(raw_names)
-        _cache[name_hash] = names
-    logger.debug("Stats names: %s", names)
+        _cache[name_hash] = (raw_names, names)
+    logger.debug("Scan %d — stats names: %s", scan_index, names)
 
     if value_hash in _cache:
         values: list[str] = _cache[value_hash]
     else:
         values = imageToString(value_crop_bw, allowedChars=string.digits + '.%').split()
         _cache[value_hash] = values
-    logger.debug("Stats values: %s", values)
+    logger.debug("Scan %d — stats values: %s", scan_index, values)
 
     tune_lv = max(0, len(values) - 2)
 
@@ -185,10 +190,19 @@ def _extractStats(
         except Exception:
             stats[bucket][stat_name] = stat_value
 
-    return tune_lv, dict(stats)
+    trace = {
+        'raw_names_ocr': raw_names,
+        'matched_names': names,
+        'raw_values_ocr': values,
+    }
+    return tune_lv, dict(stats), trace
 
 
-def _extractSonata(sonata_image: np.ndarray, _cache: dict) -> str:
+def _extractSonata(
+    sonata_image: np.ndarray,
+    _cache: dict,
+    scan_index: int = 0,
+) -> tuple[str, str]:
     """
     Identify the sonata set name from the pre-captured sonata region image.
 
@@ -201,12 +215,15 @@ def _extractSonata(sonata_image: np.ndarray, _cache: dict) -> str:
         The cropped sonata region stored in ``RawEchoScan.sonata_screenshot``.
     _cache:
         Shared OCR result cache keyed by image hash.
+    scan_index:
+        Echo scan index included in log messages.
 
     Returns
     -------
-    str
-        The matched sonata set name, or the raw (lowercased) OCR text if no
-        known name matches.
+    tuple[str, str]
+        ``(matched_name, raw_ocr_text)`` — the matched set name (or raw OCR text
+        when no known name matched) and the unfiltered OCR output for the debug
+        trace.
     """
     sonata_hash = hash(sonata_image.tobytes())
     if sonata_hash in _cache:
@@ -215,12 +232,15 @@ def _extractSonata(sonata_image: np.ndarray, _cache: dict) -> str:
     raw_text = imageToString(sonata_image, '', bannedChars=' ').lower()
     for name in sonataName:
         if name in raw_text:
-            _cache[sonata_hash] = name
-            logger.debug("Sonata matched: %r → %r", raw_text, name)
-            return name
+            result: tuple[str, str] = (name, raw_text)
+            _cache[sonata_hash] = result
+            logger.debug("Scan %d — sonata matched: %r → %r", scan_index, raw_text, name)
+            return result
 
-    logger.debug("Sonata unmatched — raw OCR: %r", raw_text)
-    return raw_text
+    logger.debug("Scan %d — sonata unmatched — raw OCR: %r", scan_index, raw_text)
+    result = (raw_text, raw_text)
+    _cache[sonata_hash] = result
+    return result
 
 
 def _buildEcho(
@@ -281,6 +301,7 @@ def _writeDebugCrops(
     screenInfo: ScreenInfo,
     echo_card: np.ndarray,
     debug_dir: Path,
+    ocr_data: dict | None = None,
 ) -> None:
     """
     Write intermediate crop images to *debug_dir* for visual inspection.
@@ -334,6 +355,10 @@ def _writeDebugCrops(
     cv2.imwrite(str(debug_dir / "stats_value_bw.png"),  convertToBlackWhite(value_crop))
     cv2.imwrite(str(debug_dir / "sonata.png"),          cv2.cvtColor(scan.sonata_screenshot, cv2.COLOR_RGB2BGR))
 
+    if ocr_data is not None:
+        with open(debug_dir / "ocr.json", 'w', encoding='utf-8') as fh:
+            json.dump(ocr_data, fh, indent=2, ensure_ascii=False)
+
     logger.debug("Debug crops written to %s", debug_dir)
 
 
@@ -378,12 +403,13 @@ def _processRawScan(
         The parsed echo dict on success, or ``None`` when the scan is
         rejected (below rarity/level threshold) or an error occurs.
     """
+    logger.debug("Scan %d — processing started", scan.index)
     # Load images from disk just-in-time — only this one echo is in RAM.
     try:
         scan.load_images()
     except FileNotFoundError as e:
         logger.error("Scan %d — images missing on disk, skipping: %s", scan.index, e)
-        return
+        return None
 
     try:
         image = scan.full_screenshot
@@ -401,7 +427,8 @@ def _processRawScan(
             info = [imageToString(echo_card, '', bannedChars=' +').lower().split('\n')]
             _cache[echo_hash] = info
 
-        name: str = info[0][0] if info[0] else ''
+        name_raw: str = info[0][0] if info[0] else ''
+        name: str = name_raw
         logger.debug("Scan %d — raw card name: %r", scan.index, name)
 
         # Normalise known OCR artefacts (mirrors original echoesScraper logic).
@@ -411,6 +438,14 @@ def _processRawScan(
             name = name.replace('mourning.jaix', 'mourningaix')
 
         debug_dir = raw_base / f"echo_{scan.index:04d}" / "debug"
+        ocr_trace: dict = {
+            'scan_index': scan.index,
+            'card': {
+                'raw_lines': info[0],
+                'name_raw': name_raw,
+                'name_normalized': name,
+            },
+        }
 
         # --- Name lookup ---
         if name not in echoesID:
@@ -421,7 +456,8 @@ def _processRawScan(
                 raw_base / f"echo_{scan.index:04d}" / "full.png",
             )
             if logger.isEnabledFor(logging.DEBUG):
-                _writeDebugCrops(scan, screenInfo, echo_card, debug_dir)
+                ocr_trace['decision'] = 'rejected: name not in echoesID'
+                _writeDebugCrops(scan, screenInfo, echo_card, debug_dir, ocr_trace)
             return None
 
         # --- Rarity ---
@@ -430,6 +466,8 @@ def _processRawScan(
         except (IndexError, TypeError):
             rarity = _getRarity(echo_card)
             _cache[echo_hash].append(rarity)
+
+        ocr_trace['card']['rarity'] = rarity
 
         if rarity < cfg.get(cfg.echoMinRarity):
             logger.debug(
@@ -455,6 +493,9 @@ def _processRawScan(
         except ValueError:
             level = 0
 
+        ocr_trace['card']['level_text'] = level_text
+        ocr_trace['card']['level'] = level
+
         if level < cfg.get(cfg.echoMinLevel):
             logger.debug(
                 "Scan %d — level %d below minimum %d, skipping.",
@@ -463,13 +504,16 @@ def _processRawScan(
             return None
 
         # --- Stats + sonata ---
-        tune_lv, stats = _extractStats(image, screenInfo, _cache)
-        sonata = _extractSonata(scan.sonata_screenshot, _cache)
+        tune_lv, stats, stats_trace = _extractStats(image, screenInfo, _cache, scan.index)
+        sonata, sonata_raw = _extractSonata(scan.sonata_screenshot, _cache, scan.index)
         echo = _buildEcho(name, level, tune_lv, sonata, rarity, stats)
 
         logger.debug("Scan %d — accepted: %s", scan.index, echo)
         if logger.isEnabledFor(logging.DEBUG):
-            _writeDebugCrops(scan, screenInfo, echo_card, debug_dir)
+            ocr_trace['stats'] = stats_trace
+            ocr_trace['sonata'] = {'raw_ocr': sonata_raw, 'matched': sonata}
+            ocr_trace['decision'] = 'accepted'
+            _writeDebugCrops(scan, screenInfo, echo_card, debug_dir, ocr_trace)
 
         return echo
     finally:
