@@ -37,6 +37,7 @@ from __future__ import annotations
 import logging
 import string
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from difflib import get_close_matches as getMatches
 from pathlib import Path
 
@@ -343,13 +344,12 @@ def _writeDebugCrops(
 def _processRawScan(
     scan: RawEchoScan,
     screenInfo: ScreenInfo,
-    echoes: list[dict],
     _cache: dict,
     raw_base: Path,
-) -> None:
+) -> dict | None:
     """
     Process one :class:`~scraping.models.rawScan.RawEchoScan`: OCR, filter,
-    and optionally append to *echoes*.
+    and return the parsed echo dict (or ``None`` if rejected/errored).
 
     Mirrors the logic of the original ``processGridEcho`` but:
 
@@ -364,13 +364,19 @@ def _processRawScan(
         The raw capture to process.
     screenInfo:
         Layout coordinates reconstructed from the scan's resolution.
-    echoes:
-        Accumulator list; accepted echoes are appended here.
     _cache:
-        Shared OCR result cache for the whole session.
+        OCR result cache.  In single-threaded mode pass a shared dict for
+        cross-echo deduplication; in multi-threaded mode pass a fresh ``{}``
+        per invocation to avoid any locking overhead.
     raw_base:
         Root of the session's ``raw/`` folder, used for debug-crop paths in log
         messages and for writing ``debug/`` sub-folders.
+
+    Returns
+    -------
+    dict | None
+        The parsed echo dict on success, or ``None`` when the scan is
+        rejected (below rarity/level threshold) or an error occurs.
     """
     # Load images from disk just-in-time — only this one echo is in RAM.
     try:
@@ -416,7 +422,7 @@ def _processRawScan(
             )
             if logger.isEnabledFor(logging.DEBUG):
                 _writeDebugCrops(scan, screenInfo, echo_card, debug_dir)
-            return
+            return None
 
         # --- Rarity ---
         try:
@@ -430,7 +436,7 @@ def _processRawScan(
                 "Scan %d — rarity %d below minimum %d, skipping.",
                 scan.index, rarity, cfg.get(cfg.echoMinRarity),
             )
-            return
+            return None
 
         # --- Level ---
         try:
@@ -454,7 +460,7 @@ def _processRawScan(
                 "Scan %d — level %d below minimum %d, skipping.",
                 scan.index, level, cfg.get(cfg.echoMinLevel),
             )
-            return
+            return None
 
         # --- Stats + sonata ---
         tune_lv, stats = _extractStats(image, screenInfo, _cache)
@@ -465,7 +471,7 @@ def _processRawScan(
         if logger.isEnabledFor(logging.DEBUG):
             _writeDebugCrops(scan, screenInfo, echo_card, debug_dir)
 
-        echoes.append(echo)
+        return echo
     finally:
         scan.release_images()
 
@@ -478,6 +484,7 @@ def echoProcessor(
     scans: list[RawEchoScan],
     session_id: str,
     raw_base: Path | None = None,
+    workers: int = 1,
 ) -> list[dict]:
     """
     Phase 2 — process raw echo captures into structured echo data.
@@ -497,18 +504,24 @@ def echoProcessor(
         ``cfg.exportFolder / session_id / "raw"``.  Must point to the same
         directory that was used during Phase 1 so that debug-crop log messages
         contain valid paths.
+    workers:
+        Number of parallel worker threads for OCR processing.  ``1`` (default)
+        runs sequentially with a shared OCR-result cache for cross-echo
+        deduplication.  Values ``> 1`` use a
+        :class:`~concurrent.futures.ThreadPoolExecutor` where each task gets
+        its own fresh cache — better throughput on multi-core machines at the
+        cost of losing cross-echo cache hits (which are rare in practice).
+        ONNX Runtime's inference engine is thread-safe for concurrent calls.
 
     Returns
     -------
     list[dict]
-        Parsed echo dicts in the same format produced by the original
-        ``echoScraper``.
+        Parsed echo dicts in the same order as the input *scans* list.
     """
     if raw_base is None:
         raw_base = Path(cfg.get(cfg.exportFolder)) / session_id / "raw"
 
     echoes: list[dict] = []
-    _cache: dict = {}
 
     if not scans:
         logger.warning(
@@ -519,12 +532,32 @@ def echoProcessor(
     # All scans in one session share the same resolution; reconstruct once.
     screenInfo = ScreenInfo(scans[0].screen_width, scans[0].screen_height, scans[0].monitor)
     logger.info(
-        "Echo processor started — session=%s  scans=%d  resolution=%dx%d",
-        session_id, len(scans), scans[0].screen_width, scans[0].screen_height,
+        "Echo processor started — session=%s  scans=%d  resolution=%dx%d  workers=%d",
+        session_id, len(scans), scans[0].screen_width, scans[0].screen_height, workers,
     )
 
-    for scan in scans:
-        _processRawScan(scan, screenInfo, echoes, _cache, raw_base)
+    if workers > 1:
+        # Each worker thread gets its own empty cache so there is no shared
+        # mutable state to protect with a lock.  executor.map preserves
+        # submission order, so echoes remain in their original scan order.
+        def _worker(scan: RawEchoScan) -> dict | None:
+            try:
+                return _processRawScan(scan, screenInfo, {}, raw_base)
+            except Exception:
+                logger.exception("Unhandled error processing scan %d", scan.index)
+                return None
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            results = list(pool.map(_worker, scans))
+        echoes = [r for r in results if r is not None]
+    else:
+        # Sequential path: share one cache across all scans so identical crops
+        # (same echo name/level) are only OCR-processed once.
+        _cache: dict = {}
+        for scan in scans:
+            result = _processRawScan(scan, screenInfo, _cache, raw_base)
+            if result is not None:
+                echoes.append(result)
 
     logger.info(
         "Echo processor finished — session=%s  accepted=%d / %d",
@@ -533,7 +566,7 @@ def echoProcessor(
     return echoes
 
 
-def reprocessSession(session_id: str) -> list[dict]:
+def reprocessSession(session_id: str, workers: int = 1) -> list[dict]:
     """
     Re-run Phase 2 on a previously saved session — **no game required**.
 
@@ -546,6 +579,9 @@ def reprocessSession(session_id: str) -> list[dict]:
     session_id:
         The session folder name under ``cfg.exportFolder``, e.g.
         ``"2026-02-28_14-30-00"``.
+    workers:
+        Number of parallel OCR worker threads.  Forwarded to
+        :func:`echoProcessor`.  Defaults to ``1`` (sequential).
 
     Returns
     -------
@@ -558,4 +594,4 @@ def reprocessSession(session_id: str) -> list[dict]:
     logger.info(
         "reprocessSession — session=%s  loaded %d raw scan(s)", session_id, len(scans)
     )
-    return echoProcessor(scans, session_id, raw_base)
+    return echoProcessor(scans, session_id, raw_base, workers=workers)

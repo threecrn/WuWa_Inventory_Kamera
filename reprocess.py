@@ -43,6 +43,7 @@ defaults to the session folder (the parent of the ``raw/`` directory).
 from __future__ import annotations
 
 import json
+import os
 import sys
 import types
 import logging
@@ -290,6 +291,14 @@ def main() -> None:
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
         help='Logging verbosity (default: INFO).',
     )
+    parser.add_argument(
+        '--workers', type=int, default=None, metavar='N',
+        help=(
+            'Number of parallel OCR worker threads. '
+            f'Defaults to the CPU count ({os.cpu_count() or 4}). '
+            'Use --workers 1 to disable multi-threading.'
+        ),
+    )
 
     args = parser.parse_args()
     _configure_logging(args.log_level)
@@ -334,7 +343,9 @@ def main() -> None:
     logger.info('Loaded %d raw scan(s)', len(scans))
 
     # -- Process --------------------------------------------------------------
-    echoes = echoProcessor(scans, session_id, raw_dir)
+    workers: int = args.workers if args.workers is not None else (os.cpu_count() or 4)
+    logger.info('Workers   : %d', workers)
+    echoes = echoProcessor(scans, session_id, raw_dir, workers=workers)
     logger.info('Accepted %d / %d echo(es)', len(echoes), len(scans))
 
     # -- Write output ---------------------------------------------------------
