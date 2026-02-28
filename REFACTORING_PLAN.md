@@ -170,7 +170,7 @@ def echoProcessor(
 
 ---
 
-### Step 5 — Slim `echoesScraper.py` to an orchestrator
+### ✅ Step 5 — Slim `echoesScraper.py` to an orchestrator
 
 ```python
 def echoScraper(controller, x, y, screenInfo, session_id) -> list[dict]:

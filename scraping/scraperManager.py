@@ -124,7 +124,7 @@ def scrapers(scraperEnabled: list, screenInfo: ScreenInfo, FLAG, queue: multipro
 					inventory.update(i)
 					weapons.extend(w)
 				case 'echoes':
-					echoes = echoScraper(controller, screenInfo.scrapers.echoes.x, screenInfo.scrapers.echoes.y, screenInfo)
+					echoes = echoScraper(controller, screenInfo.scrapers.echoes.x, screenInfo.scrapers.echoes.y, screenInfo, START_DATE)
 				case 'devItems':
 					i, f = itemsScraper(START_DATE, controller, screenInfo.scrapers.devItems.x, screenInfo.scrapers.devItems.y, screenInfo)
 					inventory.update(i)
