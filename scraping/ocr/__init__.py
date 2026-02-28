@@ -14,21 +14,25 @@ Built-in backends
     Wraps ``rapidocr_onnxruntime.RapidOCR``.  All constructor keyword
     arguments are forwarded, so any upstream parameterisation is available.
 
+``'tesserocr'``
+    Wraps ``tesserocr.PyTessBaseAPI``.  Requires the ``tesserocr`` Python
+    package and the Tesseract system library (see
+    :mod:`scraping.ocr._tesserocr` for installation instructions).
+    A thread-local API instance is kept alive across calls for performance.
+    Module-level ``PSM_*`` / ``OEM_*`` constants and all constructor
+    arguments are documented in :class:`~scraping.ocr._tesserocr.TesserOcrBackend`.
+
 Switching the global default
 ----------------------------
 Call :func:`set_default` once at application startup, before any OCR work::
 
     import scraping.ocr
 
-    # Use RapidOCR with a custom confidence threshold:
+    # RapidOCR with a custom confidence threshold:
     scraping.ocr.set_default('rapidocr', text_score=0.6)
 
-    # Use RapidOCR with alternative ONNX model files:
-    scraping.ocr.set_default(
-        'rapidocr',
-        det_model_path='models/ch_PP-OCRv4_det_infer.onnx',
-        rec_model_path='models/ch_PP-OCRv4_rec_infer.onnx',
-    )
+    # Tesseract, single-line mode, digits + percent only:
+    scraping.ocr.set_default('tesserocr', psm=7, char_whitelist='0123456789.%')
 
 Registering a custom backend
 -----------------------------
@@ -202,6 +206,9 @@ def get_default() -> OcrBackend:
 def _register_builtins() -> None:
     from scraping.ocr._rapidocr import RapidOcrBackend
     register('rapidocr', RapidOcrBackend)
+
+    from scraping.ocr._tesserocr import TesserOcrBackend
+    register('tesserocr', TesserOcrBackend)
 
 
 _register_builtins()
