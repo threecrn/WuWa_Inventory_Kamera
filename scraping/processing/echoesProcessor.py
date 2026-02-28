@@ -257,7 +257,8 @@ def _buildEcho(
     Parameters
     ----------
     name:
-        Raw echo name from card OCR (possibly noisy).
+        Echo name, already resolved to an ``echoesID`` key by the caller.
+        The internal fuzzy match is kept as a safety net for direct callers.
     level, tune_lv, sonata, rarity, stats:
         Parsed echo attributes.
 
@@ -431,11 +432,12 @@ def _processRawScan(
         name: str = name_raw
         logger.debug("Scan %d — raw card name: %r", scan.index, name)
 
-        # Normalise known OCR artefacts (mirrors original echoesScraper logic).
-        if name.startswith('phantom:'):
+        # Strip 'phantom:' prefix — phantom echoes are cosmetic variants of a
+        # base echo and share its ID.
+        is_phantom = name.startswith('phantom:')
+        if is_phantom:
             name = name[len('phantom:'):]
-        if 'mourning.jaix' in name:
-            name = name.replace('mourning.jaix', 'mourningaix')
+            logger.debug("Scan %d — phantom prefix stripped: %r → %r", scan.index, name_raw, name)
 
         debug_dir = raw_base / f"echo_{scan.index:04d}" / "debug"
         ocr_trace: dict = {
@@ -443,22 +445,36 @@ def _processRawScan(
             'card': {
                 'raw_lines': info[0],
                 'name_raw': name_raw,
-                'name_normalized': name,
+                'is_phantom': is_phantom,
             },
         }
 
-        # --- Name lookup ---
+        # --- Name lookup (exact first, fuzzy fallback for OCR artefacts) ---
+        # The fuzzy fallback catches things like inserted punctuation, extra
+        # letters, or character substitutions that OCR commonly introduces
+        # (e.g. "nightmare:mourning.jaix" → "nightmare:mourningaix").
         if name not in echoesID:
-            logger.warning(
-                "Scan %d — name not in echoesID: %r | image: %s",
-                scan.index,
-                name,
-                raw_base / f"echo_{scan.index:04d}" / "full.png",
-            )
-            if logger.isEnabledFor(logging.DEBUG):
-                ocr_trace['decision'] = 'rejected: name not in echoesID'
-                _writeDebugCrops(scan, screenInfo, echo_card, debug_dir, ocr_trace)
-            return None
+            close = getMatches(name, echoesID, n=1, cutoff=0.75)
+            if close:
+                logger.info(
+                    "Scan %d — fuzzy-resolved OCR artefact %r → %r",
+                    scan.index, name, close[0],
+                )
+                name = close[0]
+            else:
+                logger.warning(
+                    "Scan %d — name not in echoesID: %r | image: %s",
+                    scan.index,
+                    name_raw,
+                    raw_base / f"echo_{scan.index:04d}" / "full.png",
+                )
+                if logger.isEnabledFor(logging.DEBUG):
+                    ocr_trace['card']['name_resolved'] = name
+                    ocr_trace['decision'] = 'rejected: name not in echoesID'
+                    _writeDebugCrops(scan, screenInfo, echo_card, debug_dir, ocr_trace)
+                return None
+
+        ocr_trace['card']['name_resolved'] = name
 
         # --- Rarity ---
         try:
