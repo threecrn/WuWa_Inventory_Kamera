@@ -148,7 +148,7 @@ Loop body (per echo cell):
 
 ---
 
-### Step 4 — Create `echoesProcessor.py` (Phase 2)
+### ✅ Step 4 — Create `echoesProcessor.py` (Phase 2)
 
 **File:** `scraping/processing/echoesProcessor.py`
 
