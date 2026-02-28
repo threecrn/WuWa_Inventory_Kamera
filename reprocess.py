@@ -178,6 +178,15 @@ from properties.config import cfg                         # noqa: E402
 # Logging
 # ---------------------------------------------------------------------------
 
+# Register TRACE (level 5) below DEBUG (10) before any project import so that
+# scraping.utils.common finds the level already present and the name is
+# available for --log-level validation below.
+_TRACE_LEVEL: int = 5
+if not hasattr(logging, 'TRACE'):
+    logging.addLevelName(_TRACE_LEVEL, 'TRACE')
+    logging.TRACE = _TRACE_LEVEL  # type: ignore[attr-defined]
+
+
 def _configure_logging(level_name: str) -> None:
     level = getattr(logging, level_name.upper(), logging.INFO)
     logging.basicConfig(
@@ -288,7 +297,7 @@ def main() -> None:
     )
     parser.add_argument(
         '--log-level', default='INFO',
-        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+        choices=['TRACE', 'DEBUG', 'INFO', 'WARNING', 'ERROR'],
         help='Logging verbosity (default: INFO).',
     )
     parser.add_argument(
