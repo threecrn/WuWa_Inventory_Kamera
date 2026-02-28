@@ -120,7 +120,7 @@ a warning log.
 
 ---
 
-### Step 3 — Create `echoesScanner.py` (Phase 1)
+### ✅ Step 3 — Create `echoesScanner.py` (Phase 1)
 
 **File:** `scraping/scanning/echoesScanner.py`
 
