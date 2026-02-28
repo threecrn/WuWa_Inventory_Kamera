@@ -9,4 +9,6 @@ from scraping.utils.common import (
     imageToString, copyToClipboard, isUserAdmin
 )
 
+from scraping.utils.common import saveRawScan, loadRawScans
+
 from scraping.utils.mouse_keyboard import WindowsInputController

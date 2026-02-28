@@ -149,3 +149,125 @@ def copyToClipboard(text):
         win32clipboard.SetClipboardText(text)
     finally:
         win32clipboard.CloseClipboard()
+
+
+# ---------------------------------------------------------------------------
+# Raw-scan persistence helpers (Steps 1-2 of the refactoring plan)
+# ---------------------------------------------------------------------------
+
+import logging as _logging
+_raw_logger = _logging.getLogger(__name__)
+
+
+def saveRawScan(scan, base_path: Path) -> Path:
+    """
+    Persist a ``RawEchoScan`` to disk.
+
+    Creates the following structure under *base_path*::
+
+        echo_{index:04d}/
+            full.png        <- lossless PNG of scan.full_screenshot (RGB→BGR)
+            sonata.png      <- lossless PNG of scan.sonata_screenshot (RGB→BGR)
+            meta.json       <- scan.meta() as JSON
+
+    Parameters
+    ----------
+    scan:
+        A ``RawEchoScan`` instance (type-hinted as ``Any`` to avoid a
+        top-level circular import; the actual type is
+        ``scraping.models.rawScan.RawEchoScan``).
+    base_path:
+        Root directory for the session's raw scans, e.g.
+        ``export/{session_id}/raw``.
+
+    Returns
+    -------
+    Path
+        The echo-specific sub-directory that was created, e.g.
+        ``export/{session_id}/raw/echo_0042``.
+    """
+    echo_dir: Path = Path(base_path) / f"echo_{scan.index:04d}"
+    echo_dir.mkdir(parents=True, exist_ok=True)
+
+    # Screenshots are stored as RGB in-memory; cv2.imwrite expects BGR.
+    cv2.imwrite(str(echo_dir / "full.png"),
+                cv2.cvtColor(scan.full_screenshot, cv2.COLOR_RGB2BGR))
+    cv2.imwrite(str(echo_dir / "sonata.png"),
+                cv2.cvtColor(scan.sonata_screenshot, cv2.COLOR_RGB2BGR))
+
+    with open(echo_dir / "meta.json", 'w', encoding='utf-8') as f:
+        json.dump(scan.meta(), f, indent=2)
+
+    _raw_logger.debug("Saved raw scan %d → %s", scan.index, echo_dir)
+    return echo_dir
+
+
+def loadRawScans(base_path: Path) -> list:
+    """
+    Reconstruct all ``RawEchoScan`` objects previously saved by
+    :func:`saveRawScan`.
+
+    Scans directories named ``echo_XXXX/`` under *base_path* in sorted order.
+    Directories that are missing any of ``full.png``, ``sonata.png``, or
+    ``meta.json`` are skipped with a warning.
+
+    Parameters
+    ----------
+    base_path:
+        Root directory for the session's raw scans, e.g.
+        ``export/{session_id}/raw``.
+
+    Returns
+    -------
+    list[RawEchoScan]
+        Scans in ascending index order.
+    """
+    from scraping.models.rawScan import RawEchoScan  # local import — avoids circular deps
+
+    base_path = Path(base_path)
+    scans: list = []
+
+    for echo_dir in sorted(base_path.glob("echo_*/")):
+        meta_path   = echo_dir / "meta.json"
+        full_path   = echo_dir / "full.png"
+        sonata_path = echo_dir / "sonata.png"
+
+        if not (meta_path.exists() and full_path.exists() and sonata_path.exists()):
+            _raw_logger.warning(
+                "Skipping incomplete raw scan directory: %s "
+                "(missing: %s)",
+                echo_dir,
+                ", ".join(
+                    p.name for p in [meta_path, full_path, sonata_path]
+                    if not p.exists()
+                ),
+            )
+            continue
+
+        with open(meta_path, 'r', encoding='utf-8') as f:
+            meta = json.load(f)
+
+        # cv2.imread returns BGR; convert back to RGB to match the in-memory format
+        # produced by screenshot().
+        full_bgr   = cv2.imread(str(full_path))
+        sonata_bgr = cv2.imread(str(sonata_path))
+
+        if full_bgr is None or sonata_bgr is None:
+            _raw_logger.warning("Could not read image(s) in %s — skipping.", echo_dir)
+            continue
+
+        scans.append(RawEchoScan(
+            session_id       = meta['session_id'],
+            index            = meta['index'],
+            page             = meta['page'],
+            row              = meta['row'],
+            col              = meta['col'],
+            full_screenshot  = cv2.cvtColor(full_bgr,   cv2.COLOR_BGR2RGB),
+            sonata_screenshot= cv2.cvtColor(sonata_bgr, cv2.COLOR_BGR2RGB),
+            screen_width     = meta['screen_width'],
+            screen_height    = meta['screen_height'],
+            monitor          = meta['monitor'],
+        ))
+
+    _raw_logger.debug("Loaded %d raw scan(s) from %s", len(scans), base_path)
+    return scans
