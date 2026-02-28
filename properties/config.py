@@ -2,7 +2,6 @@ import sys
 import json
 import string
 from pathlib import Path
-from rapidocr_onnxruntime import RapidOCR
 from qfluentwidgets import (
 	qconfig, QConfig, ConfigValidator,
 	ConfigItem, OptionsConfigItem, BoolValidator,
@@ -11,7 +10,6 @@ from qfluentwidgets import (
 )
 
 basePATH: Path = Path(sys.executable if getattr(sys, 'frozen', False) else str()).parent
-ocr = RapidOCR()
 
 # Default values
 PROCESS_NAME = 'Client-Win64-Shipping.exe'

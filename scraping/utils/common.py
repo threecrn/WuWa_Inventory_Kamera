@@ -9,7 +9,7 @@ import win32clipboard
 from pathlib import Path
 
 from properties.config import (
-    cfg, INVENTORY, ocr
+    cfg, INVENTORY
 )
 
 # ---------------------------------------------------------------------------
@@ -107,15 +107,39 @@ def convertToBlackWhite(image: np.ndarray):
     return sharpened
 
 def imageToString(
-    image: np.ndarray, 
-    divisor: str = ' ', 
-    allowedChars: str = None, 
-    bannedChars: str = None
+    image: np.ndarray,
+    divisor: str = ' ',
+    allowedChars: str = None,
+    bannedChars: str = None,
+    backend=None,
 ) -> str:
+    """
+    Run OCR on *image* and return the recognised text as a string.
+
+    Parameters
+    ----------
+    image:
+        RGB uint8 numpy array to recognise.
+    divisor:
+        String inserted between tokens on the same text line.
+    allowedChars:
+        When set, only characters in this string are kept in each token.
+    bannedChars:
+        When set, characters in this string are stripped from each token.
+    backend:
+        An :class:`~scraping.ocr.OcrBackend` instance to use for this
+        call.  When ``None`` (default) the active global default from
+        :func:`scraping.ocr.get_default` is used.  Pass an explicit
+        backend to use a one-off parameterisation without changing the
+        global default.
+    """
     try:
-        ocrResults = ocr(image)[0]
+        if backend is None:
+            import scraping.ocr as _ocr_mod
+            backend = _ocr_mod.get_default()
+        ocrResults = backend.recognize(image)
         _trace(_logger, 'imageToString — raw OCR results (%d token(s)): %s',
-               len(ocrResults) if ocrResults else 0, ocrResults)
+               len(ocrResults), ocrResults)
 
         banned_pattern = re.compile(f"[{re.escape(bannedChars)}]") if bannedChars else None
         allowed_pattern = re.compile(f"[^{re.escape(allowedChars)}]") if allowedChars else None

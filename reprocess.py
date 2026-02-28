@@ -172,6 +172,7 @@ for _stub_name in ('win32api', 'win32con', 'win32clipboard', 'mss'):
 from scraping.models.rawScan import RawEchoScan           # noqa: E402  (numpy + dataclasses only)
 from scraping.utils.common import loadRawScans             # noqa: E402
 from scraping.processing.echoesProcessor import echoProcessor  # noqa: E402
+import scraping.ocr as _ocr                                # noqa: E402
 from properties.config import cfg                         # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -316,6 +317,20 @@ def main() -> None:
             'All other scans are skipped. Useful for debugging individual failures.'
         ),
     )
+    parser.add_argument(
+        '--ocr-backend', default='rapidocr', metavar='NAME',
+        help=(
+            'OCR backend to use. Built-in: rapidocr (default). '
+            'Use scraping.ocr.register() to add custom backends.'
+        ),
+    )
+    parser.add_argument(
+        '--ocr-params', default='{}', metavar='JSON',
+        help=(
+            'JSON object of keyword arguments forwarded to the backend constructor. '
+            'Example: \'{"text_score": 0.6}\' or \'{"use_angle_cls": true}\''
+        ),
+    )
 
     args = parser.parse_args()
     _configure_logging(args.log_level)
@@ -325,6 +340,21 @@ def main() -> None:
         cfg.echoMinRarity.value = args.min_rarity
     if args.min_level is not None:
         cfg.echoMinLevel.value = args.min_level
+
+    # -- Configure OCR backend -----------------------------------------------
+    try:
+        ocr_params = json.loads(args.ocr_params)
+    except json.JSONDecodeError as exc:
+        logger.error('--ocr-params is not valid JSON: %s', exc)
+        sys.exit(1)
+    try:
+        _ocr.set_default(args.ocr_backend, **ocr_params)
+    except KeyError:
+        logger.error(
+            'Unknown OCR backend %r. Available: %s',
+            args.ocr_backend, _ocr.list_backends(),
+        )
+        sys.exit(1)
 
     export_dir = Path(args.export_dir) if args.export_dir else Path(cfg.get(cfg.exportFolder))
 
