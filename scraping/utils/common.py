@@ -3,6 +3,7 @@ import mss
 import cv2
 import json
 import ctypes
+import logging
 import numpy as np
 import win32clipboard
 from pathlib import Path
@@ -10,6 +11,22 @@ from pathlib import Path
 from properties.config import (
     cfg, INVENTORY, ocr
 )
+
+# ---------------------------------------------------------------------------
+# Logging — register a TRACE level (5) below DEBUG (10)
+# ---------------------------------------------------------------------------
+
+LEVEL_TRACE: int = 5
+if not hasattr(logging, 'TRACE'):
+    logging.addLevelName(LEVEL_TRACE, 'TRACE')
+    logging.TRACE = LEVEL_TRACE  # type: ignore[attr-defined]
+
+def _trace(logger: logging.Logger, msg: str, *args, **kwargs) -> None:
+    """Emit a TRACE-level record on *logger*."""
+    if logger.isEnabledFor(LEVEL_TRACE):
+        logger.log(LEVEL_TRACE, msg, *args, **kwargs)
+
+_logger = logging.getLogger(__name__)
 
 def loadFile(filePATH: str, default = {}) -> dict:
     try:
@@ -97,18 +114,22 @@ def imageToString(
 ) -> str:
     try:
         ocrResults = ocr(image)[0]
-        
+        _trace(_logger, 'imageToString — raw OCR results (%d token(s)): %s',
+               len(ocrResults) if ocrResults else 0, ocrResults)
+
         banned_pattern = re.compile(f"[{re.escape(bannedChars)}]") if bannedChars else None
         allowed_pattern = re.compile(f"[^{re.escape(allowedChars)}]") if allowedChars else None
         
         lines = []
-        for bbox, text, _ in ocrResults:
+        for bbox, text, conf in ocrResults:
+            original = text
             if banned_pattern:
                 text = banned_pattern.sub('', text)
             
             if allowed_pattern:
                 text = allowed_pattern.sub('', text)
-                
+
+            _trace(_logger, '  token: %r  conf=%.3f  →  %r', original, conf, text)
             lines.append((bbox, text))
 
         groupedLines = []
@@ -134,9 +155,13 @@ def imageToString(
         for row in groupedLines:
             finalOutput.append(divisor.join(row))
         
-        return '\n'.join(finalOutput).strip()
+        result = '\n'.join(finalOutput).strip()
+        _trace(_logger, 'imageToString — final output: %r', result)
+        return result
 
     except:
+        _trace(_logger, 'imageToString — OCR raised an exception, returning empty string',
+               exc_info=True)
         return ''
 
 def isUserAdmin():
@@ -155,8 +180,7 @@ def copyToClipboard(text):
 # Raw-scan persistence helpers (Steps 1-2 of the refactoring plan)
 # ---------------------------------------------------------------------------
 
-import logging as _logging
-_raw_logger = _logging.getLogger(__name__)
+_raw_logger = _logger  # alias — same module logger used by imageToString
 
 
 def saveRawScan(scan, base_path: Path) -> Path:
