@@ -129,7 +129,7 @@ def imageToString(
             if allowed_pattern:
                 text = allowed_pattern.sub('', text)
 
-            _trace(_logger, '  token: %r  conf=%.3f  →  %r', original, conf, text)
+            _trace(_logger, '  token: %r  conf=%.3f  →  %r', original, float(conf), text)
             lines.append((bbox, text))
 
         groupedLines = []
