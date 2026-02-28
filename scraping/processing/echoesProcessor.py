@@ -372,92 +372,102 @@ def _processRawScan(
         Root of the session's ``raw/`` folder, used for debug-crop paths in log
         messages and for writing ``debug/`` sub-folders.
     """
-    image = scan.full_screenshot
+    # Load images from disk just-in-time — only this one echo is in RAM.
+    try:
+        scan.load_images()
+    except FileNotFoundError as e:
+        logger.error("Scan %d — images missing on disk, skipping: %s", scan.index, e)
+        return
 
-    echo_card = image[
-        screenInfo.echoes.echoCard.y : screenInfo.echoes.echoCard.y + screenInfo.echoes.echoCard.h,
-        screenInfo.echoes.echoCard.x : screenInfo.echoes.echoCard.x + screenInfo.echoes.echoCard.w,
-    ]
-    echo_hash = hash(echo_card.tobytes())
+    try:
+        image = scan.full_screenshot
 
-    # --- Card OCR (name / level text) ---
-    if echo_hash in _cache:
-        info: list = _cache[echo_hash]
-    else:
-        info = [imageToString(echo_card, '', bannedChars=' +').lower().split('\n')]
-        _cache[echo_hash] = info
+        echo_card = image[
+            screenInfo.echoes.echoCard.y : screenInfo.echoes.echoCard.y + screenInfo.echoes.echoCard.h,
+            screenInfo.echoes.echoCard.x : screenInfo.echoes.echoCard.x + screenInfo.echoes.echoCard.w,
+        ]
+        echo_hash = hash(echo_card.tobytes())
 
-    name: str = info[0][0] if info[0] else ''
-    logger.debug("Scan %d — raw card name: %r", scan.index, name)
+        # --- Card OCR (name / level text) ---
+        if echo_hash in _cache:
+            info: list = _cache[echo_hash]
+        else:
+            info = [imageToString(echo_card, '', bannedChars=' +').lower().split('\n')]
+            _cache[echo_hash] = info
 
-    # Normalise known OCR artefacts (mirrors original echoesScraper logic).
-    if name.startswith('phantom:'):
-        name = name[len('phantom:'):]
-    if 'mourning.jaix' in name:
-        name = name.replace('mourning.jaix', 'mourningaix')
+        name: str = info[0][0] if info[0] else ''
+        logger.debug("Scan %d — raw card name: %r", scan.index, name)
 
-    debug_dir = raw_base / f"echo_{scan.index:04d}" / "debug"
+        # Normalise known OCR artefacts (mirrors original echoesScraper logic).
+        if name.startswith('phantom:'):
+            name = name[len('phantom:'):]
+        if 'mourning.jaix' in name:
+            name = name.replace('mourning.jaix', 'mourningaix')
 
-    # --- Name lookup ---
-    if name not in echoesID:
-        logger.warning(
-            "Scan %d — name not in echoesID: %r | image: %s",
-            scan.index,
-            name,
-            raw_base / f"echo_{scan.index:04d}" / "full.png",
-        )
+        debug_dir = raw_base / f"echo_{scan.index:04d}" / "debug"
+
+        # --- Name lookup ---
+        if name not in echoesID:
+            logger.warning(
+                "Scan %d — name not in echoesID: %r | image: %s",
+                scan.index,
+                name,
+                raw_base / f"echo_{scan.index:04d}" / "full.png",
+            )
+            if logger.isEnabledFor(logging.DEBUG):
+                _writeDebugCrops(scan, screenInfo, echo_card, debug_dir)
+            return
+
+        # --- Rarity ---
+        try:
+            rarity: int = info[1][0]
+        except (IndexError, TypeError):
+            rarity = _getRarity(echo_card)
+            _cache[echo_hash].append(rarity)
+
+        if rarity < cfg.get(cfg.echoMinRarity):
+            logger.debug(
+                "Scan %d — rarity %d below minimum %d, skipping.",
+                scan.index, rarity, cfg.get(cfg.echoMinRarity),
+            )
+            return
+
+        # --- Level ---
+        try:
+            level_text: str = info[0][2]
+        except IndexError:
+            logger.error(
+                "Scan %d — IndexError reading level from card OCR: %s | image: %s",
+                scan.index,
+                info,
+                raw_base / f"echo_{scan.index:04d}" / "full.png",
+            )
+            level_text = ''
+
+        try:
+            level = min(25, int(level_text))
+        except ValueError:
+            level = 0
+
+        if level < cfg.get(cfg.echoMinLevel):
+            logger.debug(
+                "Scan %d — level %d below minimum %d, skipping.",
+                scan.index, level, cfg.get(cfg.echoMinLevel),
+            )
+            return
+
+        # --- Stats + sonata ---
+        tune_lv, stats = _extractStats(image, screenInfo, _cache)
+        sonata = _extractSonata(scan.sonata_screenshot, _cache)
+        echo = _buildEcho(name, level, tune_lv, sonata, rarity, stats)
+
+        logger.debug("Scan %d — accepted: %s", scan.index, echo)
         if logger.isEnabledFor(logging.DEBUG):
             _writeDebugCrops(scan, screenInfo, echo_card, debug_dir)
-        return
 
-    # --- Rarity ---
-    try:
-        rarity: int = info[1][0]
-    except (IndexError, TypeError):
-        rarity = _getRarity(echo_card)
-        _cache[echo_hash].append(rarity)
-
-    if rarity < cfg.get(cfg.echoMinRarity):
-        logger.debug(
-            "Scan %d — rarity %d below minimum %d, skipping.",
-            scan.index, rarity, cfg.get(cfg.echoMinRarity),
-        )
-        return
-
-    # --- Level ---
-    try:
-        level_text: str = info[0][2]
-    except IndexError:
-        logger.error(
-            "Scan %d — IndexError reading level from card OCR: %s | image: %s",
-            scan.index,
-            info,
-            raw_base / f"echo_{scan.index:04d}" / "full.png",
-        )
-        level_text = ''
-
-    try:
-        level = min(25, int(level_text))
-    except ValueError:
-        level = 0
-
-    if level < cfg.get(cfg.echoMinLevel):
-        logger.debug(
-            "Scan %d — level %d below minimum %d, skipping.",
-            scan.index, level, cfg.get(cfg.echoMinLevel),
-        )
-        return
-
-    # --- Stats + sonata ---
-    tune_lv, stats = _extractStats(image, screenInfo, _cache)
-    sonata = _extractSonata(scan.sonata_screenshot, _cache)
-    echo = _buildEcho(name, level, tune_lv, sonata, rarity, stats)
-
-    logger.debug("Scan %d — accepted: %s", scan.index, echo)
-    if logger.isEnabledFor(logging.DEBUG):
-        _writeDebugCrops(scan, screenInfo, echo_card, debug_dir)
-
-    echoes.append(echo)
+        echoes.append(echo)
+    finally:
+        scan.release_images()
 
 
 # ---------------------------------------------------------------------------

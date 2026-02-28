@@ -247,26 +247,19 @@ def loadRawScans(base_path: Path) -> list:
         with open(meta_path, 'r', encoding='utf-8') as f:
             meta = json.load(f)
 
-        # cv2.imread returns BGR; convert back to RGB to match the in-memory format
-        # produced by screenshot().
-        full_bgr   = cv2.imread(str(full_path))
-        sonata_bgr = cv2.imread(str(sonata_path))
-
-        if full_bgr is None or sonata_bgr is None:
-            _raw_logger.warning("Could not read image(s) in %s — skipping.", echo_dir)
-            continue
-
+        # Images are loaded lazily — store only the paths here.
+        # RawEchoScan.load_images() will cv2.imread each file just before OCR.
         scans.append(RawEchoScan(
-            session_id       = meta['session_id'],
-            index            = meta['index'],
-            page             = meta['page'],
-            row              = meta['row'],
-            col              = meta['col'],
-            full_screenshot  = cv2.cvtColor(full_bgr,   cv2.COLOR_BGR2RGB),
-            sonata_screenshot= cv2.cvtColor(sonata_bgr, cv2.COLOR_BGR2RGB),
-            screen_width     = meta['screen_width'],
-            screen_height    = meta['screen_height'],
-            monitor          = meta['monitor'],
+            session_id    = meta['session_id'],
+            index         = meta['index'],
+            page          = meta['page'],
+            row           = meta['row'],
+            col           = meta['col'],
+            full_path     = full_path,
+            sonata_path   = sonata_path,
+            screen_width  = meta['screen_width'],
+            screen_height = meta['screen_height'],
+            monitor       = meta['monitor'],
         ))
 
     _raw_logger.debug("Loaded %d raw scan(s) from %s", len(scans), base_path)
