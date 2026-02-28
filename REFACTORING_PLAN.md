@@ -215,6 +215,18 @@ Wire to a new **"Reprocess"** button in the UI (next to the existing Export butt
 so the user can re-run OCR on any previously captured session without touching the
 game.
 
+A standalone **CLI entry point** (`reprocess.py` at the project root) is also
+provided for headless / cross-platform use.  It stubs out `qfluentwidgets`,
+`win32api`, `win32con`, `win32clipboard`, and `mss` at startup so the OCR pipeline
+can run without any GUI or Win32 dependency installed:
+
+```
+python reprocess.py --list
+python reprocess.py --session-id 2026-02-28_14-30-00
+python reprocess.py --raw-dir export/2026-02-28_14-30-00/raw
+python reprocess.py --raw-dir ./raw --min-rarity 4 --min-level 10 --log-level DEBUG
+```
+
 ---
 
 ## Migration Order *(always shippable)*
