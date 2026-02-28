@@ -15,6 +15,11 @@ from scraping.utils import (
 from game.screenInfo import ScreenInfo
 from properties.config import cfg
 
+
+import logging
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+
 # Constants
 ROWS, COLS = 4, 6
 
@@ -65,6 +70,8 @@ def getEchoPages(screenInfo: ScreenInfo) -> int:
 
 def processEcho(name: str, level: int, tuneLv: int, sonata: str, rarity: int, stats: dict) -> dict[str, dict[int, int, dict]]:
     result = getMatches(name, echoesID, 1, 0.9)
+    #logger.debug(f"pE: name matches: {name} -> {result}")
+    logging.debug(f"pE: name matches: {name} -> {result}")
     if result: name = result[0]
     
     echoID = str(echoesID.get(name, name))
@@ -102,14 +109,17 @@ def processStats(image: np.ndarray, screenInfo: ScreenInfo, _cache: dict) -> dic
         names = imageToString(nameImage, allowedChars=string.ascii_letters).lower().split('\n')
         names = matchStats(names)
         _cache[nameHash] = names
+    #logger.debug(f"pS: names: {names}")
+    logging.debug(f"pS: names: {names}")
 
     if valueHash in _cache:
         values = _cache[valueHash]
     else:
         values = imageToString(valueImage, allowedChars=string.digits + '.%').split()
         _cache[valueHash] = values
+    #logger.debug(f"pS: values: {values}")
+    logging.debug(f"pS: values: {values}")
     tuneLv = max(0, len(values) - 2)
-
 
     for index, (statName, statValue) in enumerate(zip(names, values)):
         statName = echoStats.get(statName, statName)
@@ -157,6 +167,10 @@ def processGridEcho(controller: WindowsInputController, screenInfo: ScreenInfo, 
         info = [imageToString(echoCard, '', bannedChars=' +').lower().split('\n')]
         _cache[echoHash] = info
     name = info[0][0]
+    logging.debug(f"pGE name={name}, info={info}")
+
+    if name.startswith('phantom:'): name = name[len('phantom:'):]
+    if 'mourning.jaix' in name: name = name.replace('mourning.jaix', 'mourningaix')
     
     if name in echoesID:
         try:
@@ -166,7 +180,10 @@ def processGridEcho(controller: WindowsInputController, screenInfo: ScreenInfo, 
             _cache[echoHash].append(rarity)
         
         if rarity >= cfg.get(cfg.echoMinRarity):
-            levelText = info[0][2]
+            try: levelText = info[0][2]
+            except IndexError:
+                logging.error(f"IndexError: {info}")
+                levelText = ""
             
             try: level = int(levelText)
             except ValueError: level = 0
@@ -175,9 +192,14 @@ def processGridEcho(controller: WindowsInputController, screenInfo: ScreenInfo, 
             if level >= cfg.get(cfg.echoMinLevel):
                 tuneLv, stats = processStats(image, screenInfo, _cache)
                 sonata = getSonata(controller, screenInfo, _cache)
-                echoes.append(processEcho(name, level, tuneLv, sonata, rarity, stats))
+                e = processEcho(name, level, tuneLv, sonata, rarity, stats)
+                #logger.debug(f"e = {e}")
+                logging.debug(f"e = {e}")
+                echoes.append(e)
                 return True
         return False
+    else:
+        logging.warning(f"name not found: {name}")
 
     return True
 
@@ -209,7 +231,9 @@ def echoScraper(controller: WindowsInputController, x: float, y: float, screenIn
                     return echoes
 
         if page < pages - 1 and continueScraping:
+            controller.leftClick(center_x, center_y)
             controller.mouseScroll(screenInfo.scroll.page.y, 1.2)
+            #break
 
     del _cache
     return echoes
