@@ -525,10 +525,17 @@ def _processRawScan(
         echo = _buildEcho(name, level, tune_lv, sonata, rarity, stats)
 
         logger.debug("Scan %d — accepted: %s", scan.index, echo)
+        ocr_trace['stats'] = stats_trace
+        ocr_trace['sonata'] = {'raw_ocr': sonata_raw, 'matched': sonata}
+        ocr_trace['decision'] = 'accepted'
+
+        # Write result.json immediately so individual echo results are
+        # available without waiting for the full session to complete.
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        with open(debug_dir / "result.json", 'w', encoding='utf-8') as fh:
+            json.dump(echo, fh, indent=2, ensure_ascii=False)
+
         if logger.isEnabledFor(logging.DEBUG):
-            ocr_trace['stats'] = stats_trace
-            ocr_trace['sonata'] = {'raw_ocr': sonata_raw, 'matched': sonata}
-            ocr_trace['decision'] = 'accepted'
             _writeDebugCrops(scan, screenInfo, echo_card, debug_dir, ocr_trace)
 
         return echo
