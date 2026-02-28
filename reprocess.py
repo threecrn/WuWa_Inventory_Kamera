@@ -299,6 +299,14 @@ def main() -> None:
             'Use --workers 1 to disable multi-threading.'
         ),
     )
+    parser.add_argument(
+        '--echo-ids', metavar='ID[,ID,...]',
+        help=(
+            'Comma-separated list of echo scan IDs to reprocess (e.g. 0111,0231). '
+            'IDs are the 4-digit zero-padded numbers in the echo_NNNN folder names. '
+            'All other scans are skipped. Useful for debugging individual failures.'
+        ),
+    )
 
     args = parser.parse_args()
     _configure_logging(args.log_level)
@@ -341,6 +349,31 @@ def main() -> None:
         logger.error('No raw scans found in %s', raw_dir)
         sys.exit(1)
     logger.info('Loaded %d raw scan(s)', len(scans))
+
+    # -- Filter by --echo-ids -------------------------------------------------
+    if args.echo_ids:
+        requested: set[int] = set()
+        for token in args.echo_ids.split(','):
+            token = token.strip()
+            if not token:
+                continue
+            try:
+                requested.add(int(token))
+            except ValueError:
+                logger.error('Invalid echo ID %r — must be a number (e.g. 0111).', token)
+                sys.exit(1)
+        scans = [s for s in scans if s.index in requested]
+        missing = requested - {s.index for s in scans}
+        if missing:
+            logger.warning(
+                'Echo IDs not found in session: %s',
+                ', '.join(f'{i:04d}' for i in sorted(missing)),
+            )
+        if not scans:
+            logger.error('No scans remain after applying --echo-ids filter.')
+            sys.exit(1)
+        logger.info('Filtered to %d scan(s): %s', len(scans),
+                    ', '.join(f'{s.index:04d}' for s in scans))
 
     # -- Process --------------------------------------------------------------
     workers: int = args.workers if args.workers is not None else (os.cpu_count() or 4)
