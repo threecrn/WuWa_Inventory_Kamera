@@ -48,6 +48,7 @@ import numpy as np
 from game.screenInfo import ScreenInfo
 from properties.config import cfg
 from scraping.models.rawScan import RawEchoScan
+from scraping.processing.echoesValidator import infer_cost, validate_echo_stats
 from scraping.utils import (
     convertToBlackWhite,
     echoesID,
@@ -524,9 +525,30 @@ def _processRawScan(
         sonata, sonata_raw = _extractSonata(scan.sonata_screenshot, _cache, scan.index)
         echo = _buildEcho(name, level, tune_lv, sonata, rarity, stats)
 
-        logger.debug("Scan %d — accepted: %s", scan.index, echo)
         ocr_trace['stats'] = stats_trace
         ocr_trace['sonata'] = {'raw_ocr': sonata_raw, 'matched': sonata}
+
+        # --- Validation ---
+        cost = infer_cost(stats)
+        if cost is not None:
+            vresult = validate_echo_stats(cost, level, rarity, stats)
+            for msg in vresult.warnings:
+                logger.warning("Scan %d — validation warning: %s", scan.index, msg)
+            if not vresult.valid:
+                logger.warning(
+                    "Scan %d — rejected by validator (%d error(s)): %s | image: %s",
+                    scan.index, len(vresult.errors), vresult.errors,
+                    raw_base / f"echo_{scan.index:04d}" / "full.png",
+                )
+                if logger.isEnabledFor(logging.DEBUG):
+                    ocr_trace['validation'] = {'errors': vresult.errors, 'warnings': vresult.warnings}
+                    ocr_trace['decision'] = 'rejected: validation errors'
+                    _writeDebugCrops(scan, screenInfo, echo_card, debug_dir, ocr_trace)
+                return None
+        else:
+            logger.debug("Scan %d — slot cost could not be inferred; validation skipped.", scan.index)
+
+        logger.debug("Scan %d — accepted: %s", scan.index, echo)
         ocr_trace['decision'] = 'accepted'
 
         # Write result.json immediately so individual echo results are

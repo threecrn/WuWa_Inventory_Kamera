@@ -23,6 +23,7 @@ infer_cost(stats) -> int | None
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -191,6 +192,23 @@ def _check_substat_value(
         )
 
 
+def _validate_numeric(result: ValidationResult, label: str, raw) -> bool:
+    """
+    Return ``True`` when *raw* can be interpreted as a plain number.
+
+    Adds an error to *result* and returns ``False`` for values that are
+    non-numeric strings — for example the OCR artefact ``"%66"`` produced
+    when a ``%`` character is split to a separate token and ends up prepended
+    to the following digits instead of marking the entire value as a percentage.
+    """
+    if math.isnan(_parse_value(raw)):
+        result.add_error(
+            f"{label}: value {raw!r} is not a valid number — likely an OCR artefact."
+        )
+        return False
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -323,15 +341,16 @@ def validate_echo_stats(
         )
     else:
         fixed_spec_values: list = spec_fixed.get(fixed_name, [])
-        if fixed_spec_values and level < len(fixed_spec_values):
-            expected_fixed = fixed_spec_values[level]
-            _check_value(
-                result,
-                f"Fixed main '{fixed_name}'",
-                _parse_value(main[fixed_name]),
-                float(expected_fixed),
-                is_float=_is_float_stat(fixed_name),
-            )
+        if _validate_numeric(result, f"Fixed main '{fixed_name}'", main[fixed_name]):
+            if fixed_spec_values and level < len(fixed_spec_values):
+                expected_fixed = fixed_spec_values[level]
+                _check_value(
+                    result,
+                    f"Fixed main '{fixed_name}'",
+                    _parse_value(main[fixed_name]),
+                    float(expected_fixed),
+                    is_float=_is_float_stat(fixed_name),
+                )
 
     # Rolled main stat
     rolled_candidates = [k for k in main if k != fixed_name]
@@ -350,16 +369,17 @@ def validate_echo_stats(
                 f"Valid options: {sorted(spec_rolled.keys())}."
             )
         else:
-            rolled_spec_values: list = spec_rolled[rolled_name]
-            if rolled_spec_values and level < len(rolled_spec_values):
-                expected_rolled = rolled_spec_values[level]
-                _check_value(
-                    result,
-                    f"Rolled main '{rolled_name}'",
-                    _parse_value(main[rolled_name]),
-                    float(expected_rolled),
-                    is_float=_is_float_stat(rolled_name),
-                )
+            if _validate_numeric(result, f"Rolled main '{rolled_name}'", main[rolled_name]):
+                rolled_spec_values: list = spec_rolled[rolled_name]
+                if rolled_spec_values and level < len(rolled_spec_values):
+                    expected_rolled = rolled_spec_values[level]
+                    _check_value(
+                        result,
+                        f"Rolled main '{rolled_name}'",
+                        _parse_value(main[rolled_name]),
+                        float(expected_rolled),
+                        is_float=_is_float_stat(rolled_name),
+                    )
 
     # -----------------------------------------------------------------------
     # Substats: count
@@ -384,6 +404,15 @@ def validate_echo_stats(
             result.add_error(
                 f"Unknown substat '{name}'. "
                 f"Valid substats: {sorted(spec_subs.keys())}."
+            )
+            continue
+
+        # --- Value parseability (OCR artefact guard) ---
+        actual_value = _parse_value(value)
+        if math.isnan(actual_value):
+            result.add_error(
+                f"Substat '{name}': value {value!r} is not a valid number — "
+                "likely an OCR artefact."
             )
             continue
 
@@ -416,7 +445,6 @@ def validate_echo_stats(
 
         # --- Value validity ---
         valid_tiers: list = spec_subs[name]
-        actual_value = _parse_value(value)
         _check_substat_value(result, name, actual_value, [float(t) for t in valid_tiers])
 
     return result
