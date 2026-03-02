@@ -391,6 +391,12 @@ def validate_echo_stats(
                 f"Too many substats: {len(sub)} found, maximum at level {level} "
                 f"is {max_subs}."
             )
+        elif max_subs > 0 and len(sub) < max_subs:
+            result.add_warning(
+                f"Fewer substats than expected: {len(sub)} found, "
+                f"maximum at level {level} is {max_subs} "
+                f"\u2014 possible missing OCR lines."
+            )
 
     # -----------------------------------------------------------------------
     # Substats: names, values, and duplication rules

@@ -1,0 +1,16 @@
+# To-Do List
+- [ ] echo scraper:
+  - [x] improve validation
+    - [x] validate echo sonata name against data/sonataName.json
+    - [x] warning on less than maximum substat lines (may indicate missing lines)
+  - [x] add echo scan number/index/id to the resulting json (echo_0111 -> "_scanIndex": 111)
+  - [x] add monster id to the resulting json ("_monsterId": 310000020)
+  - [x] add echo cost to the resulting json ("_cost": (monster_id prefix 31 -> 1, 32 -> 3, 34 -> 4))
+  - [ ] mixed processing mode: start processing and cleanup up image data in the background
+  - [ ] detect sort mode
+  - [ ] identify echoes by their attributes
+  - [ ] finer control for scan pass
+  - [ ] finer control for recognition pass
+  - [ ] domain specific recognition interface
+    - [ ] control use of bw/rgb mode for ocr calls
+    - [ ] don't write entire screenshots to file, only necessary image fragments?

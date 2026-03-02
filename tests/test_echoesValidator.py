@@ -288,6 +288,20 @@ class TestSubstatCount:
             r = validate_echo_stats(4, level, 5, _stats({'cr%': 22.0, 'atk': 150}, sub))
             assert r.valid, f"level={level}, count={count}: {r.errors}"
 
+    def test_fewer_subs_than_max_is_warning(self):
+        """Fewer substats than the level maximum produces a warning (not an error)."""
+        # At level 25 max is 5; providing only 2 should warn.
+        sub = {'cr%': 9.9, 'cd%': 21.0}
+        r = validate_echo_stats(4, 25, 5, _stats({'cr%': 22.0, 'atk': 150}, sub))
+        assert r.valid   # still a valid echo — just suspicious
+        assert any('Fewer substats' in w for w in r.warnings)
+
+    def test_zero_subs_at_level_zero_no_warning(self):
+        """Level-0 echo with no substats should produce no count warning."""
+        r = validate_echo_stats(4, 0, 5, _stats({'cr%': 4.4, 'atk': 30}, {}))
+        assert r.valid
+        assert not any('substats' in w for w in r.warnings)
+
 
 # ---------------------------------------------------------------------------
 # Duplicate substats
@@ -323,7 +337,9 @@ class TestDuplicateSubstats:
 class TestValueChecks:
 
     def test_main_stat_value_exact_no_issues(self):
-        r = validate_echo_stats(4, 25, 5, _stats({'cr%': 22.0, 'atk': 150}, {}))
+        # Use level-0 spec values so the 0-substat empty dict does not
+        # trigger the fewer-substats warning (max at level 0 is 0).
+        r = validate_echo_stats(4, 0, 5, _stats({'cr%': 4.4, 'atk': 30}, {}))
         assert r.valid
         assert not r.warnings
         assert not r.errors
@@ -343,9 +359,10 @@ class TestValueChecks:
         assert r.warnings
 
     def test_substat_on_valid_tier_no_issue(self):
-        # Use level-25 main stat values to avoid spurious main-stat warnings.
-        r = validate_echo_stats(4, 25, 5, _stats(
-            {'cr%': 22.0, 'atk': 150},
+        # Use level-5 spec values: max substats at level 5 is 1, matching the
+        # single substat provided so the fewer-substats warning is not raised.
+        r = validate_echo_stats(4, 5, 5, _stats(
+            {'cr%': 7.9, 'atk': 54},
             {'cd%': 21.0},
         ))
         assert r.valid
@@ -371,10 +388,10 @@ class TestValueChecks:
         assert any("cd%" in e for e in r.errors)
 
     def test_flat_substat_on_valid_tier_no_issue(self):
-        # atk valid tiers: [30, 40, 50, 60]. Use level-25 main stats to avoid
-        # spurious main-stat value warnings.
-        r = validate_echo_stats(4, 25, 5, _stats(
-            {'cr%': 22.0, 'atk': 150},
+        # atk valid tiers: [30, 40, 50, 60]. Use level-5 spec values so the
+        # single substat matches the expected max at level 5 (=1).
+        r = validate_echo_stats(4, 5, 5, _stats(
+            {'cr%': 7.9, 'atk': 54},
             {'atk': 60},
         ))
         assert r.valid

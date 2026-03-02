@@ -79,6 +79,10 @@ def _setupRarityDetection() -> dict[int, tuple[np.ndarray, np.ndarray]]:
 
 _RARITY_BOUNDS = _setupRarityDetection()
 
+# Monster ID prefix → slot cost  (first two digits of the numeric ID).
+# e.g. 310000020 (prefix "31") → cost 1,  320000020 → cost 3,  340000020 → cost 4.
+_MONSTER_COST_MAP: dict[str, int] = {'31': 1, '32': 3, '34': 4}
+
 
 def _getRarity(image: np.ndarray) -> int:
     """Detect rarity from the colour of an echo card crop."""
@@ -523,13 +527,31 @@ def _processRawScan(
         # --- Stats + sonata ---
         tune_lv, stats, stats_trace = _extractStats(image, screenInfo, _cache, scan.index)
         sonata, sonata_raw = _extractSonata(scan.sonata_screenshot, _cache, scan.index)
+
+        if sonata not in sonataName:
+            logger.warning(
+                "Scan %d — sonata name %r not in known set names (raw OCR: %r)",
+                scan.index, sonata, sonata_raw,
+            )
+
         echo = _buildEcho(name, level, tune_lv, sonata, rarity, stats)
+
+        # --- Scan metadata ---
+        echo_data = next(iter(echo.values()))
+        echo_data['_scanIndex'] = scan.index
+        monster_id = echoesID.get(name)
+        cost_from_id: int | None = None
+        if monster_id is not None:
+            echo_data['_monsterId'] = monster_id
+            cost_from_id = _MONSTER_COST_MAP.get(str(monster_id)[:2])
+            if cost_from_id is not None:
+                echo_data['_cost'] = cost_from_id
 
         ocr_trace['stats'] = stats_trace
         ocr_trace['sonata'] = {'raw_ocr': sonata_raw, 'matched': sonata}
 
         # --- Validation ---
-        cost = infer_cost(stats)
+        cost = cost_from_id if cost_from_id is not None else infer_cost(stats)
         if cost is not None:
             vresult = validate_echo_stats(cost, level, rarity, stats)
             for msg in vresult.warnings:
