@@ -3,10 +3,8 @@ import numpy as np
 from scraping.utils import (
     achievementsID, definedText, copyToClipboard
 )
-from scraping.utils import (
-    screenshot, imageToString, convertToBlackWhite,
-    WindowsInputController
-)
+from scraping.utils import screenshot, imageToString, convertToBlackWhite
+from scraping.utils.mouse_keyboard import WindowsInputController
 from game.screenInfo import ScreenInfo
 
 def processAchievement(image: np.ndarray, screenInfo: ScreenInfo, achievementName: str, _cache: dict) -> str | None:

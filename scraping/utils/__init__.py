@@ -1,7 +1,7 @@
-from scraping.utils.common import (
+from scraping.data import (
     itemsID, charactersID, weaponsID,
     echoesID, achievementsID, echoStats,
-    definedText, sonataName
+    definedText, sonataName,
 )
 
 from scraping.utils.common import (
@@ -10,5 +10,3 @@ from scraping.utils.common import (
 )
 
 from scraping.utils.common import saveRawScan, loadRawScans
-
-from scraping.utils.mouse_keyboard import WindowsInputController

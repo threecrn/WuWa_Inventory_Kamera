@@ -20,7 +20,7 @@ from game.screenInfo import ScreenInfo
 from properties.config import cfg
 from scraping.processing.echoesProcessor import echoProcessor
 from scraping.scanning.echoesScanner import echoScanner
-from scraping.utils import WindowsInputController
+from scraping.utils.mouse_keyboard import WindowsInputController
 
 logger = logging.getLogger(__name__)
 

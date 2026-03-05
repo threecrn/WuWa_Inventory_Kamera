@@ -36,11 +36,11 @@ from game.screenInfo import ScreenInfo
 from properties.config import cfg
 from scraping.models.rawScan import RawEchoScan
 from scraping.utils import (
-    WindowsInputController,
     imageToString,
     saveRawScan,
     screenshot,
 )
+from scraping.utils.mouse_keyboard import WindowsInputController
 
 logger = logging.getLogger(__name__)
 

@@ -369,7 +369,7 @@ class BaseDataUpdater:
 from PySide6.QtCore import QObject, Signal
 
 from properties.config import cfg
-from scraping.utils import (
+from scraping.data import (
 	itemsID, charactersID, weaponsID,
 	echoesID, achievementsID, echoStats,
 	definedText, sonataName,

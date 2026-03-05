@@ -6,10 +6,8 @@ from pathlib import Path
 from difflib import get_close_matches as getMatches
 
 from scraping.utils import itemsID
-from scraping.utils import (
-    screenshot, imageToString, convertToBlackWhite,
-    WindowsInputController
-)
+from scraping.utils import screenshot, imageToString, convertToBlackWhite
+from scraping.utils.mouse_keyboard import WindowsInputController
 from game.screenInfo import ScreenInfo
 from properties.config import cfg, basePATH
 

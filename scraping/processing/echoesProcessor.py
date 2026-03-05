@@ -49,13 +49,11 @@ from game.screenInfo import ScreenInfo
 from properties.config import cfg
 from scraping.models.rawScan import RawEchoScan
 from scraping.processing.echoesValidator import infer_cost, validate_echo_stats
+from scraping.data import echoesID, echoStats, sonataName
 from scraping.utils import (
     convertToBlackWhite,
-    echoesID,
-    echoStats,
     imageToString,
     loadRawScans,
-    sonataName,
 )
 
 logger = logging.getLogger(__name__)

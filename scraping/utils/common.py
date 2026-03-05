@@ -5,11 +5,15 @@ import json
 import ctypes
 import logging
 import numpy as np
-import win32clipboard
 from pathlib import Path
 
 from properties.config import (
     cfg, INVENTORY
+)
+from scraping.data import (
+    itemsID, charactersID, weaponsID,
+    echoesID, achievementsID, echoStats,
+    definedText, sonataName,
 )
 
 # ---------------------------------------------------------------------------
@@ -27,25 +31,6 @@ def _trace(logger: logging.Logger, msg: str, *args, **kwargs) -> None:
         logger.log(LEVEL_TRACE, msg, *args, **kwargs)
 
 _logger = logging.getLogger(__name__)
-
-def loadFile(filePATH: str, default = {}) -> dict:
-    try:
-        with open(filePATH, 'r') as file:
-            data = json.load(file)
-            if isinstance(default, list):
-                data = list(data)
-            return data
-    except (FileNotFoundError, json.JSONDecodeError):
-        return default
-
-itemsID: dict = loadFile('./data/items.json')
-charactersID: dict = loadFile('./data/characters.json')
-weaponsID: dict = loadFile('./data/weapons.json')
-echoesID: dict = loadFile('./data/echoes.json')
-achievementsID: dict = loadFile('./data/achievements.json')
-echoStats: dict = loadFile('./data/echoStats.json')
-definedText: dict = loadFile('./data/definedText.json')
-sonataName: list = loadFile('./data/sonataName.json', [])
 
 def savingScraped(scannedData: dict = {'inventory_wuwainventorykamera.json': (INVENTORY['items'], dict)}, START_DATE: str = ''):
     savePATH: Path = Path(cfg.get(cfg.exportFolder)) / START_DATE
@@ -193,6 +178,7 @@ def isUserAdmin():
 
 def copyToClipboard(text):
     try:
+        import win32clipboard
         win32clipboard.OpenClipboard()
         win32clipboard.EmptyClipboard()
         win32clipboard.SetClipboardText(text)

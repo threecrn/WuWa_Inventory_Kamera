@@ -6,10 +6,8 @@ from difflib import get_close_matches as getMatches
 from collections import defaultdict
 
 from scraping.utils import charactersID, weaponsID, definedText
-from scraping.utils import (
-    screenshot, convertToBlackWhite, imageToString,
-    WindowsInputController
-)
+from scraping.utils import screenshot, convertToBlackWhite, imageToString
+from scraping.utils.mouse_keyboard import WindowsInputController
 from game.screenInfo import ScreenInfo
 from properties.config import cfg
 
