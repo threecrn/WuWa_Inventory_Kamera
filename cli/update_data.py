@@ -12,8 +12,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from updater.databaseUpdater import BaseDataUpdater  # noqa: E402
-
+# Import the BaseDataUpdater from ../updater/DatabaseUpdater.py
+import sys
+from pathlib import Path
+# Add the parent directory to sys.path to import the updater module
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from updater.databaseUpdater import BaseDataUpdater
 
 def main():
     """Main entry point"""

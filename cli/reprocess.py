@@ -50,6 +50,9 @@ import logging
 import argparse
 from pathlib import Path
 
+# Add the parent directory to sys.path to import the updater module
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
 # ---------------------------------------------------------------------------
 # Bootstrap: install lightweight stubs for GUI / Win32 modules.
 #
