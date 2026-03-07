@@ -31,6 +31,7 @@ class BaseDataUpdater:
 		self.author = 'Dimbreath'
 		self.repo = 'WutheringData'
 		self.lang = self._getLanguage(lang)
+		self.makeFolder(self.lang)
 		self.files = [
 			FileConfig(['TextMap', self.lang], 'MultiText.json'),
 			FileConfig(['ConfigDB'], 'ItemInfo.json'),
@@ -78,8 +79,12 @@ class BaseDataUpdater:
 
 		return languages.get('English', 'en')
 
-	def makeFolder(self) -> None:
-		Path('data').mkdir(parents=True, exist_ok=True)
+	def makeFolder(self, lang=None) -> None:
+		if lang:
+			dir = (Path('data') / lang)
+		else:
+			dir = Path('data')
+		dir.mkdir(parents=True, exist_ok=True)
 
 	def _getLanguageName(self, code: str) -> str:
 		parts = code.split('-')
@@ -133,15 +138,17 @@ class BaseDataUpdater:
 	# ------------------------------------------------------------------
 
 	def loadJson(self, filename: str) -> dict:
+		dir = Path('data') / self.lang if filename != 'languages.json' else Path('data')
 		try:
-			with open(f'./data/{filename}', 'r', encoding='utf-8') as f:
+			with open(dir / filename, 'r', encoding='utf-8') as f:
 				return json.load(f)
 		except (FileNotFoundError, json.JSONDecodeError):
 			return {}
 
 	def saveJson(self, data: dict, filename: str) -> None:
+		dir = Path('data') / self.lang if filename != 'languages.json' else Path('data')
 		try:
-			with open(f'./data/{filename}', 'w', encoding='utf-8') as f:
+			with open(dir / filename, 'w', encoding='utf-8') as f:
 				json.dump(data, f, indent=4, ensure_ascii=False)
 		except Exception as e:
 			logger.error('Failed to save %s: %s', filename, e)
@@ -161,7 +168,7 @@ class BaseDataUpdater:
 			logger.info('Checking for updates on file: %s', fileConfig.file)
 			try:
 				data = self.fetchFileData(url)
-				filePath = Path('data') / fileConfig.file
+				filePath = Path('data') / self.lang / fileConfig.file
 
 				if not data:
 					logger.warning('No data received for %s', fileConfig.file)
@@ -187,7 +194,10 @@ class BaseDataUpdater:
 
 	def updateItems(self) -> None:
 		"""Generate items.json and weapons.json from downloaded data."""
-		if (Path('data') / 'items.json').is_file():
+
+		dir = Path('data') / self.lang
+
+		if (dir / 'items.json').is_file():
 			logger.info('items.json already exists, skipping generation')
 			return
 
