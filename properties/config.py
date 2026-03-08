@@ -9,6 +9,8 @@ from qfluentwidgets import (
 	Signal
 )
 
+#import scraping.data
+
 basePATH: Path = Path(sys.executable if getattr(sys, 'frozen', False) else str()).parent
 
 # Default values
@@ -123,3 +125,5 @@ RELEASE_URL = "https://github.com/Psycho-Marcus/WuWa_Inventory_Kamera/releases/l
 # Load configuration
 cfg = Config()
 qconfig.load('config/config.json', cfg)
+
+#scraping.data.loadData(cfg.get(cfg.gameLanguage))

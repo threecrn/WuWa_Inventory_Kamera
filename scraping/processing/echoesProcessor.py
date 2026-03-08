@@ -126,6 +126,8 @@ def _extractStats(
     screenInfo: ScreenInfo,
     _cache: dict,
     scan_index: int = 0,
+    _ocr_args: dict | None = None,
+    use_bw: bool = True,
 ) -> tuple[int, dict, dict]:
     """
     OCR the stats panel from *full_image* and parse names, values, and tune level.
@@ -155,20 +157,22 @@ def _extractStats(
         screenInfo.echoes.fullStatsName.y : screenInfo.echoes.fullStatsName.y + screenInfo.echoes.fullStatsName.h,
         screenInfo.echoes.fullStatsName.x : screenInfo.echoes.fullStatsName.x + screenInfo.echoes.fullStatsName.w,
     ]
-    name_crop_bw = convertToBlackWhite(name_crop)
-    name_hash = hash(name_crop_bw.tobytes())
+    if use_bw:
+        name_crop = convertToBlackWhite(name_crop)
+    name_hash = hash(name_crop.tobytes())
 
     value_crop = full_image[
         screenInfo.echoes.fullStatsValue.y : screenInfo.echoes.fullStatsValue.y + screenInfo.echoes.fullStatsValue.h,
         screenInfo.echoes.fullStatsValue.x : screenInfo.echoes.fullStatsValue.x + screenInfo.echoes.fullStatsValue.w,
     ]
-    value_crop_bw = convertToBlackWhite(value_crop)
-    value_hash = hash(value_crop_bw.tobytes())
+    if use_bw:
+        value_crop = convertToBlackWhite(value_crop)
+    value_hash = hash(value_crop.tobytes())
 
     if name_hash in _cache:
         raw_names, names = _cache[name_hash]
     else:
-        raw_names = imageToString(name_crop_bw, allowedChars=string.ascii_letters).lower().split('\n')
+        raw_names = imageToString(name_crop, allowedChars=string.ascii_letters).lower().split('\n')
         names = _matchStats(raw_names)
         _cache[name_hash] = (raw_names, names)
     logger.debug("Scan %d — stats names: %s", scan_index, names)
@@ -176,7 +180,7 @@ def _extractStats(
     if value_hash in _cache:
         values: list[str] = _cache[value_hash]
     else:
-        values = imageToString(value_crop_bw, allowedChars=string.digits + '.%').split()
+        values = imageToString(value_crop, allowedChars=string.digits + '.%').split()
         _cache[value_hash] = values
     logger.debug("Scan %d — stats values: %s", scan_index, values)
 
@@ -375,6 +379,7 @@ def _processRawScan(
     screenInfo: ScreenInfo,
     _cache: dict,
     raw_base: Path,
+    write_debug: bool = False,
 ) -> dict | None:
     """
     Process one :class:`~scraping.models.rawScan.RawEchoScan`: OCR, filter,
@@ -471,7 +476,7 @@ def _processRawScan(
                     name_raw,
                     raw_base / f"echo_{scan.index:04d}" / "full.png",
                 )
-                if logger.isEnabledFor(logging.DEBUG):
+                if write_debug:
                     ocr_trace['card']['name_resolved'] = name
                     ocr_trace['decision'] = 'rejected: name not in echoesID'
                     _writeDebugCrops(scan, screenInfo, echo_card, debug_dir, ocr_trace)
@@ -523,7 +528,7 @@ def _processRawScan(
             return None
 
         # --- Stats + sonata ---
-        tune_lv, stats, stats_trace = _extractStats(image, screenInfo, _cache, scan.index)
+        tune_lv, stats, stats_trace = _extractStats(image, screenInfo, _cache, scan.index, use_bw=False)
         sonata, sonata_raw = _extractSonata(scan.sonata_screenshot, _cache, scan.index)
 
         if sonata not in sonataName:
@@ -560,7 +565,7 @@ def _processRawScan(
                     scan.index, len(vresult.errors), vresult.errors,
                     raw_base / f"echo_{scan.index:04d}" / "full.png",
                 )
-                if logger.isEnabledFor(logging.DEBUG):
+                if write_debug:
                     ocr_trace['validation'] = {'errors': vresult.errors, 'warnings': vresult.warnings}
                     ocr_trace['decision'] = 'rejected: validation errors'
                     _writeDebugCrops(scan, screenInfo, echo_card, debug_dir, ocr_trace)
@@ -577,7 +582,8 @@ def _processRawScan(
         with open(debug_dir / "result.json", 'w', encoding='utf-8') as fh:
             json.dump(echo, fh, indent=2, ensure_ascii=False)
 
-        if logger.isEnabledFor(logging.DEBUG):
+        #if logger.isEnabledFor(logging.DEBUG):
+        if write_debug:
             _writeDebugCrops(scan, screenInfo, echo_card, debug_dir, ocr_trace)
 
         return echo
@@ -594,6 +600,7 @@ def echoProcessor(
     session_id: str,
     raw_base: Path | None = None,
     workers: int = 1,
+    write_debug: bool = False,
 ) -> list[dict]:
     """
     Phase 2 — process raw echo captures into structured echo data.
@@ -651,7 +658,7 @@ def echoProcessor(
         # submission order, so echoes remain in their original scan order.
         def _worker(scan: RawEchoScan) -> dict | None:
             try:
-                return _processRawScan(scan, screenInfo, {}, raw_base)
+                return _processRawScan(scan, screenInfo, {}, raw_base, write_debug=write_debug)
             except Exception:
                 logger.exception("Unhandled error processing scan %d", scan.index)
                 return None
@@ -664,7 +671,7 @@ def echoProcessor(
         # (same echo name/level) are only OCR-processed once.
         _cache: dict = {}
         for scan in scans:
-            result = _processRawScan(scan, screenInfo, _cache, raw_base)
+            result = _processRawScan(scan, screenInfo, _cache, raw_base, write_debug=write_debug)
             if result is not None:
                 echoes.append(result)
 
@@ -703,4 +710,4 @@ def reprocessSession(session_id: str, workers: int = 1) -> list[dict]:
     logger.info(
         "reprocessSession — session=%s  loaded %d raw scan(s)", session_id, len(scans)
     )
-    return echoProcessor(scans, session_id, raw_base, workers=workers)
+    return echoProcessor(scans, session_id, raw_base, workers=workers, write_debug=True)

@@ -32,6 +32,7 @@ class MainMenuController:
 
             result = imageToString(image, '').lower()
             logger.debug(f"Detected text from screenshot: '{result}'")
+            logger.debug(f"{definedText=}")
             
             return 'terminal' if getMatches(result, [definedText['PrefabTextItem_1547656443_Text']]) else False # MULTILANG
         except Exception as e:

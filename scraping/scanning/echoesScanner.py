@@ -199,9 +199,11 @@ def echoScanner(
                 controller.moveMouse(
                     screenInfo.echoes.mouseMovement.x,
                     screenInfo.echoes.mouseMovement.y,
-                    0.2,
+                    0.1,
                 )
-                controller.mouseScroll(-screenInfo.scroll.sonata.y, 0.3)
+                #controller.mouseScroll(-screenInfo.scroll.sonata.y, 0.5)
+                controller.mouseScroll(-100, 0.6) # scroll down to sonata
+                controller.mouseScroll(2, 0.2)  # little scroll back to ensure sonata is fully in view
 
                 # ── 4. Capture the sonata region crop ────────────────────────
                 sonata = screenshot(
@@ -216,9 +218,9 @@ def echoScanner(
                 controller.moveMouse(
                     screenInfo.echoes.mouseMovement.x,
                     screenInfo.echoes.mouseMovement.y,
-                    0.2,
+                    0.1,
                 )
-                controller.mouseScroll(screenInfo.scroll.sonata.y, 0.3)
+                controller.mouseScroll(screenInfo.scroll.sonata.y, 0.5)
 
                 # ── 6. Build, save, and collect the raw scan ─────────────────
                 scan = RawEchoScan(

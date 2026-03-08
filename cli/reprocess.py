@@ -420,7 +420,7 @@ def main() -> None:
     # -- Process --------------------------------------------------------------
     workers: int = args.workers if args.workers is not None else (os.cpu_count() or 4)
     logger.info('Workers   : %d', workers)
-    echoes = echoProcessor(scans, session_id, raw_dir, workers=workers)
+    echoes = echoProcessor(scans, session_id, raw_dir, workers=workers, write_debug=True)
     logger.info('Accepted %d / %d echo(es)', len(echoes), len(scans))
 
     # -- Write output ---------------------------------------------------------
