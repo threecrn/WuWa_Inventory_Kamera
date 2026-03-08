@@ -10,14 +10,14 @@ import json
 import pathlib
 import logging
 
-itemsID = None
-charactersID = None
-weaponsID = None
-echoesID = None
-achievementsID = None
-echoStats = None
-definedText = None
-sonataName = None
+itemsID: dict = {}
+charactersID: dict = {}
+weaponsID: dict = {}
+echoesID: dict = {}
+achievementsID: dict = {}
+echoStats: dict = {}
+definedText: dict = {}
+sonataName: dict = {}
 
 def loadData(language):
     logging.error(f"Loading data for language: {language}")
@@ -37,14 +37,16 @@ def loadData(language):
             return default
 
     global itemsID, charactersID, weaponsID, echoesID, achievementsID, echoStats, definedText, sonataName
-    itemsID         = loadFile('items.json')
-    charactersID    = loadFile('characters.json')
-    weaponsID       = loadFile('weapons.json')
-    echoesID        = loadFile('echoes.json')
-    achievementsID  = loadFile('achievements.json')
-    echoStats       = loadFile('echoStats.json')
-    definedText     = loadFile('definedText.json')
-    sonataName      = loadFile('sonataName.json', [])
+
+    # replace the contents of the dicts with the loaded data, preserving the reference
+    itemsID.update(loadFile('items.json'))
+    charactersID.update(loadFile('characters.json'))
+    weaponsID.update(loadFile('weapons.json'))
+    echoesID.update(loadFile('echoes.json'))
+    achievementsID.update(loadFile('achievements.json'))
+    echoStats.update(loadFile('echoStats.json'))
+    definedText.update(loadFile('definedText.json'))
+    sonataName.update(loadFile('sonataName.json', []))
 
     logging.error(f"loaded: {definedText=}")
 
