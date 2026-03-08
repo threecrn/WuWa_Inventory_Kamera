@@ -9,7 +9,7 @@ from scraping.utils import charactersID, weaponsID, definedText
 from scraping.utils import screenshot, convertToBlackWhite, imageToString
 from scraping.utils.mouse_keyboard import WindowsInputController
 from game.screenInfo import ScreenInfo
-from properties.config import cfg
+from properties.app_config import app_config
 
 logger = logging.getLogger('CharacterScraper')
 
@@ -37,7 +37,7 @@ def scrapeResonator(image: np.ndarray, screenInfo: ScreenInfo, characters: dict,
         if result:
             resonatorName = result[0]
         
-        resonatorID = '1502' if resonatorName == cfg.get(cfg.roverName).replace(' ', '').lower() else charactersID.get(resonatorName, resonatorName)
+        resonatorID = '1502' if resonatorName == app_config.roverName.replace(' ', '').lower() else charactersID.get(resonatorName, resonatorName)
         _cache[resonatorNameHash] = resonatorID
 
     if resonatorID in characters:
@@ -214,7 +214,7 @@ def resonatorScraper(controller: WindowsInputController, screenInfo: ScreenInfo)
     )
     _cache = dict()
 
-    controller.pressKey(cfg.get(cfg.resonatorKeybind), 2, False)
+    controller.pressKey(app_config.resonatorKeybind, 2, False)
 
     isDouble = False
     xLeftSide, yLeftSide = screenInfo.characters.leftSide.x, screenInfo.characters.leftSide.y

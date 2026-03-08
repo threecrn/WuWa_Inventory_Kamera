@@ -46,7 +46,7 @@ import cv2
 import numpy as np
 
 from game.screenInfo import ScreenInfo
-from properties.config import cfg
+from properties.app_config import app_config
 from scraping.models.rawScan import RawEchoScan
 from scraping.processing.echoesValidator import infer_cost, validate_echo_stats
 from scraping.data import echoesID, echoStats, sonataName
@@ -493,10 +493,10 @@ def _processRawScan(
 
         ocr_trace['card']['rarity'] = rarity
 
-        if rarity < cfg.get(cfg.echoMinRarity):
+        if rarity < app_config.echoMinRarity:
             logger.debug(
                 "Scan %d — rarity %d below minimum %d, skipping.",
-                scan.index, rarity, cfg.get(cfg.echoMinRarity),
+                scan.index, rarity, app_config.echoMinRarity,
             )
             return None
 
@@ -520,10 +520,10 @@ def _processRawScan(
         ocr_trace['card']['level_text'] = level_text
         ocr_trace['card']['level'] = level
 
-        if level < cfg.get(cfg.echoMinLevel):
+        if level < app_config.echoMinLevel:
             logger.debug(
                 "Scan %d — level %d below minimum %d, skipping.",
-                scan.index, level, cfg.get(cfg.echoMinLevel),
+                scan.index, level, app_config.echoMinLevel,
             )
             return None
 
@@ -617,7 +617,7 @@ def echoProcessor(
         Scan session identifier.  Used to derive *raw_base* when not supplied.
     raw_base:
         Root of the session's ``raw/`` folder.  When ``None``, derived as
-        ``cfg.exportFolder / session_id / "raw"``.  Must point to the same
+        ``app_config.exportFolder / session_id / "raw"``.  Must point to the same
         directory that was used during Phase 1 so that debug-crop log messages
         contain valid paths.
     workers:
@@ -635,7 +635,7 @@ def echoProcessor(
         Parsed echo dicts in the same order as the input *scans* list.
     """
     if raw_base is None:
-        raw_base = Path(cfg.get(cfg.exportFolder)) / session_id / "raw"
+        raw_base = Path(app_config.exportFolder) / session_id / "raw"
 
     echoes: list[dict] = []
 
@@ -693,7 +693,7 @@ def reprocessSession(session_id: str, workers: int = 1) -> list[dict]:
     Parameters
     ----------
     session_id:
-        The session folder name under ``cfg.exportFolder``, e.g.
+        The session folder name under ``app_config.exportFolder``, e.g.
         ``"2026-02-28_14-30-00"``.
     workers:
         Number of parallel OCR worker threads.  Forwarded to
@@ -705,7 +705,7 @@ def reprocessSession(session_id: str, workers: int = 1) -> list[dict]:
         Parsed echo dicts in the same format produced by the original
         ``echoScraper``.
     """
-    raw_base = Path(cfg.get(cfg.exportFolder)) / session_id / "raw"
+    raw_base = Path(app_config.exportFolder) / session_id / "raw"
     scans = loadRawScans(raw_base)
     logger.info(
         "reprocessSession — session=%s  loaded %d raw scan(s)", session_id, len(scans)

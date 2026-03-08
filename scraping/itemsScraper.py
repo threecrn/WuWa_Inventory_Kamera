@@ -9,7 +9,7 @@ from scraping.utils import itemsID
 from scraping.utils import screenshot, imageToString, convertToBlackWhite
 from scraping.utils.mouse_keyboard import WindowsInputController
 from game.screenInfo import ScreenInfo
-from properties.config import cfg, basePATH
+from properties.app_config import app_config, basePATH
 
 # Constants
 ROWS, COLS = 4, 6
@@ -62,7 +62,7 @@ def itemsScraper(START_DATE: str, controller: WindowsInputController, x: int, y:
     encounters = dict()
     _cache = dict()
 
-    controller.pressKey(cfg.get(cfg.inventoryKeybind), 2, False)
+    controller.pressKey(app_config.inventoryKeybind, 2, False)
     controller.leftClick(x, y)
 
     isDouble = False

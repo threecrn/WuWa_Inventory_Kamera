@@ -6,7 +6,7 @@ import logging
 import multiprocessing
 from datetime import datetime
 
-from properties.config import FAILED, INVENTORY
+from properties.app_config import FAILED, INVENTORY
 from scraping.utils import savingScraped
 from scraping.utils.mouse_keyboard import WindowsInputController
 

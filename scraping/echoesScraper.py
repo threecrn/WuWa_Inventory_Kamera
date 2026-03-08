@@ -17,7 +17,7 @@ import logging
 from pathlib import Path
 
 from game.screenInfo import ScreenInfo
-from properties.config import cfg
+from properties.app_config import app_config
 from scraping.processing.echoesProcessor import echoProcessor
 from scraping.scanning.echoesScanner import echoScanner
 from scraping.utils.mouse_keyboard import WindowsInputController
@@ -62,7 +62,7 @@ def echoScraper(
     list[dict]
         Parsed echo dicts, one per accepted echo.
     """
-    raw_base = Path(cfg.get(cfg.exportFolder)) / session_id / "raw"
+    raw_base = Path(app_config.exportFolder) / session_id / "raw"
 
     logger.info("echoScraper — session=%s  raw_base=%s", session_id, raw_base)
 

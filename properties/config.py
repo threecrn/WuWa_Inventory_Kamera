@@ -1,4 +1,3 @@
-import sys
 import json
 import string
 from pathlib import Path
@@ -9,15 +8,12 @@ from qfluentwidgets import (
 	Signal
 )
 
-#import scraping.data
+from properties.app_config import (
+	app_config,
+	INVENTORY, FAILED,
+	basePATH, PROCESS_NAME, WINDOW_NAME,
+)
 
-basePATH: Path = Path(sys.executable if getattr(sys, 'frozen', False) else str()).parent
-
-# Default values
-PROCESS_NAME = 'Client-Win64-Shipping.exe'
-WINDOW_NAME = 'Wuthering Waves'
-INVENTORY = {'date': str(), 'items': dict()}
-FAILED: list[dict] = list()
 maxLength = 12
 try: LANGUAGES = json.load(open(basePATH / 'data' / 'languages.json', 'r', encoding='utf-8'))
 except: LANGUAGES = {'English': 'en'}
@@ -125,5 +121,7 @@ RELEASE_URL = "https://github.com/Psycho-Marcus/WuWa_Inventory_Kamera/releases/l
 # Load configuration
 cfg = Config()
 qconfig.load('config/config.json', cfg)
+app_config.sync_from_qconfig(cfg)
+cfg.configChanged.connect(lambda: app_config.sync_from_qconfig(cfg))
 
 #scraping.data.loadData(cfg.get(cfg.gameLanguage))

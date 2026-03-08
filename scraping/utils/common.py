@@ -1,5 +1,4 @@
 import re
-import mss
 import cv2
 import json
 import ctypes
@@ -7,9 +6,7 @@ import logging
 import numpy as np
 from pathlib import Path
 
-from properties.config import (
-    cfg, INVENTORY
-)
+from properties.app_config import app_config, INVENTORY
 from scraping.data import (
     itemsID, charactersID, weaponsID,
     echoesID, achievementsID, echoStats,
@@ -33,7 +30,7 @@ def _trace(logger: logging.Logger, msg: str, *args, **kwargs) -> None:
 _logger = logging.getLogger(__name__)
 
 def savingScraped(scannedData: dict = {'inventory_wuwainventorykamera.json': (INVENTORY['items'], dict)}, START_DATE: str = ''):
-    savePATH: Path = Path(cfg.get(cfg.exportFolder)) / START_DATE
+    savePATH: Path = Path(app_config.exportFolder) / START_DATE
     
     if any(data != emptyType() for data, emptyType in scannedData.values()):
         savePATH.mkdir(parents=True, exist_ok=True)
@@ -45,7 +42,7 @@ def savingScraped(scannedData: dict = {'inventory_wuwainventorykamera.json': (IN
                     json.dump(data, f)
 
 def screenshot(left: int = 0, top: int = 0, width: int = 0, height: int = 0, monitor: int = 1, bw: bool = False):
-
+    import mss
     with mss.mss() as sct:
         mon = sct.monitors[monitor]
         if all(coord == 0 for coord in [top, left, width, height]):

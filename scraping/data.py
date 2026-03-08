@@ -17,7 +17,7 @@ echoesID: dict = {}
 achievementsID: dict = {}
 echoStats: dict = {}
 definedText: dict = {}
-sonataName: dict = {}
+sonataName: list = []
 
 def loadData(language):
     logging.error(f"Loading data for language: {language}")
@@ -25,7 +25,8 @@ def loadData(language):
     if language is None: language = 'en'
     dir = pathlib.Path('data') / language
 
-    def loadFile(filePATH: str, default={}):
+    def loadFile(filePATH: str, default=None):
+        if default is None: default = {}
         try:
             logging.error(f"Loading file: {dir / filePATH}")
             with open(dir / filePATH, 'r', encoding="utf-8") as file:
@@ -46,7 +47,9 @@ def loadData(language):
     achievementsID.update(loadFile('achievements.json'))
     echoStats.update(loadFile('echoStats.json'))
     definedText.update(loadFile('definedText.json'))
-    sonataName.update(loadFile('sonataName.json', []))
+
+    sonataName.clear()
+    sonataName.extend(loadFile('sonataName.json', default=[]))
 
     logging.error(f"loaded: {definedText=}")
 

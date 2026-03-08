@@ -33,7 +33,7 @@ from pathlib import Path
 import numpy as np
 
 from game.screenInfo import ScreenInfo
-from properties.config import cfg
+from properties.app_config import app_config
 from scraping.models.rawScan import RawEchoScan
 from scraping.utils import (
     imageToString,
@@ -141,7 +141,7 @@ def echoScanner(
     index = 0
 
     # Open the inventory and navigate to the Echoes tab.
-    controller.pressKey(cfg.get(cfg.inventoryKeybind), 2, False)
+    controller.pressKey(app_config.inventoryKeybind, 2, False)
     controller.leftClick(x, y)
 
     echo_count, pages = _getEchoPages(screenInfo)

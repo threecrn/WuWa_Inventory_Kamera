@@ -6,7 +6,7 @@ from scraping.utils import weaponsID, itemsID
 from scraping.utils import screenshot, convertToBlackWhite, imageToString
 from scraping.utils.mouse_keyboard import WindowsInputController
 from game.screenInfo import ScreenInfo
-from properties.config import cfg
+from properties.app_config import app_config
 
 # Constants
 ROWS, COLS = 4, 6
@@ -73,7 +73,7 @@ def processGridItem(inventory: dict, weapons: list, image: np.ndarray, screenInf
         inventory[itemID] = value
         return True
     elif name in weaponsID:
-        if weaponsID[name]['rarity'] >= cfg.get(cfg.weaponsMinRarity):
+        if weaponsID[name]['rarity'] >= app_config.weaponsMinRarity:
             levelImage = image[screenInfo.weapons.level.y:screenInfo.weapons.level.y + screenInfo.weapons.level.h, screenInfo.weapons.level.x:screenInfo.weapons.level.x + screenInfo.weapons.level.w]
             # levelImage = convertToBlackWhite(levelImage)
             levelHash = hash(levelImage.tobytes())
@@ -84,7 +84,7 @@ def processGridItem(inventory: dict, weapons: list, image: np.ndarray, screenInf
                 levelText = imageToString(levelImage, '', allowedChars=string.digits + '/')
                 _cache[levelHash] = levelText
             
-            if int(levelText.split('/')[0]) >= cfg.get(cfg.weaponsMinLevel):
+            if int(levelText.split('/')[0]) >= app_config.weaponsMinLevel:
                 rankImage = image[screenInfo.weapons.rank.y:screenInfo.weapons.rank.y + screenInfo.weapons.rank.h, screenInfo.weapons.rank.x:screenInfo.weapons.rank.x + screenInfo.weapons.rank.w]
                 rankImage = convertToBlackWhite(rankImage)
                 rankHash = hash(rankImage.tobytes())
@@ -104,7 +104,7 @@ def weaponScraper(controller: WindowsInputController, x: float, y: float, screen
     weapons = list()
     _cache = dict()
 
-    controller.pressKey(cfg.get(cfg.inventoryKeybind), 2, False)
+    controller.pressKey(app_config.inventoryKeybind, 2, False)
     controller.leftClick(x, y)
 
     weaponCount, pages = getWeaponPages(screenInfo)

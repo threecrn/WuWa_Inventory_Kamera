@@ -8,7 +8,7 @@ import pywinctl as pwc
 import pymonctl as pmc
 
 from game.screenInfo import ScreenInfo
-from properties.config import PROCESS_NAME, WINDOW_NAME
+from properties.app_config import PROCESS_NAME, WINDOW_NAME
 
 logger = logging.getLogger('WindowManager')
 

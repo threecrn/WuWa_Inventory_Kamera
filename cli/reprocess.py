@@ -11,10 +11,6 @@ Only the packages that are genuinely needed for OCR work:
 
     rapidocr-onnxruntime    opencv-python    numpy
 
-The GUI/Win32 packages (qfluentwidgets, PySide6, win32api, win32con,
-win32clipboard, mss) are stubbed out at startup so their presence in the
-environment is optional.
-
 Usage
 -----
 List available sessions::
@@ -45,138 +41,21 @@ from __future__ import annotations
 import json
 import os
 import sys
-import types
 import logging
 import argparse
 from pathlib import Path
 
-# Add the parent directory to sys.path to import the updater module
+# Add the parent directory to sys.path so project packages are importable.
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 # ---------------------------------------------------------------------------
-# Bootstrap: install lightweight stubs for GUI / Win32 modules.
-#
-# These modules are imported at the *module level* of properties.config and
-# scraping.utils.common, but none of their functions are ever called during
-# offline reprocessing.  We install stubs before any project import so that
-# the import machinery succeeds without the real packages being installed.
+# Project imports
 # ---------------------------------------------------------------------------
-
-# -- qfluentwidgets ----------------------------------------------------------
-# config.py does:   class Config(QConfig): ...
-# That requires QConfig to be a real Python *type*, not a MagicMock instance.
-# We therefore provide proper class stubs.
-
-def _make_qfluentwidgets_stub() -> types.ModuleType:
-    """Return a module whose classes satisfy all uses in properties/config.py."""
-
-    class _Signal:
-        """No-op signal: connect/emit silently ignored."""
-        def __init__(self, *_args): pass
-        def connect(self, *_args): pass
-        def emit(self, *_args): pass
-
-    class _ConfigValidator:
-        def __init__(self, *_args, **_kw): pass
-        def validate(self, v): return True
-        def correct(self, v): return v
-
-    class _BoolValidator(_ConfigValidator): pass
-
-    class _FolderValidator(_ConfigValidator):
-        def correct(self, v): return v if v else 'export'
-
-    class _OptionsValidator(_ConfigValidator):
-        def __init__(self, options): self.options = options
-
-    class _RangeValidator(_ConfigValidator):
-        def __init__(self, lo, hi): self.lo = lo; self.hi = hi
-
-    class _TextValidator(_ConfigValidator): pass
-
-    class _ConfigItem:
-        """Minimal ConfigItem: stores (group, name, default) and a mutable value."""
-        def __init__(self, group: str, name: str, default, validator=None):
-            self.group = group
-            self.name = name
-            self.value = default
-            self._default = default
-            self._validator = validator
-
-    class _OptionsConfigItem(_ConfigItem): pass
-
-    class _QConfig:
-        """Minimal QConfig base: get(item) returns item.value, save() is a no-op."""
-        def get(self, item):
-            return getattr(item, 'value', None)
-        def save(self): pass
-
-    class _qconfig:
-        """Minimal qconfig: load() reads config/config.json if it exists."""
-        @staticmethod
-        def load(path: str, cfg_instance) -> None:
-            try:
-                data = json.loads(Path(path).read_text(encoding='utf-8'))
-                # Walk class-level ConfigItem descriptors and update their values.
-                for attr_name in vars(type(cfg_instance)):
-                    item = getattr(type(cfg_instance), attr_name, None)
-                    if isinstance(item, _ConfigItem):
-                        val = data.get(item.group, {}).get(item.name)
-                        if val is not None:
-                            item.value = val
-            except Exception:
-                pass  # Config file absent or malformed — use class defaults.
-
-    mod = types.ModuleType('qfluentwidgets')
-    mod.QConfig = _QConfig
-    mod.Signal = _Signal
-    mod.ConfigValidator = _ConfigValidator
-    mod.ConfigItem = _ConfigItem
-    mod.OptionsConfigItem = _OptionsConfigItem
-    mod.BoolValidator = _BoolValidator
-    mod.FolderValidator = _FolderValidator
-    mod.OptionsValidator = _OptionsValidator
-    mod.RangeValidator = _RangeValidator
-    mod.qconfig = _qconfig()
-    return mod
-
-
-# -- Simple attribute stub (for packages whose code is never executed) ------
-# Supports: attribute access, calls, context-manager protocol.
-# Used for: win32api, win32con, win32clipboard, mss.
-
-def _make_simple_stub(name: str) -> types.ModuleType:
-    class _S:
-        def __init__(self, *_a, **_kw): pass
-        def __call__(self, *_a, **_kw): return type(self)()
-        def __getattr__(self, _n): return type(self)()
-        def __enter__(self): return self
-        def __exit__(self, *_a): pass
-        def __iter__(self): return iter([])
-        def __index__(self): return 0
-        def __int__(self): return 0
-
-    mod = types.ModuleType(name)
-    mod.__getattr__ = lambda _n: _S()  # handles: from mss import mss
-    return mod
-
-
-# Install stubs before ANY project import so that the module loader never
-# tries to import the real packages.
-sys.modules.setdefault('qfluentwidgets', _make_qfluentwidgets_stub())
-for _stub_name in ('win32api', 'win32con', 'win32clipboard', 'mss'):
-    sys.modules.setdefault(_stub_name, _make_simple_stub(_stub_name))
-
-# ---------------------------------------------------------------------------
-# Project imports — safe now that stubs are installed.
-# ---------------------------------------------------------------------------
-# Avoid importing scraping.utils (which pulls in mouse_keyboard → win32api).
-# Import from the sub-modules directly instead.
-from scraping.models.rawScan import RawEchoScan           # noqa: E402  (numpy + dataclasses only)
-from scraping.utils.common import loadRawScans             # noqa: E402
-from scraping.processing.echoesProcessor import echoProcessor  # noqa: E402
-import scraping.ocr as _ocr                                # noqa: E402
-from properties.config import cfg                         # noqa: E402
+from properties.app_config import app_config                           # noqa: E402
+from scraping.models.rawScan import RawEchoScan                        # noqa: E402
+from scraping.utils.common import loadRawScans                         # noqa: E402
+from scraping.processing.echoesProcessor import echoProcessor          # noqa: E402
+import scraping.ocr as _ocr                                            # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -240,7 +119,7 @@ def _resolve_raw_dir(args: argparse.Namespace) -> Path:
         return raw_dir
 
     if args.session_id:
-        export_dir = Path(args.export_dir) if args.export_dir else Path(cfg.get(cfg.exportFolder))
+        export_dir = Path(args.export_dir) if args.export_dir else Path(app_config.exportFolder)
         raw_dir = export_dir / args.session_id / 'raw'
         if not raw_dir.is_dir():
             logger.error(
@@ -351,9 +230,9 @@ def main() -> None:
 
     # -- Apply config overrides from CLI args --------------------------------
     if args.min_rarity is not None:
-        cfg.echoMinRarity.value = args.min_rarity
+        app_config.echoMinRarity = args.min_rarity
     if args.min_level is not None:
-        cfg.echoMinLevel.value = args.min_level
+        app_config.echoMinLevel = args.min_level
 
     # -- Configure OCR backend -----------------------------------------------
     try:
@@ -370,7 +249,7 @@ def main() -> None:
         )
         sys.exit(1)
 
-    export_dir = Path(args.export_dir) if args.export_dir else Path(cfg.get(cfg.exportFolder))
+    export_dir = Path(args.export_dir) if args.export_dir else Path(app_config.exportFolder)
 
     # -- --list --------------------------------------------------------------
     if args.list:
@@ -393,8 +272,8 @@ def main() -> None:
     logger.info('Session   : %s', session_id)
     logger.info('Raw dir   : %s', raw_dir)
     logger.info('Output dir: %s', output_dir)
-    logger.info('Min rarity: %d', cfg.get(cfg.echoMinRarity))
-    logger.info('Min level : %d', cfg.get(cfg.echoMinLevel))
+    logger.info('Min rarity: %d', app_config.echoMinRarity)
+    logger.info('Min level : %d', app_config.echoMinLevel)
 
     # -- Load raw scans -------------------------------------------------------
     scans: list[RawEchoScan] = loadRawScans(raw_dir)
