@@ -193,11 +193,16 @@ if not hasattr(logging, 'TRACE'):
 
 def _configure_logging(level_name: str) -> None:
     level = getattr(logging, level_name.upper(), logging.INFO)
-    logging.basicConfig(
-        format='%(asctime)s | %(levelname)-8s | %(name)s | %(message)s',
-        level=level,
-        stream=sys.stdout,
-    )
+    fmt = logging.Formatter('%(asctime)s | %(levelname)-8s | %(name)s | %(message)s')
+    root = logging.getLogger()
+    root.setLevel(level)
+    if root.handlers:
+        for h in root.handlers:
+            h.setLevel(level)
+    else:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(fmt)
+        root.addHandler(handler)
 
 
 logger = logging.getLogger('reprocess')
@@ -334,7 +339,13 @@ def main() -> None:
             'Example: \'{"text_score": 0.6}\' or \'{"use_angle_cls": true}\''
         ),
     )
-
+    parser.add_argument(
+        '--write-debug', action='store_true', default=False,
+        help=(
+            'Write debug crop images and OCR trace files for every processed echo. '
+            'Output is placed in the session\'s raw/ sub-directories.'
+        ),
+    )
     args = parser.parse_args()
     _configure_logging(args.log_level)
 
@@ -420,7 +431,7 @@ def main() -> None:
     # -- Process --------------------------------------------------------------
     workers: int = args.workers if args.workers is not None else (os.cpu_count() or 4)
     logger.info('Workers   : %d', workers)
-    echoes = echoProcessor(scans, session_id, raw_dir, workers=workers, write_debug=True)
+    echoes = echoProcessor(scans, session_id, raw_dir, workers=workers, write_debug=args.write_debug)
     logger.info('Accepted %d / %d echo(es)', len(echoes), len(scans))
 
     # -- Write output ---------------------------------------------------------
