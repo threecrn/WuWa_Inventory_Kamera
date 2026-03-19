@@ -92,21 +92,30 @@ def _load_expected(debug_dir: Path) -> tuple[int, dict]:
 # Extractor fixtures — skip when the backend library is not installed
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(scope="module")
-def rapid_extractor():
-    return RapidOcrStatsExtractor()
+@pytest.fixture(
+    scope="module",
+    params=[pytest.param(False, id="colour"), pytest.param(True, id="bw")],
+)
+def rapid_extractor(request):
+    return RapidOcrStatsExtractor(use_bw=request.param)
 
 
-@pytest.fixture(scope="module")
-def tesser_extractor():
+@pytest.fixture(
+    scope="module",
+    params=[pytest.param(False, id="colour"), pytest.param(True, id="bw")],
+)
+def tesser_extractor(request):
     pytest.importorskip("tesserocr", reason="tesserocr not installed — skipping Tesseract tests")
-    return TesserOcrStatsExtractor()
+    return TesserOcrStatsExtractor(use_bw=request.param)
 
 
-@pytest.fixture(scope="module")
-def tesser_coord_extractor():
+@pytest.fixture(
+    scope="module",
+    params=[pytest.param(False, id="colour"), pytest.param(True, id="bw")],
+)
+def tesser_coord_extractor(request):
     pytest.importorskip("tesserocr", reason="tesserocr not installed — skipping Tesseract tests")
-    return TesserOcrCoordStatsExtractor()
+    return TesserOcrCoordStatsExtractor(use_bw=request.param)
 
 
 # ---------------------------------------------------------------------------

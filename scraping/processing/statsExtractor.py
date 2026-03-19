@@ -87,6 +87,22 @@ class StatsExtractor(abc.ABC):
     subclasses stay minimal.
     """
 
+    def __init__(self, use_bw: bool = False) -> None:
+        """
+        Parameters
+        ----------
+        use_bw:
+            When ``True``, both crops are converted to greyscale B/W via
+            :func:`~scraping.utils.convertToBlackWhite` before being passed
+            to :meth:`_ocr_and_pair` (and before the result cache key is
+            computed).  Defaults to ``False``.
+        """
+        self._use_bw = use_bw
+
+    def _prepare(self, image: np.ndarray) -> np.ndarray:
+        """Return *image* after the optional B/W conversion."""
+        return convertToBlackWhite(image) if self._use_bw else image
+
     @abc.abstractmethod
     def _ocr_and_pair(
         self,
@@ -153,11 +169,13 @@ class StatsExtractor(abc.ABC):
             ``'main'`` and ``'sub'`` keys, and *ocr_trace* carries the raw
             OCR token lists for debug dumps.
         """
-        cache_key = (hash(name_crop.tobytes()), hash(value_crop.tobytes()))
+        name_in  = self._prepare(name_crop)
+        value_in = self._prepare(value_crop)
+        cache_key = (hash(name_in.tobytes()), hash(value_in.tobytes()))
         if cache_key in _cache:
             names, values, trace = _cache[cache_key]
         else:
-            names, values, trace = self._ocr_and_pair(name_crop, value_crop, scan_index)
+            names, values, trace = self._ocr_and_pair(name_in, value_in, scan_index)
             _cache[cache_key] = (names, values, trace)
 
         logger.debug("Scan %d — stats names: %s", scan_index, names)
@@ -200,7 +218,8 @@ class RapidOcrStatsExtractor(StatsExtractor):
         ``text_score``, ``use_angle_cls``, custom model paths).
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, use_bw: bool = False, **kwargs):
+        super().__init__(use_bw=use_bw)
         from scraping.ocr._rapidocr import RapidOcrBackend
         self._backend = RapidOcrBackend(**kwargs)
 
@@ -239,7 +258,8 @@ class TesserOcrStatsExtractor(StatsExtractor):
         ``psm``, ``tessdata_path``, ``char_whitelist``).
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, use_bw: bool = True, **kwargs):
+        super().__init__(use_bw=use_bw)
         from scraping.ocr._tesserocr import TesserOcrBackend
         self._backend = TesserOcrBackend(**kwargs)
 
@@ -249,16 +269,14 @@ class TesserOcrStatsExtractor(StatsExtractor):
         value_crop: np.ndarray,
         scan_index: int,
     ) -> tuple[list[str], list[str], dict]:
-        bw_names = convertToBlackWhite(name_crop)
-        bw_values = convertToBlackWhite(value_crop)
         raw_names = (
-            imageToString(bw_names, allowedChars=string.ascii_letters, backend=self._backend)
+            imageToString(name_crop, allowedChars=string.ascii_letters, backend=self._backend)
             .lower()
             .split('\n')
         )
         names = _matchStats(raw_names)
         values = imageToString(
-            bw_values, allowedChars=string.digits + '.%', backend=self._backend
+            value_crop, allowedChars=string.digits + '.%', backend=self._backend
         ).split()
         trace = {'raw_names_ocr': raw_names, 'matched_names': names, 'raw_values_ocr': values}
         return names, values, trace
@@ -280,6 +298,8 @@ class TesserOcrCoordStatsExtractor(StatsExtractor):
     row_tolerance:
         Maximum pixel distance between two tokens' Y centres to be
         considered part of the same text row.  Defaults to ``10``.
+    use_bw:
+        Apply B/W pre-processing before OCR.  Defaults to ``True``.
     **kwargs:
         Forwarded verbatim to
         :class:`~scraping.ocr._tesserocr.TesserOcrBackend`.
@@ -288,7 +308,8 @@ class TesserOcrCoordStatsExtractor(StatsExtractor):
     _ALPHA_RE = re.compile(r'[^a-zA-Z]')
     _DIGIT_RE = re.compile(r'[^0-9.%]')
 
-    def __init__(self, row_tolerance: int = 10, **kwargs):
+    def __init__(self, row_tolerance: int = 10, use_bw: bool = True, **kwargs):
+        super().__init__(use_bw=use_bw)
         from scraping.ocr._tesserocr import TesserOcrBackend
         self._backend = TesserOcrBackend(**kwargs)
         self._row_tolerance = row_tolerance
@@ -299,10 +320,8 @@ class TesserOcrCoordStatsExtractor(StatsExtractor):
         value_crop: np.ndarray,
         scan_index: int,
     ) -> tuple[list[str], list[str], dict]:
-        bw_names = convertToBlackWhite(name_crop)
-        bw_values = convertToBlackWhite(value_crop)
-        raw_name_tokens = self._backend.recognize(bw_names)
-        raw_value_tokens = self._backend.recognize(bw_values)
+        raw_name_tokens = self._backend.recognize(name_crop)
+        raw_value_tokens = self._backend.recognize(value_crop)
 
         # --- Name tokens: keep letters, record (y_center, x_center, text) ---
         name_items: list[tuple[float, float, str]] = []
