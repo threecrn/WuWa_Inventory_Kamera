@@ -36,8 +36,6 @@ from __future__ import annotations
 
 import json
 import logging
-import string
-from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from difflib import get_close_matches as getMatches
 from pathlib import Path
@@ -49,6 +47,11 @@ from game.screenInfo import ScreenInfo
 from properties.app_config import app_config
 from scraping.models.rawScan import RawEchoScan
 from scraping.processing.echoesValidator import infer_cost, validate_echo_stats
+from scraping.processing.statsExtractor import (
+    RapidOcrStatsExtractor,
+    StatsExtractor,
+    TesserOcrStatsExtractor,
+)
 from scraping.data import echoesID, echoStats, sonataName
 from scraping.utils import (
     convertToBlackWhite,
@@ -91,33 +94,6 @@ def _getRarity(image: np.ndarray) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Stat name matching
-# ---------------------------------------------------------------------------
-
-def _matchStats(text: list[str]) -> list[str]:
-    """
-    Assemble stat names from OCR token lines.
-
-    Some stat names span two tokens (e.g. ``['crit', 'rate']`` → ``'critrate'``).
-    This mirrors the original ``matchStats`` logic exactly.
-    """
-    valid = set(echoStats)
-    results: list[str] = []
-    i = 0
-    while i < len(text):
-        if i < len(text) - 1:
-            combined = text[i] + text[i + 1]
-            if combined in valid:
-                results.append(combined)
-                i += 2
-                continue
-        if text[i] in valid:
-            results.append(text[i])
-        i += 1
-    return results
-
-
-# ---------------------------------------------------------------------------
 # Individual extraction helpers
 # ---------------------------------------------------------------------------
 
@@ -126,11 +102,11 @@ def _extractStats(
     screenInfo: ScreenInfo,
     _cache: dict,
     scan_index: int = 0,
-    _ocr_args: dict | None = None,
-    use_bw: bool = True,
+    extractor: StatsExtractor | None = None,
 ) -> tuple[int, dict, dict]:
     """
-    OCR the stats panel from *full_image* and parse names, values, and tune level.
+    Crop the stats panel from *full_image* and delegate OCR + parsing to
+    *extractor*.
 
     Parameters
     ----------
@@ -139,70 +115,35 @@ def _extractStats(
     screenInfo:
         Layout coordinates reconstructed from the scan's resolution.
     _cache:
-        Shared OCR result cache keyed by image hash.  Avoids re-OCR-ing identical
-        crops that appear across multiple echoes in the same session.
+        Shared OCR result cache keyed by image hash.  Avoids re-OCR-ing
+        identical crops that appear across multiple echoes in the same session.
     scan_index:
         Echo scan index included in log messages.
+    extractor:
+        :class:`~scraping.processing.statsExtractor.StatsExtractor` instance
+        to use.  When ``None`` a :class:`~scraping.processing.statsExtractor
+        .RapidOcrStatsExtractor` is created with default settings.
 
     Returns
     -------
     tuple[int, dict, dict]
-        ``(tune_level, stats_dict, ocr_trace)`` where ``stats_dict`` has ``'main'``
-        and ``'sub'`` keys, and ``ocr_trace`` carries the raw OCR token lists for
-        debug dumps.
+        ``(tune_level, stats_dict, ocr_trace)`` where ``stats_dict`` has
+        ``'main'`` and ``'sub'`` keys, and ``ocr_trace`` carries the raw OCR
+        token lists for debug dumps.
     """
-    stats: dict = defaultdict(dict)
+    if extractor is None:
+        extractor = RapidOcrStatsExtractor()
 
     name_crop = full_image[
         screenInfo.echoes.fullStatsName.y : screenInfo.echoes.fullStatsName.y + screenInfo.echoes.fullStatsName.h,
         screenInfo.echoes.fullStatsName.x : screenInfo.echoes.fullStatsName.x + screenInfo.echoes.fullStatsName.w,
     ]
-    if use_bw:
-        name_crop = convertToBlackWhite(name_crop)
-    name_hash = hash(name_crop.tobytes())
-
     value_crop = full_image[
         screenInfo.echoes.fullStatsValue.y : screenInfo.echoes.fullStatsValue.y + screenInfo.echoes.fullStatsValue.h,
         screenInfo.echoes.fullStatsValue.x : screenInfo.echoes.fullStatsValue.x + screenInfo.echoes.fullStatsValue.w,
     ]
-    if use_bw:
-        value_crop = convertToBlackWhite(value_crop)
-    value_hash = hash(value_crop.tobytes())
 
-    if name_hash in _cache:
-        raw_names, names = _cache[name_hash]
-    else:
-        raw_names = imageToString(name_crop, allowedChars=string.ascii_letters).lower().split('\n')
-        names = _matchStats(raw_names)
-        _cache[name_hash] = (raw_names, names)
-    logger.debug("Scan %d — stats names: %s", scan_index, names)
-
-    if value_hash in _cache:
-        values: list[str] = _cache[value_hash]
-    else:
-        values = imageToString(value_crop, allowedChars=string.digits + '.%').split()
-        _cache[value_hash] = values
-    logger.debug("Scan %d — stats values: %s", scan_index, values)
-
-    tune_lv = max(0, len(values) - 2)
-
-    for idx, (stat_name, stat_value) in enumerate(zip(names, values)):
-        stat_name = echoStats.get(stat_name, stat_name)
-        bucket = 'main' if idx < 2 else 'sub'
-        try:
-            if stat_value.endswith('%'):
-                stats[bucket][f"{stat_name}%"] = float(stat_value[:-1])
-            else:
-                stats[bucket][stat_name] = int(stat_value)
-        except Exception:
-            stats[bucket][stat_name] = stat_value
-
-    trace = {
-        'raw_names_ocr': raw_names,
-        'matched_names': names,
-        'raw_values_ocr': values,
-    }
-    return tune_lv, dict(stats), trace
+    return extractor.execute(name_crop, value_crop, _cache, scan_index)
 
 
 def _extractSonata(
@@ -380,6 +321,7 @@ def _processRawScan(
     _cache: dict,
     raw_base: Path,
     write_debug: bool = False,
+    extractor: StatsExtractor | None = None,
 ) -> dict | None:
     """
     Process one :class:`~scraping.models.rawScan.RawEchoScan`: OCR, filter,
@@ -528,7 +470,7 @@ def _processRawScan(
             return None
 
         # --- Stats + sonata ---
-        tune_lv, stats, stats_trace = _extractStats(image, screenInfo, _cache, scan.index, use_bw=False)
+        tune_lv, stats, stats_trace = _extractStats(image, screenInfo, _cache, scan.index, extractor=extractor)
         sonata, sonata_raw = _extractSonata(scan.sonata_screenshot, _cache, scan.index)
 
         if sonata not in sonataName:
@@ -601,6 +543,7 @@ def echoProcessor(
     raw_base: Path | None = None,
     workers: int = 1,
     write_debug: bool = False,
+    extractor: StatsExtractor | None = None,
 ) -> list[dict]:
     """
     Phase 2 — process raw echo captures into structured echo data.
@@ -628,6 +571,13 @@ def echoProcessor(
         its own fresh cache — better throughput on multi-core machines at the
         cost of losing cross-echo cache hits (which are rare in practice).
         ONNX Runtime's inference engine is thread-safe for concurrent calls.
+    extractor:
+        :class:`~scraping.processing.statsExtractor.StatsExtractor` instance
+        to use for OCR and stat parsing.  When ``None`` (default) a
+        :class:`~scraping.processing.statsExtractor.RapidOcrStatsExtractor`
+        with default settings is used.  Pass a custom instance to swap in a
+        different OCR backend or processing pipeline without touching the
+        scanner code.
 
     Returns
     -------
@@ -658,7 +608,7 @@ def echoProcessor(
         # submission order, so echoes remain in their original scan order.
         def _worker(scan: RawEchoScan) -> dict | None:
             try:
-                return _processRawScan(scan, screenInfo, {}, raw_base, write_debug=write_debug)
+                return _processRawScan(scan, screenInfo, {}, raw_base, write_debug=write_debug, extractor=extractor)
             except Exception:
                 logger.exception("Unhandled error processing scan %d", scan.index)
                 return None
@@ -671,7 +621,7 @@ def echoProcessor(
         # (same echo name/level) are only OCR-processed once.
         _cache: dict = {}
         for scan in scans:
-            result = _processRawScan(scan, screenInfo, _cache, raw_base, write_debug=write_debug)
+            result = _processRawScan(scan, screenInfo, _cache, raw_base, write_debug=write_debug, extractor=extractor)
             if result is not None:
                 echoes.append(result)
 

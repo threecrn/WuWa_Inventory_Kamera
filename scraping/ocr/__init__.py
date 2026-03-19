@@ -58,7 +58,10 @@ Passing a backend directly to imageToString
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
+
+import numpy as np
 
 # Re-export the Protocol and type alias so callers only need to import from
 # ``scraping.ocr`` — not from the private ``_types`` sub-module.
@@ -72,6 +75,7 @@ __all__ = [
     'get_backend',
     'set_default',
     'get_default',
+    'imageToString',
 ]
 
 logger = logging.getLogger(__name__)
@@ -213,3 +217,84 @@ def _register_builtins() -> None:
 
 _register_builtins()
 del _register_builtins
+
+
+# ---------------------------------------------------------------------------
+# imageToString — high-level OCR helper
+# ---------------------------------------------------------------------------
+
+def imageToString(
+    image: np.ndarray,
+    divisor: str = ' ',
+    allowedChars: str = None,
+    bannedChars: str = None,
+    backend: OcrBackend | None = None,
+) -> str:
+    """
+    Run OCR on *image* and return the recognised text as a string.
+
+    Parameters
+    ----------
+    image:
+        RGB uint8 numpy array to recognise.
+    divisor:
+        String inserted between tokens on the same text line.
+    allowedChars:
+        When set, only characters in this string are kept in each token.
+    bannedChars:
+        When set, characters in this string are stripped from each token.
+    backend:
+        :class:`OcrBackend` instance to use for this call.  When ``None``
+        (default) the active global default from :func:`get_default` is used.
+    """
+    from scraping.utils.common import _trace, _logger  # avoid circular at module level
+    try:
+        active_backend = backend if backend is not None else get_default()
+        ocrResults = active_backend.recognize(image)
+        _trace(_logger, 'imageToString — raw OCR results (%d token(s)): %s',
+               len(ocrResults), ocrResults)
+
+        banned_pattern = re.compile(f"[{re.escape(bannedChars)}]") if bannedChars else None
+        allowed_pattern = re.compile(f"[^{re.escape(allowedChars)}]") if allowedChars else None
+
+        lines = []
+        for bbox, text, conf in ocrResults:
+            original = text
+            if banned_pattern:
+                text = banned_pattern.sub('', text)
+            if allowed_pattern:
+                text = allowed_pattern.sub('', text)
+            _trace(_logger, '  token: %r  conf=%.3f  \u2192  %r', original, float(conf), text)
+            lines.append((bbox, text))
+
+        groupedLines = []
+        currentRow = []
+        lastY = None
+
+        for bbox, text in lines:
+            yMin = min(point[1] for point in bbox)
+            yMax = max(point[1] for point in bbox)
+
+            if lastY is None or (yMin < lastY + 10):
+                currentRow.append(text)
+            else:
+                groupedLines.append(currentRow)
+                currentRow = [text]
+
+            lastY = yMax
+
+        if currentRow:
+            groupedLines.append(currentRow)
+
+        finalOutput = []
+        for row in groupedLines:
+            finalOutput.append(divisor.join(row))
+
+        result = '\n'.join(finalOutput).strip()
+        _trace(_logger, 'imageToString — final output: %r', result)
+        return result
+
+    except Exception:
+        _trace(_logger, 'imageToString — OCR raised an exception, returning empty string',
+               exc_info=True)
+        return ''

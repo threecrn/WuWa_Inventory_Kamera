@@ -6,7 +6,8 @@ from scraping.data import (
 
 from scraping.utils.common import (
     savingScraped, screenshot, convertToBlackWhite,
-    imageToString, copyToClipboard, isUserAdmin
+    copyToClipboard, isUserAdmin
 )
+from scraping.ocr import imageToString
 
 from scraping.utils.common import saveRawScan, loadRawScans

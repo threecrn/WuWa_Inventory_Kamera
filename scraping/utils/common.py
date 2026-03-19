@@ -1,4 +1,3 @@
-import re
 import cv2
 import json
 import ctypes
@@ -87,88 +86,6 @@ def convertToBlackWhite(image: np.ndarray):
     sharpened = cv2.filter2D(morph, -1, sharpen_kernel)
 
     return sharpened
-
-def imageToString(
-    image: np.ndarray,
-    divisor: str = ' ',
-    allowedChars: str = None,
-    bannedChars: str = None,
-    backend=None,
-) -> str:
-    """
-    Run OCR on *image* and return the recognised text as a string.
-
-    Parameters
-    ----------
-    image:
-        RGB uint8 numpy array to recognise.
-    divisor:
-        String inserted between tokens on the same text line.
-    allowedChars:
-        When set, only characters in this string are kept in each token.
-    bannedChars:
-        When set, characters in this string are stripped from each token.
-    backend:
-        An :class:`~scraping.ocr.OcrBackend` instance to use for this
-        call.  When ``None`` (default) the active global default from
-        :func:`scraping.ocr.get_default` is used.  Pass an explicit
-        backend to use a one-off parameterisation without changing the
-        global default.
-    """
-    try:
-        if backend is None:
-            import scraping.ocr as _ocr_mod
-            backend = _ocr_mod.get_default()
-        ocrResults = backend.recognize(image)
-        _trace(_logger, 'imageToString — raw OCR results (%d token(s)): %s',
-               len(ocrResults), ocrResults)
-
-        banned_pattern = re.compile(f"[{re.escape(bannedChars)}]") if bannedChars else None
-        allowed_pattern = re.compile(f"[^{re.escape(allowedChars)}]") if allowedChars else None
-        
-        lines = []
-        for bbox, text, conf in ocrResults:
-            original = text
-            if banned_pattern:
-                text = banned_pattern.sub('', text)
-            
-            if allowed_pattern:
-                text = allowed_pattern.sub('', text)
-
-            _trace(_logger, '  token: %r  conf=%.3f  →  %r', original, float(conf), text)
-            lines.append((bbox, text))
-
-        groupedLines = []
-        currentRow = []
-        lastY = None
-
-        for bbox, text in lines:
-            yMin = min(point[1] for point in bbox)
-            yMax = max(point[1] for point in bbox)
-
-            if lastY is None or (yMin < lastY + 10):
-                currentRow.append(text)
-            else:
-                groupedLines.append(currentRow)
-                currentRow = [text]
-                
-            lastY = yMax
-
-        if currentRow:
-            groupedLines.append(currentRow)
-
-        finalOutput = []
-        for row in groupedLines:
-            finalOutput.append(divisor.join(row))
-        
-        result = '\n'.join(finalOutput).strip()
-        _trace(_logger, 'imageToString — final output: %r', result)
-        return result
-
-    except:
-        _trace(_logger, 'imageToString — OCR raised an exception, returning empty string',
-               exc_info=True)
-        return ''
 
 def isUserAdmin():
     return ctypes.windll.shell32.IsUserAnAdmin()
