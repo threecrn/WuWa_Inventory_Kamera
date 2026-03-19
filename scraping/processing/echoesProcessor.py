@@ -50,6 +50,7 @@ from scraping.processing.echoesValidator import infer_cost, validate_echo_stats
 from scraping.processing.statsExtractor import (
     RapidOcrStatsExtractor,
     StatsExtractor,
+    TesserOcrCoordStatsExtractor,
     TesserOcrStatsExtractor,
 )
 from scraping.data import echoesID, echoStats, sonataName

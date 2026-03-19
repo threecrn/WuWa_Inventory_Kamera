@@ -8,22 +8,26 @@ Pluggable stat-extraction strategy used by
 Classes
 -------
 StatsExtractor
-    Abstract base class.  Handles cache look-ups and shared parsing logic;
-    subclasses only need to implement :meth:`_ocr_names` and
-    :meth:`_ocr_values`.
+    Abstract base class.  Manages the cache and final stats-dict assembly;
+    subclasses implement :meth:`_ocr_and_pair` to decide how names and
+    values are extracted and aligned.
 
 RapidOcrStatsExtractor
-    Concrete implementation backed by ``rapidocr_onnxruntime.RapidOCR``
-    (colour crops, no B/W pre-processing needed).
+    Uses RapidOCR with colour crops; aligns names to values by line order.
 
 TesserOcrStatsExtractor
-    Concrete implementation backed by ``tesserocr.PyTessBaseAPI``
-    (converts crops to B/W before OCR, which Tesseract prefers).
+    Uses Tesseract with B/W pre-processing; aligns by line order.
+
+TesserOcrCoordStatsExtractor
+    Uses Tesseract and aligns stat names to values by bounding-box Y
+    coordinate rather than line order — more robust when OCR skips or
+    merges lines differently in the two columns.
 """
 from __future__ import annotations
 
 import abc
 import logging
+import re
 import string
 from collections import defaultdict
 
@@ -41,9 +45,10 @@ logger = logging.getLogger(__name__)
 
 def _matchStats(text: list[str]) -> list[str]:
     """
-    Assemble stat names from OCR token lines.
+    Assemble stat names from OCR token strings.
 
-    Some stat names span two tokens (e.g. ``['crit', 'rate']`` → ``'critrate'``).
+    Some stat names span two adjacent tokens (e.g. ``['crit', 'rate']``
+    → ``'critrate'``).
     """
     valid = set(echoStats)
     results: list[str] = []
@@ -61,6 +66,13 @@ def _matchStats(text: list[str]) -> list[str]:
     return results
 
 
+def _bbox_center(bbox) -> tuple[float, float]:
+    """Return ``(x_center, y_center)`` of a four-cornered bounding box."""
+    xs = [pt[0] for pt in bbox]
+    ys = [pt[1] for pt in bbox]
+    return sum(xs) / len(xs), sum(ys) / len(ys)
+
+
 # ---------------------------------------------------------------------------
 # Base class
 # ---------------------------------------------------------------------------
@@ -69,42 +81,45 @@ class StatsExtractor(abc.ABC):
     """
     Abstract base class for echo stat extraction.
 
-    Concrete subclasses supply backend-specific OCR via :meth:`_ocr_names`
-    and :meth:`_ocr_values`.  All cache management and value parsing live
-    here so the subclasses stay minimal.
+    Subclasses implement :meth:`_ocr_and_pair` to run OCR on the name and
+    value crops and return matched ``(names, values)`` lists.  All cache
+    management and final stats-dict assembly live in :meth:`execute` so
+    subclasses stay minimal.
     """
 
     @abc.abstractmethod
-    def _ocr_names(self, name_crop: np.ndarray) -> list[str]:
+    def _ocr_and_pair(
+        self,
+        name_crop: np.ndarray,
+        value_crop: np.ndarray,
+        scan_index: int,
+    ) -> tuple[list[str], list[str], dict]:
         """
-        Run OCR on *name_crop* and return one lowercased token per line.
+        OCR both crops and return aligned ``(names, values, ocr_trace)``.
 
         Parameters
         ----------
         name_crop:
-            Cropped image of the stat-names column, in the colour space
-            most appropriate for this backend.
-
-        Returns
-        -------
-        list[str]
-            One entry per recognised line; each entry is already lowercased.
-        """
-
-    @abc.abstractmethod
-    def _ocr_values(self, value_crop: np.ndarray) -> list[str]:
-        """
-        Run OCR on *value_crop* and return all recognised value tokens.
-
-        Parameters
-        ----------
+            Cropped image of the stat-names column.
         value_crop:
             Cropped image of the stat-values column.
+        scan_index:
+            Echo scan index for log messages.
 
         Returns
         -------
-        list[str]
-            Flat list of value strings (digits, ``'.'``, ``'%'``).
+        tuple[list[str], list[str], dict]
+            * **names** — resolved stat name strings (already processed by
+              :func:`_matchStats`).
+            * **values** — corresponding raw value strings aligned to *names*
+              (e.g. ``'42'``, ``'3.2%'``).
+            * **ocr_trace** — dict of raw OCR data for debug dumps.  Must
+              contain at least ``'raw_names_ocr'``, ``'matched_names'``, and
+              ``'raw_values_ocr'`` keys.
+
+        The implementation is responsible for aligning names with values.
+        Simple implementations may zip by line order; coordinate-aware ones
+        may use bounding-box Y positions to pair rows spatially.
         """
 
     def execute(
@@ -125,8 +140,9 @@ class StatsExtractor(abc.ABC):
         value_crop:
             Cropped image of the stat-values column.
         _cache:
-            Shared OCR result cache keyed by image hash.  Pass a fresh
-            ``{}`` per scan when running concurrently to avoid lock contention.
+            Shared OCR result cache keyed by ``(name_hash, value_hash)``.
+            Pass a fresh ``{}`` per scan when running concurrently to avoid
+            lock contention.
         scan_index:
             Echo scan index used in log messages.
 
@@ -137,27 +153,18 @@ class StatsExtractor(abc.ABC):
             ``'main'`` and ``'sub'`` keys, and *ocr_trace* carries the raw
             OCR token lists for debug dumps.
         """
-        stats: dict = defaultdict(dict)
-
-        name_hash = hash(name_crop.tobytes())
-        value_hash = hash(value_crop.tobytes())
-
-        if name_hash in _cache:
-            raw_names, names = _cache[name_hash]
+        cache_key = (hash(name_crop.tobytes()), hash(value_crop.tobytes()))
+        if cache_key in _cache:
+            names, values, trace = _cache[cache_key]
         else:
-            raw_names = self._ocr_names(name_crop)
-            names = _matchStats(raw_names)
-            _cache[name_hash] = (raw_names, names)
+            names, values, trace = self._ocr_and_pair(name_crop, value_crop, scan_index)
+            _cache[cache_key] = (names, values, trace)
+
         logger.debug("Scan %d — stats names: %s", scan_index, names)
-
-        if value_hash in _cache:
-            values: list[str] = _cache[value_hash]
-        else:
-            values = self._ocr_values(value_crop)
-            _cache[value_hash] = values
         logger.debug("Scan %d — stats values: %s", scan_index, values)
 
         tune_lv = max(0, len(values) - 2)
+        stats: dict = defaultdict(dict)
 
         for idx, (stat_name, stat_value) in enumerate(zip(names, values)):
             stat_name = echoStats.get(stat_name, stat_name)
@@ -170,11 +177,6 @@ class StatsExtractor(abc.ABC):
             except Exception:
                 stats[bucket][stat_name] = stat_value
 
-        trace = {
-            'raw_names_ocr': raw_names,
-            'matched_names': names,
-            'raw_values_ocr': values,
-        }
         return tune_lv, dict(stats), trace
 
 
@@ -188,6 +190,7 @@ class RapidOcrStatsExtractor(StatsExtractor):
 
     Passes colour crops directly to the backend — RapidOCR handles its own
     internal pre-processing, so no B/W conversion is applied here.
+    Names and values are aligned by line order (zip).
 
     Parameters
     ----------
@@ -201,17 +204,23 @@ class RapidOcrStatsExtractor(StatsExtractor):
         from scraping.ocr._rapidocr import RapidOcrBackend
         self._backend = RapidOcrBackend(**kwargs)
 
-    def _ocr_names(self, name_crop: np.ndarray) -> list[str]:
-        return (
+    def _ocr_and_pair(
+        self,
+        name_crop: np.ndarray,
+        value_crop: np.ndarray,
+        scan_index: int,
+    ) -> tuple[list[str], list[str], dict]:
+        raw_names = (
             imageToString(name_crop, allowedChars=string.ascii_letters, backend=self._backend)
             .lower()
             .split('\n')
         )
-
-    def _ocr_values(self, value_crop: np.ndarray) -> list[str]:
-        return imageToString(
+        names = _matchStats(raw_names)
+        values = imageToString(
             value_crop, allowedChars=string.digits + '.%', backend=self._backend
         ).split()
+        trace = {'raw_names_ocr': raw_names, 'matched_names': names, 'raw_values_ocr': values}
+        return names, values, trace
 
 
 class TesserOcrStatsExtractor(StatsExtractor):
@@ -220,6 +229,7 @@ class TesserOcrStatsExtractor(StatsExtractor):
 
     Converts crops to greyscale B/W before recognition — Tesseract achieves
     higher accuracy on high-contrast monochrome images than on colour crops.
+    Names and values are aligned by line order (zip).
 
     Parameters
     ----------
@@ -233,16 +243,117 @@ class TesserOcrStatsExtractor(StatsExtractor):
         from scraping.ocr._tesserocr import TesserOcrBackend
         self._backend = TesserOcrBackend(**kwargs)
 
-    def _ocr_names(self, name_crop: np.ndarray) -> list[str]:
-        bw = convertToBlackWhite(name_crop)
-        return (
-            imageToString(bw, allowedChars=string.ascii_letters, backend=self._backend)
+    def _ocr_and_pair(
+        self,
+        name_crop: np.ndarray,
+        value_crop: np.ndarray,
+        scan_index: int,
+    ) -> tuple[list[str], list[str], dict]:
+        bw_names = convertToBlackWhite(name_crop)
+        bw_values = convertToBlackWhite(value_crop)
+        raw_names = (
+            imageToString(bw_names, allowedChars=string.ascii_letters, backend=self._backend)
             .lower()
             .split('\n')
         )
-
-    def _ocr_values(self, value_crop: np.ndarray) -> list[str]:
-        bw = convertToBlackWhite(value_crop)
-        return imageToString(
-            bw, allowedChars=string.digits + '.%', backend=self._backend
+        names = _matchStats(raw_names)
+        values = imageToString(
+            bw_values, allowedChars=string.digits + '.%', backend=self._backend
         ).split()
+        trace = {'raw_names_ocr': raw_names, 'matched_names': names, 'raw_values_ocr': values}
+        return names, values, trace
+
+
+class TesserOcrCoordStatsExtractor(StatsExtractor):
+    """
+    Stats extractor backed by Tesseract that uses bounding-box Y coordinates
+    to align stat names with their values.
+
+    Instead of relying on line order, each resolved stat name is paired with
+    the value token whose vertical centre is nearest to the name row's
+    vertical centre.  This is more robust when Tesseract produces a different
+    number of output rows for the two columns (e.g. one column merges two
+    adjacent stat lines that the other splits).
+
+    Parameters
+    ----------
+    row_tolerance:
+        Maximum pixel distance between two tokens' Y centres to be
+        considered part of the same text row.  Defaults to ``10``.
+    **kwargs:
+        Forwarded verbatim to
+        :class:`~scraping.ocr._tesserocr.TesserOcrBackend`.
+    """
+
+    _ALPHA_RE = re.compile(r'[^a-zA-Z]')
+    _DIGIT_RE = re.compile(r'[^0-9.%]')
+
+    def __init__(self, row_tolerance: int = 10, **kwargs):
+        from scraping.ocr._tesserocr import TesserOcrBackend
+        self._backend = TesserOcrBackend(**kwargs)
+        self._row_tolerance = row_tolerance
+
+    def _ocr_and_pair(
+        self,
+        name_crop: np.ndarray,
+        value_crop: np.ndarray,
+        scan_index: int,
+    ) -> tuple[list[str], list[str], dict]:
+        bw_names = convertToBlackWhite(name_crop)
+        bw_values = convertToBlackWhite(value_crop)
+        raw_name_tokens = self._backend.recognize(bw_names)
+        raw_value_tokens = self._backend.recognize(bw_values)
+
+        # --- Name tokens: keep letters, record (y_center, x_center, text) ---
+        name_items: list[tuple[float, float, str]] = []
+        for bbox, text, _conf in raw_name_tokens:
+            cleaned = self._ALPHA_RE.sub('', text).lower()
+            if cleaned:
+                xc, yc = _bbox_center(bbox)
+                name_items.append((yc, xc, cleaned))
+        name_items.sort()  # primary: y, secondary: x
+
+        # Group tokens into rows by Y proximity; sort tokens within each
+        # row left-to-right so _matchStats sees them in the correct order.
+        tol = self._row_tolerance
+        grouped: list[tuple[float, list[tuple[float, str]]]] = []
+        for yc, xc, text in name_items:
+            if grouped and abs(yc - grouped[-1][0]) <= tol:
+                grouped[-1][1].append((xc, text))
+            else:
+                grouped.append((yc, [(xc, text)]))
+
+        # Apply _matchStats per row to resolve multi-token stat names.
+        named_rows: list[tuple[float, str]] = []  # (y_center, resolved_name)
+        for row_y, xtokens in grouped:
+            xtokens.sort()
+            for name in _matchStats([t for _, t in xtokens]):
+                named_rows.append((row_y, name))
+
+        # --- Value tokens: keep digits/./%, record (y_center, text) ---
+        value_items: list[tuple[float, str]] = []
+        for bbox, text, _conf in raw_value_tokens:
+            cleaned = self._DIGIT_RE.sub('', text)
+            if cleaned:
+                _, yc = _bbox_center(bbox)
+                value_items.append((yc, cleaned))
+        value_items.sort()
+
+        # --- Pair each name row with the nearest unused value by Y ---
+        available = list(value_items)
+        paired_names: list[str] = []
+        paired_values: list[str] = []
+        for name_y, name in named_rows:
+            if not available:
+                break
+            best = min(range(len(available)), key=lambda i: abs(available[i][0] - name_y))
+            _, value = available.pop(best)
+            paired_names.append(name)
+            paired_values.append(value)
+
+        trace = {
+            'raw_names_ocr': [t for _, _, t in name_items],
+            'matched_names': paired_names,
+            'raw_values_ocr': [t for _, t in value_items],
+        }
+        return paired_names, paired_values, trace
