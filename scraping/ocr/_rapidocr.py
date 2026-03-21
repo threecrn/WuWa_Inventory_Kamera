@@ -7,6 +7,7 @@ Adapter that wraps ``rapidocr_onnxruntime.RapidOCR`` to satisfy the
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 
 import numpy as np
@@ -73,25 +74,71 @@ class RapidOcrBackend:
         ``text_score`` used by the low-confidence fallback pass inside
         :meth:`thorough_recognize`.  Defaults to ``0.3``.  Set to ``None``
         to disable the fallback pass.
+    onnx_providers:
+        List of ONNX Runtime execution provider names to use for every model
+        session, overriding the library's built-in CUDA-or-CPU selection.
+        Example: ``['DmlExecutionProvider', 'CPUExecutionProvider']`` to use
+        DirectML (GPU on Windows via DirectX 12) with a CPU fallback.
+        When ``None`` (default), the library's normal provider selection is
+        used (CPU, or CUDA if ``use_cuda=True`` and CUDA is available).
     **kwargs:
         Forwarded verbatim to ``RapidOCR(**kwargs)``.
     """
+
+    @staticmethod
+    @contextlib.contextmanager
+    def _provider_patch(providers: list):
+        """
+        Temporarily monkey-patch ``OrtInferSession.__init__`` so that every
+        ONNX session created while the context is active uses *providers*
+        instead of the library's hardcoded CUDA-or-CPU logic.
+        """
+        from rapidocr_onnxruntime import utils as _rutils
+        from onnxruntime import InferenceSession, SessionOptions, GraphOptimizationLevel
+
+        _orig_init = _rutils.OrtInferSession.__init__
+
+        def _patched_init(self, config):
+            sess_opt = SessionOptions()
+            sess_opt.log_severity_level = 4
+            sess_opt.enable_cpu_mem_arena = False
+            sess_opt.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_ALL
+            _rutils.OrtInferSession._verify_model(config['model_path'])
+            self.session = InferenceSession(
+                config['model_path'],
+                sess_options=sess_opt,
+                providers=providers,
+            )
+            logger.debug(
+                'RapidOCR session providers (patched): %s',
+                self.session.get_providers(),
+            )
+
+        _rutils.OrtInferSession.__init__ = _patched_init
+        try:
+            yield
+        finally:
+            _rutils.OrtInferSession.__init__ = _orig_init
 
     def __init__(
         self,
         pad_px: int = 10,
         fallback_text_score: float | None = 0.3,
+        onnx_providers: list | None = None,
         **kwargs,
     ):
         from rapidocr_onnxruntime import RapidOCR  # deferred — keeps top-level import fast
-        self._ocr = RapidOCR(**kwargs)
+        ctx = self._provider_patch(onnx_providers) if onnx_providers else contextlib.nullcontext()
+        with ctx:
+            self._ocr = RapidOCR(**kwargs)
         self._pad_px = pad_px
         self._kwargs = dict(kwargs)
 
         if fallback_text_score is not None:
             fallback_kwargs = dict(kwargs)
             fallback_kwargs['text_score'] = fallback_text_score
-            self._fallback_ocr: RapidOCR | None = RapidOCR(**fallback_kwargs)
+            with (self._provider_patch(onnx_providers) if onnx_providers else contextlib.nullcontext()):
+                self._fallback_ocr: RapidOCR | None = RapidOCR(**fallback_kwargs)
             self._fallback_text_score: float | None = fallback_text_score
         else:
             self._fallback_ocr = None

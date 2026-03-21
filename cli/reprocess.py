@@ -244,6 +244,16 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        '--provider', choices=['cpu', 'dml'], default=None,
+        help=(
+            'ONNX execution provider for RapidOCR (ignored for Tesseract extractors). '
+            '"dml" uses DirectML (GPU via DirectX 12, Windows only); '
+            '"cpu" uses the standard CPU provider. '
+            'When omitted, RapidOCR uses its built-in default. '
+            'Equivalent to setting onnx_providers via --extractor-params.'
+        ),
+    )
+    parser.add_argument(
         '--write-debug', action='store_true', default=False,
         help=(
             'Write debug crop images and OCR trace files for every processed echo. '
@@ -268,6 +278,15 @@ def main() -> None:
 
     extractor_cls = _EXTRACTOR_MAP[args.extractor]
     use_bw: bool = args.use_bw
+    is_rapid = args.extractor.startswith('rapid')
+    if args.provider and is_rapid and 'onnx_providers' not in extractor_params:
+        _PROVIDER_MAP = {
+            'cpu': ['CPUExecutionProvider'],
+            'dml': ['DmlExecutionProvider', 'CPUExecutionProvider'],
+        }
+        extractor_params['onnx_providers'] = _PROVIDER_MAP[args.provider]
+    elif args.provider and not is_rapid:
+        logger.warning('--provider is ignored for non-RapidOCR extractors (%s)', args.extractor)
     try:
         extractor = extractor_cls(use_bw=use_bw, **extractor_params)
     except Exception as exc:
@@ -275,6 +294,8 @@ def main() -> None:
         sys.exit(1)
     logger.info('Extractor : %s(use_bw=%r%s)', args.extractor, use_bw,
                 f', {extractor_params}' if extractor_params else '')
+    if args.provider and is_rapid:
+        logger.info('Provider  : %s', extractor_params.get('onnx_providers'))
 
     export_dir = Path(args.export_dir) if args.export_dir else Path(app_config.exportFolder)
 
