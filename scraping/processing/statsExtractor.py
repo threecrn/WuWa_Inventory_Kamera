@@ -22,6 +22,12 @@ TesserOcrCoordStatsExtractor
     Uses Tesseract and aligns stat names to values by bounding-box Y
     coordinate rather than line order — more robust when OCR skips or
     merges lines differently in the two columns.
+
+RapidOcrCoordStatsExtractor
+    Uses RapidOCR and aligns stat names to values by bounding-box Y
+    coordinate.  Additionally handles stat names that wrap across two
+    lines by merging consecutive name rows that individually produce no
+    valid match.
 """
 from __future__ import annotations
 
@@ -49,19 +55,30 @@ def _matchStats(text: list[str]) -> list[str]:
 
     Some stat names span two adjacent tokens (e.g. ``['crit', 'rate']``
     → ``'critrate'``).
+
+    Spaces are stripped from every token before lookup.  This handles the
+    case where :func:`~scraping.ocr.imageToString` re-introduces spaces
+    between sub-tokens that were placed on the same visual row (joined by the
+    default ``divisor=' '``), even though the individual sub-tokens had their
+    spaces removed by the ``allowedChars`` filter.  For example, when
+    ``'Resonance Liberation'`` and ``'DMG Bonus'`` land on the same Y-row
+    they arrive as the single token ``'resonanceliberation dmgbonus'``; after
+    space-stripping this matches ``'resonanceliberationdmgbonus'`` directly.
     """
     valid = set(echoStats)
     results: list[str] = []
     i = 0
     while i < len(text):
+        t0 = text[i].replace(' ', '')
         if i < len(text) - 1:
-            combined = text[i] + text[i + 1]
+            t1 = text[i + 1].replace(' ', '')
+            combined = t0 + t1
             if combined in valid:
                 results.append(combined)
                 i += 2
                 continue
-        if text[i] in valid:
-            results.append(text[i])
+        if t0 in valid:
+            results.append(t0)
         i += 1
     return results
 
@@ -366,6 +383,131 @@ class TesserOcrCoordStatsExtractor(StatsExtractor):
             if not available:
                 break
             best = min(range(len(available)), key=lambda i: abs(available[i][0] - name_y))
+            _, value = available.pop(best)
+            paired_names.append(name)
+            paired_values.append(value)
+
+        trace = {
+            'raw_names_ocr': [t for _, _, t in name_items],
+            'matched_names': paired_names,
+            'raw_values_ocr': [t for _, t in value_items],
+        }
+        return paired_names, paired_values, trace
+
+
+class RapidOcrCoordStatsExtractor(StatsExtractor):
+    """
+    Stats extractor backed by RapidOCR that uses bounding-box Y coordinates
+    to align stat names with their values.
+
+    Similar to :class:`TesserOcrCoordStatsExtractor` but uses the RapidOCR
+    backend.  Additionally handles stat names that wrap across two display
+    lines: when a row of name tokens produces no valid match on its own,
+    it is merged with the next row and resolved as a single name, with the
+    value paired to the *first* row's Y position (where the value glyph
+    is anchored).
+
+    Parameters
+    ----------
+    row_tolerance:
+        Maximum pixel distance between two tokens' Y centres to be
+        considered part of the same text row.  Defaults to ``10``.
+    use_bw:
+        Apply B/W pre-processing before OCR.  Defaults to ``False`` —
+        RapidOCR performs its own internal pre-processing on colour images.
+    **kwargs:
+        Forwarded verbatim to
+        :class:`~scraping.ocr._rapidocr.RapidOcrBackend`.
+    """
+
+    _ALPHA_RE = re.compile(r'[^a-zA-Z]')
+    _DIGIT_RE = re.compile(r'[^0-9.%]')
+
+    def __init__(self, row_tolerance: int = 10, use_bw: bool = False, **kwargs):
+        super().__init__(use_bw=use_bw)
+        from scraping.ocr._rapidocr import RapidOcrBackend
+        self._backend = RapidOcrBackend(**kwargs)
+        self._row_tolerance = row_tolerance
+
+    def _ocr_and_pair(
+        self,
+        name_crop: np.ndarray,
+        value_crop: np.ndarray,
+        scan_index: int,
+    ) -> tuple[list[str], list[str], dict]:
+        raw_name_tokens = self._backend.recognize(name_crop)
+        raw_value_tokens = self._backend.recognize(value_crop)
+
+        # --- Name tokens: keep letters, record (y_center, x_center, text) ---
+        name_items: list[tuple[float, float, str]] = []
+        for bbox, text, _conf in raw_name_tokens:
+            cleaned = self._ALPHA_RE.sub('', text).lower()
+            if cleaned:
+                xc, yc = _bbox_center(bbox)
+                name_items.append((yc, xc, cleaned))
+        name_items.sort()  # primary: y, secondary: x
+
+        # Group tokens into rows by Y proximity; sort tokens within each
+        # row left-to-right so _matchStats sees them in the correct order.
+        tol = self._row_tolerance
+        grouped: list[tuple[float, list[tuple[float, str]]]] = []
+        for yc, xc, text in name_items:
+            if grouped and abs(yc - grouped[-1][0]) <= tol:
+                grouped[-1][1].append((xc, text))
+            else:
+                grouped.append((yc, [(xc, text)]))
+
+        # Resolve stat names row by row.  When a row produces no valid name
+        # on its own, attempt to merge it with the following row to handle
+        # names that wrap onto a second display line.  The resolved name is
+        # anchored to the *first* row's Y so it aligns with the value glyph.
+        named_rows: list[tuple[float, str]] = []  # (y_center, resolved_name)
+        i = 0
+        while i < len(grouped):
+            row_y, xtokens = grouped[i]
+            tokens = [t for _, t in sorted(xtokens)]
+
+            names = _matchStats(tokens)
+            if names:
+                for name in names:
+                    named_rows.append((row_y, name))
+                i += 1
+                continue
+
+            # No match — try combining with the next row (wrapped name)
+            if i + 1 < len(grouped):
+                next_y, next_xtokens = grouped[i + 1]
+                combined = tokens + [t for _, t in sorted(next_xtokens)]
+                names = _matchStats(combined)
+                if names:
+                    for name in names:
+                        named_rows.append((row_y, name))  # anchor to first row Y
+                    i += 2
+                    continue
+
+            # Still no match — skip this row
+            logger.debug(
+                "Scan %d — unmatched name tokens (skipped): %s", scan_index, tokens
+            )
+            i += 1
+
+        # --- Value tokens: keep digits/./%, record (y_center, text) ---
+        value_items: list[tuple[float, str]] = []
+        for bbox, text, _conf in raw_value_tokens:
+            cleaned = self._DIGIT_RE.sub('', text)
+            if cleaned:
+                _, yc = _bbox_center(bbox)
+                value_items.append((yc, cleaned))
+        value_items.sort()
+
+        # --- Pair each name row with the nearest unused value by Y ---
+        available = list(value_items)
+        paired_names: list[str] = []
+        paired_values: list[str] = []
+        for name_y, name in named_rows:
+            if not available:
+                break
+            best = min(range(len(available)), key=lambda j: abs(available[j][0] - name_y))
             _, value = available.pop(best)
             paired_names.append(name)
             paired_values.append(value)

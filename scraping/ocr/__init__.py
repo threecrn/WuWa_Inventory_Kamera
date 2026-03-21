@@ -253,6 +253,9 @@ def imageToString(
         ocrResults = active_backend.recognize(image)
         _trace(_logger, 'imageToString — raw OCR results (%d token(s)): %s',
                len(ocrResults), ocrResults)
+        
+        logging.debug('imageToString — raw OCR results (%d token(s)): %s',
+               len(ocrResults), ocrResults)
 
         banned_pattern = re.compile(f"[{re.escape(bannedChars)}]") if bannedChars else None
         allowed_pattern = re.compile(f"[^{re.escape(allowedChars)}]") if allowedChars else None

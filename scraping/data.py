@@ -20,7 +20,7 @@ definedText: dict = {}
 sonataName: list = []
 
 def loadData(language):
-    logging.error(f"Loading data for language: {language}")
+    logging.info(f"Loading data for language: {language}")
 
     if language is None: language = 'en'
     dir = pathlib.Path('data') / language
@@ -28,7 +28,7 @@ def loadData(language):
     def loadFile(filePATH: str, default=None):
         if default is None: default = {}
         try:
-            logging.error(f"Loading file: {dir / filePATH}")
+            logging.info(f"Loading file: {dir / filePATH}")
             with open(dir / filePATH, 'r', encoding="utf-8") as file:
                 data = json.load(file)
                 if isinstance(default, list):
@@ -51,6 +51,6 @@ def loadData(language):
     sonataName.clear()
     sonataName.extend(loadFile('sonataName.json', default=[]))
 
-    logging.error(f"loaded: {definedText=}")
+    logging.info(f"loaded: {definedText=}")
 
 loadData('en')

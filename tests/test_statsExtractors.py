@@ -32,8 +32,10 @@ import numpy as np
 import pytest
 from PIL import Image
 
+from scraping.processing.echoesProcessor import darken_background_preserve_edges_ndarray
 from scraping.processing.statsExtractor import (
     RapidOcrStatsExtractor,
+    RapidOcrCoordStatsExtractor,
     TesserOcrCoordStatsExtractor,
     TesserOcrStatsExtractor,
 )
@@ -104,6 +106,14 @@ def rapid_extractor(request):
     scope="module",
     params=[pytest.param(False, id="colour"), pytest.param(True, id="bw")],
 )
+def rapid_coord_extractor(request):
+    return RapidOcrCoordStatsExtractor(use_bw=request.param)
+
+
+@pytest.fixture(
+    scope="module",
+    params=[pytest.param(False, id="colour"), pytest.param(True, id="bw")],
+)
 def tesser_extractor(request):
     pytest.importorskip("tesserocr", reason="tesserocr not installed — skipping Tesseract tests")
     return TesserOcrStatsExtractor(use_bw=request.param)
@@ -136,6 +146,9 @@ class TestRapidOcrStatsExtractor:
         value_crop = _load_image(debug_dir / "stats_value.png")
         expected_tune, expected_stats = _load_expected(debug_dir)
 
+        name_crop = darken_background_preserve_edges_ndarray(name_crop)
+        value_crop = darken_background_preserve_edges_ndarray(value_crop)
+
         tune_lv, stats, _ = rapid_extractor.execute(name_crop, value_crop, {}, scan_index=idx)
 
         assert tune_lv == expected_tune, (
@@ -147,6 +160,31 @@ class TestRapidOcrStatsExtractor:
             f"  expected: {expected_stats}"
         )
 
+
+class TestRapidOcrCoordStatsExtractor:
+    """
+    RapidOCR coordinate-aware extractor against the reference session.
+    """
+
+    @pytest.mark.parametrize("idx, debug_dir", _CASES)
+    def test_stats_match(self, rapid_coord_extractor, idx, debug_dir):
+        name_crop  = _load_image(debug_dir / "stats_name.png")
+        value_crop = _load_image(debug_dir / "stats_value.png")
+        expected_tune, expected_stats = _load_expected(debug_dir)
+
+        name_crop = darken_background_preserve_edges_ndarray(name_crop)
+        value_crop = darken_background_preserve_edges_ndarray(value_crop)
+
+        tune_lv, stats, _ = rapid_coord_extractor.execute(name_crop, value_crop, {}, scan_index=idx)
+
+        assert tune_lv == expected_tune, (
+            f"echo_{idx:04d}: tune_lv {tune_lv!r} != expected {expected_tune!r}"
+        )
+        assert stats == expected_stats, (
+            f"echo_{idx:04d}: stats mismatch\n"
+            f"  got:      {stats}\n"
+            f"  expected: {expected_stats}"
+        )
 
 class TestTesserOcrStatsExtractor:
     """
@@ -162,6 +200,9 @@ class TestTesserOcrStatsExtractor:
         name_crop  = _load_image(debug_dir / "stats_name.png")
         value_crop = _load_image(debug_dir / "stats_value.png")
         expected_tune, expected_stats = _load_expected(debug_dir)
+
+        name_crop = darken_background_preserve_edges_ndarray(name_crop)
+        value_crop = darken_background_preserve_edges_ndarray(value_crop)
 
         tune_lv, stats, _ = tesser_extractor.execute(name_crop, value_crop, {}, scan_index=idx)
 
@@ -188,6 +229,9 @@ class TestTesserOcrCoordStatsExtractor:
         name_crop  = _load_image(debug_dir / "stats_name.png")
         value_crop = _load_image(debug_dir / "stats_value.png")
         expected_tune, expected_stats = _load_expected(debug_dir)
+
+        name_crop = darken_background_preserve_edges_ndarray(name_crop)
+        value_crop = darken_background_preserve_edges_ndarray(value_crop)
 
         tune_lv, stats, _ = tesser_coord_extractor.execute(
             name_crop, value_crop, {}, scan_index=idx
