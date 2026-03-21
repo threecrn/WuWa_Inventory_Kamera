@@ -44,7 +44,7 @@ import numpy as np
 # ---------------------------------------------------------------------------
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scraping.processing.echoesProcessor import darken_background_preserve_edges_ndarray  # noqa: E402
+from scraping.utils import darken_background_preserve_edges_ndarray  # noqa: E402
 
 logger = logging.getLogger('debug_ocr')
 
@@ -247,17 +247,22 @@ def main() -> None:
     name_img_raw  = _load_image(name_path)
     value_img_raw = _load_image(value_path)
 
-    if args.no_preprocess:
-        name_img  = name_img_raw
-        value_img = value_img_raw
-        print('Preprocessing: disabled (using raw colour images)')
-    else:
-        name_img  = darken_background_preserve_edges_ndarray(name_img_raw)
-        value_img = darken_background_preserve_edges_ndarray(value_img_raw)
-        print('Preprocessing: darken_background_preserve_edges_ndarray applied')
+    # Extractors handle preprocessing internally via _prepare() — always pass raw.
+    name_img_for_extractor  = name_img_raw
+    value_img_for_extractor = value_img_raw
 
-    print(f'Name  image shape : {name_img.shape}')
-    print(f'Value image shape : {value_img.shape}')
+    # Direct backend calls bypass _prepare(), so preprocess explicitly here.
+    if args.no_preprocess:
+        name_img_for_backend  = name_img_raw
+        value_img_for_backend = value_img_raw
+        print('Backend preprocessing: disabled (raw colour images)')
+    else:
+        name_img_for_backend  = darken_background_preserve_edges_ndarray(name_img_raw)
+        value_img_for_backend = darken_background_preserve_edges_ndarray(value_img_raw)
+        print('Backend preprocessing: darken_background_preserve_edges_ndarray applied')
+
+    print(f'Name  image shape (raw)     : {name_img_raw.shape}')
+    print(f'Name  image shape (backend) : {name_img_for_backend.shape}')
 
     # Build extractors
     rapid_backend = None
@@ -307,18 +312,18 @@ def main() -> None:
         print('  RAW BACKEND OUTPUT (RapidOcrBackend)')
         print('#' * 60)
         name_raw_tokens, value_raw_tokens = _dump_backend_raw(
-            rapid_backend, name_img, value_img, thorough=args.thorough
+            rapid_backend, name_img_for_backend, value_img_for_backend, thorough=args.thorough
         )
         if args.annotate:
             suffix = '_thorough' if args.thorough else ''
-            _annotate(name_img,  name_raw_tokens,  'rapid_name',
+            _annotate(name_img_for_backend,  name_raw_tokens,  'rapid_name',
                       debug_dir / f'debug_ocr_rapid_name{suffix}.png')
-            _annotate(value_img, value_raw_tokens, 'rapid_value',
+            _annotate(value_img_for_backend, value_raw_tokens, 'rapid_value',
                       debug_dir / f'debug_ocr_rapid_value{suffix}.png')
 
-    # Run each extractor
+    # Run each extractor — preprocessing is handled internally by _prepare()
     for key, extractor in extractors.items():
-        _run_extractor(key, extractor, name_img, value_img, thorough=args.thorough)
+        _run_extractor(key, extractor, name_img_for_extractor, value_img_for_extractor, thorough=args.thorough)
 
     print('\nDone.')
 

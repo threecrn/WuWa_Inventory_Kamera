@@ -56,6 +56,7 @@ from scraping.processing.statsExtractor import (
 from scraping.data import echoesID, echoStats, sonataName
 from scraping.utils import (
     convertToBlackWhite,
+    darken_background_preserve_edges_ndarray,
     imageToString,
     loadRawScans,
 )
@@ -92,29 +93,6 @@ def _getRarity(image: np.ndarray) -> int:
         if np.any(cv2.inRange(image, lower, upper)):
             return rarity
     return 1
-
-def darken_background_preserve_edges_ndarray(image: np.ndarray, threshold=100):
-    # 1. Convert to grayscale for easier math
-    if len(image.shape) == 3 and image.shape[2] == 3:
-        img = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    elif len(image.shape) == 2:
-        img = image
-    else:
-        raise ValueError(f"Unsupported image format. Image shape: {image.shape}")
-    
-    # 2. Define a lookup table (LUT)
-    lut = np.zeros(256, dtype=np.uint8)
-    for i in range(256):
-        if i < threshold:
-            lut[i] = 0
-        else:
-            # Linear stretch for the remaining range
-            val = int((i - threshold) * (255 / (255 - threshold)))
-            lut[i] = val
-    
-    # 3. Apply the LUT to the image
-    return cv2.LUT(img, lut)
-
 
 # ---------------------------------------------------------------------------
 # Individual extraction helpers
@@ -165,11 +143,6 @@ def _extractStats(
         screenInfo.echoes.fullStatsValue.y : screenInfo.echoes.fullStatsValue.y + screenInfo.echoes.fullStatsValue.h,
         screenInfo.echoes.fullStatsValue.x : screenInfo.echoes.fullStatsValue.x + screenInfo.echoes.fullStatsValue.w,
     ]
-
-    name_crop = darken_background_preserve_edges_ndarray(name_crop)
-    value_crop = darken_background_preserve_edges_ndarray(value_crop)
-
-    logging.warning("grayscale graded")
 
     return extractor.execute(name_crop, value_crop, _cache, scan_index)
 
@@ -555,9 +528,6 @@ def _processRawScan(
                     screenInfo.echoes.fullStatsValue.y : screenInfo.echoes.fullStatsValue.y + screenInfo.echoes.fullStatsValue.h,
                     screenInfo.echoes.fullStatsValue.x : screenInfo.echoes.fullStatsValue.x + screenInfo.echoes.fullStatsValue.w,
                 ]
-                name_crop  = darken_background_preserve_edges_ndarray(name_crop)
-                value_crop = darken_background_preserve_edges_ndarray(value_crop)
-
                 retry_tune_lv, retry_stats, retry_trace = extractor.retry_execute(
                     name_crop, value_crop, scan.index
                 )

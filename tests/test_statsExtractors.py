@@ -32,7 +32,6 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from scraping.processing.echoesProcessor import darken_background_preserve_edges_ndarray
 from scraping.processing.statsExtractor import (
     RapidOcrStatsExtractor,
     RapidOcrCoordStatsExtractor,
@@ -45,7 +44,7 @@ from scraping.processing.statsExtractor import (
 # ---------------------------------------------------------------------------
 
 _SESSION_RAW = Path("K:/wuwa/export/2026-03-07_17-42-36/raw")
-_ECHO_INDICES = range(100)  # echo_0000 … echo_0099
+_ECHO_INDICES = range(100, 200)  # echo_0000 … echo_0099
 
 
 def _collect_cases() -> list[pytest.param]:
@@ -146,9 +145,6 @@ class TestRapidOcrStatsExtractor:
         value_crop = _load_image(debug_dir / "stats_value.png")
         level, expected_tune, expected_stats = _load_expected(debug_dir)
 
-        name_crop = darken_background_preserve_edges_ndarray(name_crop)
-        value_crop = darken_background_preserve_edges_ndarray(value_crop)
-
         tune_lv, stats, _ = rapid_extractor.execute(name_crop, value_crop, {}, scan_index=idx)
 
         sub_count = len(stats.get("sub", {}))
@@ -175,9 +171,6 @@ class TestRapidOcrCoordStatsExtractor:
         name_crop  = _load_image(debug_dir / "stats_name.png")
         value_crop = _load_image(debug_dir / "stats_value.png")
         level, expected_tune, expected_stats = _load_expected(debug_dir)
-
-        name_crop = darken_background_preserve_edges_ndarray(name_crop)
-        value_crop = darken_background_preserve_edges_ndarray(value_crop)
 
         tune_lv, stats, _ = rapid_coord_extractor.execute(name_crop, value_crop, {}, scan_index=idx)
 
@@ -209,9 +202,6 @@ class TestTesserOcrStatsExtractor:
         value_crop = _load_image(debug_dir / "stats_value.png")
         level, expected_tune, expected_stats = _load_expected(debug_dir)
 
-        name_crop = darken_background_preserve_edges_ndarray(name_crop)
-        value_crop = darken_background_preserve_edges_ndarray(value_crop)
-
         tune_lv, stats, _ = tesser_extractor.execute(name_crop, value_crop, {}, scan_index=idx)
 
         sub_count = len(stats.get("sub", {}))
@@ -241,9 +231,6 @@ class TestTesserOcrCoordStatsExtractor:
         name_crop  = _load_image(debug_dir / "stats_name.png")
         value_crop = _load_image(debug_dir / "stats_value.png")
         level, expected_tune, expected_stats = _load_expected(debug_dir)
-
-        name_crop = darken_background_preserve_edges_ndarray(name_crop)
-        value_crop = darken_background_preserve_edges_ndarray(value_crop)
 
         tune_lv, stats, _ = tesser_coord_extractor.execute(
             name_crop, value_crop, {}, scan_index=idx

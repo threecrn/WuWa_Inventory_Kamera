@@ -40,7 +40,7 @@ from collections import defaultdict
 import numpy as np
 
 from scraping.data import echoStats
-from scraping.utils import convertToBlackWhite, imageToString
+from scraping.utils import convertToBlackWhite, darken_background_preserve_edges_ndarray, imageToString
 
 logger = logging.getLogger(__name__)
 
@@ -117,8 +117,10 @@ class StatsExtractor(abc.ABC):
         self._use_bw = use_bw
 
     def _prepare(self, image: np.ndarray) -> np.ndarray:
-        """Return *image* after the optional B/W conversion."""
-        return convertToBlackWhite(image) if self._use_bw else image
+        """Preprocess *image* for OCR: darken the gradient background, then
+        optionally convert to B/W for Tesseract-based backends."""
+        img = darken_background_preserve_edges_ndarray(image)
+        return convertToBlackWhite(img) if self._use_bw else img
 
     @abc.abstractmethod
     def _ocr_and_pair(

@@ -62,6 +62,28 @@ def screenshot(left: int = 0, top: int = 0, width: int = 0, height: int = 0, mon
 
     return image
 
+def darken_background_preserve_edges_ndarray(image: np.ndarray, threshold: int = 100) -> np.ndarray:
+    """
+    Convert a colour (RGB) or greyscale crop to greyscale and crush the
+    low-luminance background to black while linearly stretching the
+    foreground (text) range above *threshold* to full 0-255.
+
+    This removes the game's colour-graded gradient background so that OCR
+    engines see high-contrast white text on a black field.
+    """
+    if len(image.shape) == 3 and image.shape[2] == 3:
+        img = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    elif len(image.shape) == 2:
+        img = image
+    else:
+        raise ValueError(f"Unsupported image format: shape={image.shape}")
+    lut = np.zeros(256, dtype=np.uint8)
+    for i in range(256):
+        if i >= threshold:
+            lut[i] = int((i - threshold) * (255 / (255 - threshold)))
+    return cv2.LUT(img, lut)
+
+
 def convertToBlackWhite(image: np.ndarray):
     if len(image.shape) == 3 and image.shape[2] == 3:
         gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
