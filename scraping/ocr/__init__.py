@@ -271,7 +271,7 @@ def imageToString(
             lines.append((bbox, text))
 
         groupedLines = []
-        currentRow = []
+        currentRow: list[tuple] = []
         lastY = None
 
         for bbox, text in lines:
@@ -279,10 +279,10 @@ def imageToString(
             yMax = max(point[1] for point in bbox)
 
             if lastY is None or (yMin < lastY + 10):
-                currentRow.append(text)
+                currentRow.append((bbox, text))
             else:
                 groupedLines.append(currentRow)
-                currentRow = [text]
+                currentRow = [(bbox, text)]
 
             lastY = yMax
 
@@ -291,7 +291,12 @@ def imageToString(
 
         finalOutput = []
         for row in groupedLines:
-            finalOutput.append(divisor.join(row))
+            # Sort tokens left-to-right by their leftmost X coordinate so that
+            # the OCR engine's arbitrary detection order doesn't scramble words
+            # that belong on the same visual line (e.g. "Mining Drone" →
+            # "drone" + "mining" became "droneminig" without this sort).
+            row.sort(key=lambda item: min(point[0] for point in item[0]))
+            finalOutput.append(divisor.join(text for _, text in row))
 
         result = '\n'.join(finalOutput).strip()
         _trace(_logger, 'imageToString — final output: %r', result)

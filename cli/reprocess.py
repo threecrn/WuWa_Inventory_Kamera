@@ -55,7 +55,19 @@ from properties.app_config import app_config                           # noqa: E
 from scraping.models.rawScan import RawEchoScan                        # noqa: E402
 from scraping.utils.common import loadRawScans                         # noqa: E402
 from scraping.processing.echoesProcessor import echoProcessor          # noqa: E402
-import scraping.ocr as _ocr                                            # noqa: E402
+from scraping.processing.statsExtractor import (                       # noqa: E402
+    RapidOcrStatsExtractor,
+    RapidOcrCoordStatsExtractor,
+    TesserOcrStatsExtractor,
+    TesserOcrCoordStatsExtractor,
+)
+
+_EXTRACTOR_MAP = {
+    'rapid':        RapidOcrStatsExtractor,
+    'rapid_coord':  RapidOcrCoordStatsExtractor,
+    'tesser':       TesserOcrStatsExtractor,
+    'tesser_coord': TesserOcrCoordStatsExtractor,
+}
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -205,17 +217,30 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        '--ocr-backend', default='rapidocr', metavar='NAME',
+        '--extractor',
+        choices=['rapid', 'rapid_coord', 'tesser', 'tesser_coord'],
+        default='rapid_coord',
         help=(
-            'OCR backend to use. Built-in: rapidocr (default). '
-            'Use scraping.ocr.register() to add custom backends.'
+            'Stat extractor to use (default: rapid_coord). '
+            '"rapid" = RapidOCR line-order, '
+            '"rapid_coord" = RapidOCR Y-coord alignment + wrapped-name handling, '
+            '"tesser" = Tesseract line-order, '
+            '"tesser_coord" = Tesseract Y-coord alignment.'
         ),
     )
     parser.add_argument(
-        '--ocr-params', default='{}', metavar='JSON',
+        '--use-bw', action='store_true', default=False,
         help=(
-            'JSON object of keyword arguments forwarded to the backend constructor. '
-            'Example: \'{"text_score": 0.6}\' or \'{"use_angle_cls": true}\''
+            'Force B/W pre-processing of crops before OCR. '
+            'Already on by default for Tesseract extractors; '
+            'can be combined with RapidOCR for comparison.'
+        ),
+    )
+    parser.add_argument(
+        '--extractor-params', default='{}', metavar='JSON',
+        help=(
+            'JSON object of keyword arguments forwarded to the extractor/backend '
+            'constructor. Example: \'{"text_score": 0.6}\' or \'{"pad_px": 15}\''
         ),
     )
     parser.add_argument(
@@ -234,20 +259,22 @@ def main() -> None:
     if args.min_level is not None:
         app_config.echoMinLevel = args.min_level
 
-    # -- Configure OCR backend -----------------------------------------------
+    # -- Build extractor -----------------------------------------------------
     try:
-        ocr_params = json.loads(args.ocr_params)
+        extractor_params = json.loads(args.extractor_params)
     except json.JSONDecodeError as exc:
-        logger.error('--ocr-params is not valid JSON: %s', exc)
+        logger.error('--extractor-params is not valid JSON: %s', exc)
         sys.exit(1)
+
+    extractor_cls = _EXTRACTOR_MAP[args.extractor]
+    use_bw: bool = args.use_bw
     try:
-        _ocr.set_default(args.ocr_backend, **ocr_params)
-    except KeyError:
-        logger.error(
-            'Unknown OCR backend %r. Available: %s',
-            args.ocr_backend, _ocr.list_backends(),
-        )
+        extractor = extractor_cls(use_bw=use_bw, **extractor_params)
+    except Exception as exc:
+        logger.error('Failed to initialise extractor %r: %s', args.extractor, exc)
         sys.exit(1)
+    logger.info('Extractor : %s(use_bw=%r%s)', args.extractor, use_bw,
+                f', {extractor_params}' if extractor_params else '')
 
     export_dir = Path(args.export_dir) if args.export_dir else Path(app_config.exportFolder)
 
@@ -310,7 +337,8 @@ def main() -> None:
     # -- Process --------------------------------------------------------------
     workers: int = args.workers if args.workers is not None else (os.cpu_count() or 4)
     logger.info('Workers   : %d', workers)
-    echoes = echoProcessor(scans, session_id, raw_dir, workers=workers, write_debug=args.write_debug)
+    echoes = echoProcessor(scans, session_id, raw_dir, workers=workers,
+                           write_debug=args.write_debug, extractor=extractor)
     logger.info('Accepted %d / %d echo(es)', len(echoes), len(scans))
 
     # -- Write output ---------------------------------------------------------

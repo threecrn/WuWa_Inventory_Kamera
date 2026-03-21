@@ -159,7 +159,6 @@ class BaseDataUpdater:
 
 	def updateFiles(self) -> None:
 		"""Download remote files that have changed since the last run."""
-		return
 		for fileConfig in self.files:
 			url = self.API.format(
 				owner=self.author,

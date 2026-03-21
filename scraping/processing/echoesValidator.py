@@ -257,6 +257,18 @@ def infer_cost(stats: dict) -> int | None:
     return None
 
 
+def expected_sub_count(level: int) -> int:
+    """Return the expected number of substats for an echo at *level*.
+
+    Reads ``max_substats_by_level`` from the validation spec.  Returns 0
+    when the spec is not loaded or *level* is out of range.
+    """
+    tbl = _SPEC.get('max_substats_by_level', [])
+    if tbl and 0 <= level < len(tbl):
+        return tbl[level]
+    return 0
+
+
 def validate_echo_stats(
     cost: int,
     level: int,

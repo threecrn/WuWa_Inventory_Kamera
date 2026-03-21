@@ -32,6 +32,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
+from scraping.processing.echoesValidator import expected_sub_count, infer_cost, validate_echo_stats
 from scraping.processing.statsExtractor import (
     RapidOcrStatsExtractor,
     RapidOcrCoordStatsExtractor,
@@ -44,7 +45,7 @@ from scraping.processing.statsExtractor import (
 # ---------------------------------------------------------------------------
 
 _SESSION_RAW = Path("K:/wuwa/export/2026-03-07_17-42-36/raw")
-_ECHO_INDICES = range(100, 200)  # echo_0000 … echo_0099
+_ECHO_INDICES = range(100, 200)  # echo_0100 … echo_0199
 
 
 def _collect_cases() -> list[pytest.param]:
@@ -82,11 +83,33 @@ def _load_image(path: Path) -> np.ndarray:
     return np.array(Image.open(path).convert("RGB"))
 
 
-def _load_expected(debug_dir: Path) -> tuple[int, int, dict]:
-    """Return ``(level, tune_lv, stats)`` from ``result.json``."""
+def _load_expected(debug_dir: Path) -> tuple[int, int, int, int, dict]:
+    """Return ``(cost, rarity, level, tune_lv, stats)`` from ``result.json``."""
     data = json.loads((debug_dir / "result.json").read_text(encoding="utf-8"))
     echo_data = next(iter(data.values()))
-    return echo_data["level"], echo_data["tuneLv"], echo_data["stats"]
+    cost = echo_data.get("_cost") or infer_cost(echo_data["stats"]) or 0
+    return cost, echo_data["rarity"], echo_data["level"], echo_data["tuneLv"], echo_data["stats"]
+
+
+def _retry_if_needed(
+    extractor,
+    name_crop: np.ndarray,
+    value_crop: np.ndarray,
+    idx: int,
+    cost: int,
+    rarity: int,
+    level: int,
+    tune_lv: int,
+    stats: dict,
+) -> tuple[int, dict]:
+    """Mirror _processRawScan's retry logic: retry when validation fails or
+    a level-25 echo has fewer than 5 substats."""
+    sub_count = len(stats.get("sub", {}))
+    missing_substats = sub_count < expected_sub_count(level)
+    vresult = validate_echo_stats(cost, level, rarity, stats) if cost else None
+    if missing_substats or (vresult is not None and not vresult.valid):
+        tune_lv, stats, _ = extractor.retry_execute(name_crop, value_crop, idx)
+    return tune_lv, stats
 
 
 # ---------------------------------------------------------------------------
@@ -143,13 +166,12 @@ class TestRapidOcrStatsExtractor:
     def test_stats_match(self, rapid_extractor, idx, debug_dir):
         name_crop  = _load_image(debug_dir / "stats_name.png")
         value_crop = _load_image(debug_dir / "stats_value.png")
-        level, expected_tune, expected_stats = _load_expected(debug_dir)
+        cost, rarity, level, expected_tune, expected_stats = _load_expected(debug_dir)
 
         tune_lv, stats, _ = rapid_extractor.execute(name_crop, value_crop, {}, scan_index=idx)
-
-        sub_count = len(stats.get("sub", {}))
-        if level == 25 and sub_count < 5:
-            tune_lv, stats, _ = rapid_extractor.retry_execute(name_crop, value_crop, idx)
+        tune_lv, stats = _retry_if_needed(
+            rapid_extractor, name_crop, value_crop, idx, cost, rarity, level, tune_lv, stats
+        )
 
         assert tune_lv == expected_tune, (
             f"echo_{idx:04d}: tune_lv {tune_lv!r} != expected {expected_tune!r}"
@@ -170,13 +192,12 @@ class TestRapidOcrCoordStatsExtractor:
     def test_stats_match(self, rapid_coord_extractor, idx, debug_dir):
         name_crop  = _load_image(debug_dir / "stats_name.png")
         value_crop = _load_image(debug_dir / "stats_value.png")
-        level, expected_tune, expected_stats = _load_expected(debug_dir)
+        cost, rarity, level, expected_tune, expected_stats = _load_expected(debug_dir)
 
         tune_lv, stats, _ = rapid_coord_extractor.execute(name_crop, value_crop, {}, scan_index=idx)
-
-        sub_count = len(stats.get("sub", {}))
-        if level == 25 and sub_count < 5:
-            tune_lv, stats, _ = rapid_coord_extractor.retry_execute(name_crop, value_crop, idx)
+        tune_lv, stats = _retry_if_needed(
+            rapid_coord_extractor, name_crop, value_crop, idx, cost, rarity, level, tune_lv, stats
+        )
 
         assert tune_lv == expected_tune, (
             f"echo_{idx:04d}: tune_lv {tune_lv!r} != expected {expected_tune!r}"
@@ -200,13 +221,12 @@ class TestTesserOcrStatsExtractor:
     def test_stats_match(self, tesser_extractor, idx, debug_dir):
         name_crop  = _load_image(debug_dir / "stats_name.png")
         value_crop = _load_image(debug_dir / "stats_value.png")
-        level, expected_tune, expected_stats = _load_expected(debug_dir)
+        cost, rarity, level, expected_tune, expected_stats = _load_expected(debug_dir)
 
         tune_lv, stats, _ = tesser_extractor.execute(name_crop, value_crop, {}, scan_index=idx)
-
-        sub_count = len(stats.get("sub", {}))
-        if level == 25 and sub_count < 5:
-            tune_lv, stats, _ = tesser_extractor.retry_execute(name_crop, value_crop, idx)
+        tune_lv, stats = _retry_if_needed(
+            tesser_extractor, name_crop, value_crop, idx, cost, rarity, level, tune_lv, stats
+        )
 
         assert tune_lv == expected_tune, (
             f"echo_{idx:04d}: tune_lv {tune_lv!r} != expected {expected_tune!r}"
@@ -230,15 +250,14 @@ class TestTesserOcrCoordStatsExtractor:
     def test_stats_match(self, tesser_coord_extractor, idx, debug_dir):
         name_crop  = _load_image(debug_dir / "stats_name.png")
         value_crop = _load_image(debug_dir / "stats_value.png")
-        level, expected_tune, expected_stats = _load_expected(debug_dir)
+        cost, rarity, level, expected_tune, expected_stats = _load_expected(debug_dir)
 
         tune_lv, stats, _ = tesser_coord_extractor.execute(
             name_crop, value_crop, {}, scan_index=idx
         )
-
-        sub_count = len(stats.get("sub", {}))
-        if level == 25 and sub_count < 5:
-            tune_lv, stats, _ = tesser_coord_extractor.retry_execute(name_crop, value_crop, idx)
+        tune_lv, stats = _retry_if_needed(
+            tesser_coord_extractor, name_crop, value_crop, idx, cost, rarity, level, tune_lv, stats
+        )
 
         assert tune_lv == expected_tune, (
             f"echo_{idx:04d}: tune_lv {tune_lv!r} != expected {expected_tune!r}"

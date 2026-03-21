@@ -46,7 +46,7 @@ import numpy as np
 from game.screenInfo import ScreenInfo
 from properties.app_config import app_config
 from scraping.models.rawScan import RawEchoScan
-from scraping.processing.echoesValidator import infer_cost, validate_echo_stats
+from scraping.processing.echoesValidator import infer_cost, expected_sub_count, validate_echo_stats
 from scraping.processing.statsExtractor import (
     RapidOcrStatsExtractor,
     StatsExtractor,
@@ -476,9 +476,15 @@ def _processRawScan(
 
         if sonata not in sonataName:
             logger.warning(
-                "Scan %d — sonata name %r not in known set names (raw OCR: %r)",
-                scan.index, sonata, sonata_raw,
+                "Scan %d — sonata OCR failed: no known set name found in %r | image: %s",
+                scan.index, sonata_raw[:120],
+                raw_base / f"echo_{scan.index:04d}" / "sonata.png",
             )
+            if write_debug:
+                ocr_trace['sonata'] = {'raw_ocr': sonata_raw, 'matched': None}
+                ocr_trace['decision'] = 'rejected: sonata not recognized'
+                _writeDebugCrops(scan, screenInfo, echo_card, debug_dir, ocr_trace)
+            return None
 
         echo = _buildEcho(name, level, tune_lv, sonata, rarity, stats)
 
@@ -501,18 +507,17 @@ def _processRawScan(
         if cost is not None:
             vresult = validate_echo_stats(cost, level, rarity, stats)
 
-            # Heuristic: a level-25 echo is always fully tuned (5 substats).
-            # Fewer than 5 means OCR almost certainly missed a value line, even
-            # when the validator doesn't flag a structural error.
+            # Heuristic: if the echo has fewer substats than it should have at
+            # this level, OCR almost certainly missed one or more value lines.
             _sub_count = len(stats.get('sub', {}))
-            _missing_substats = level == 25 and _sub_count < 5
+            _missing_substats = _sub_count < expected_sub_count(level)
 
             if (_missing_substats or not vresult.valid) and extractor is not None:
                 if _missing_substats and vresult.valid:
                     logger.info(
-                        "Scan %d — level 25 echo has only %d/5 substats; "
+                        "Scan %d — level %d echo has only %d/%d substats; "
                         "retrying with thorough OCR.",
-                        scan.index, _sub_count,
+                        scan.index, level, _sub_count, expected_sub_count(level),
                     )
                 else:
                     logger.info(
