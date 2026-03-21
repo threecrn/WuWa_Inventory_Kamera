@@ -83,11 +83,11 @@ def _load_image(path: Path) -> np.ndarray:
     return np.array(Image.open(path).convert("RGB"))
 
 
-def _load_expected(debug_dir: Path) -> tuple[int, dict]:
-    """Return ``(tune_lv, stats)`` from ``result.json``."""
+def _load_expected(debug_dir: Path) -> tuple[int, int, dict]:
+    """Return ``(level, tune_lv, stats)`` from ``result.json``."""
     data = json.loads((debug_dir / "result.json").read_text(encoding="utf-8"))
     echo_data = next(iter(data.values()))
-    return echo_data["tuneLv"], echo_data["stats"]
+    return echo_data["level"], echo_data["tuneLv"], echo_data["stats"]
 
 
 # ---------------------------------------------------------------------------
@@ -144,12 +144,16 @@ class TestRapidOcrStatsExtractor:
     def test_stats_match(self, rapid_extractor, idx, debug_dir):
         name_crop  = _load_image(debug_dir / "stats_name.png")
         value_crop = _load_image(debug_dir / "stats_value.png")
-        expected_tune, expected_stats = _load_expected(debug_dir)
+        level, expected_tune, expected_stats = _load_expected(debug_dir)
 
         name_crop = darken_background_preserve_edges_ndarray(name_crop)
         value_crop = darken_background_preserve_edges_ndarray(value_crop)
 
         tune_lv, stats, _ = rapid_extractor.execute(name_crop, value_crop, {}, scan_index=idx)
+
+        sub_count = len(stats.get("sub", {}))
+        if level == 25 and sub_count < 5:
+            tune_lv, stats, _ = rapid_extractor.retry_execute(name_crop, value_crop, idx)
 
         assert tune_lv == expected_tune, (
             f"echo_{idx:04d}: tune_lv {tune_lv!r} != expected {expected_tune!r}"
@@ -170,12 +174,16 @@ class TestRapidOcrCoordStatsExtractor:
     def test_stats_match(self, rapid_coord_extractor, idx, debug_dir):
         name_crop  = _load_image(debug_dir / "stats_name.png")
         value_crop = _load_image(debug_dir / "stats_value.png")
-        expected_tune, expected_stats = _load_expected(debug_dir)
+        level, expected_tune, expected_stats = _load_expected(debug_dir)
 
         name_crop = darken_background_preserve_edges_ndarray(name_crop)
         value_crop = darken_background_preserve_edges_ndarray(value_crop)
 
         tune_lv, stats, _ = rapid_coord_extractor.execute(name_crop, value_crop, {}, scan_index=idx)
+
+        sub_count = len(stats.get("sub", {}))
+        if level == 25 and sub_count < 5:
+            tune_lv, stats, _ = rapid_coord_extractor.retry_execute(name_crop, value_crop, idx)
 
         assert tune_lv == expected_tune, (
             f"echo_{idx:04d}: tune_lv {tune_lv!r} != expected {expected_tune!r}"
@@ -199,12 +207,16 @@ class TestTesserOcrStatsExtractor:
     def test_stats_match(self, tesser_extractor, idx, debug_dir):
         name_crop  = _load_image(debug_dir / "stats_name.png")
         value_crop = _load_image(debug_dir / "stats_value.png")
-        expected_tune, expected_stats = _load_expected(debug_dir)
+        level, expected_tune, expected_stats = _load_expected(debug_dir)
 
         name_crop = darken_background_preserve_edges_ndarray(name_crop)
         value_crop = darken_background_preserve_edges_ndarray(value_crop)
 
         tune_lv, stats, _ = tesser_extractor.execute(name_crop, value_crop, {}, scan_index=idx)
+
+        sub_count = len(stats.get("sub", {}))
+        if level == 25 and sub_count < 5:
+            tune_lv, stats, _ = tesser_extractor.retry_execute(name_crop, value_crop, idx)
 
         assert tune_lv == expected_tune, (
             f"echo_{idx:04d}: tune_lv {tune_lv!r} != expected {expected_tune!r}"
@@ -228,7 +240,7 @@ class TestTesserOcrCoordStatsExtractor:
     def test_stats_match(self, tesser_coord_extractor, idx, debug_dir):
         name_crop  = _load_image(debug_dir / "stats_name.png")
         value_crop = _load_image(debug_dir / "stats_value.png")
-        expected_tune, expected_stats = _load_expected(debug_dir)
+        level, expected_tune, expected_stats = _load_expected(debug_dir)
 
         name_crop = darken_background_preserve_edges_ndarray(name_crop)
         value_crop = darken_background_preserve_edges_ndarray(value_crop)
@@ -236,6 +248,10 @@ class TestTesserOcrCoordStatsExtractor:
         tune_lv, stats, _ = tesser_coord_extractor.execute(
             name_crop, value_crop, {}, scan_index=idx
         )
+
+        sub_count = len(stats.get("sub", {}))
+        if level == 25 and sub_count < 5:
+            tune_lv, stats, _ = tesser_coord_extractor.retry_execute(name_crop, value_crop, idx)
 
         assert tune_lv == expected_tune, (
             f"echo_{idx:04d}: tune_lv {tune_lv!r} != expected {expected_tune!r}"

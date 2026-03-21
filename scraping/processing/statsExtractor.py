@@ -214,6 +214,71 @@ class StatsExtractor(abc.ABC):
 
         return tune_lv, dict(stats), trace
 
+    def retry_execute(
+        self,
+        name_crop: np.ndarray,
+        value_crop: np.ndarray,
+        scan_index: int = 0,
+    ) -> tuple[int, dict, dict]:
+        """
+        Re-run stat extraction using the backend's thorough multi-pass OCR.
+
+        Called when semantic validation of a :meth:`execute` result has
+        flagged errors or suspicious values.  Unlike :meth:`execute` the
+        result is **never cached** — the whole point is to get a better
+        result than the cached fast-pass.
+
+        The default implementation checks whether the extractor's backend
+        exposes a ``thorough_recognize`` method (as
+        :class:`~scraping.ocr._rapidocr.RapidOcrBackend` does).  If it does,
+        ``recognize`` is temporarily replaced with ``thorough_recognize`` for
+        the duration of the call.  Subclasses may override this for custom
+        retry logic.
+
+        Returns the same ``(tune_lv, stats_dict, ocr_trace)`` tuple as
+        :meth:`execute`.
+        """
+        backend = getattr(self, '_backend', None)
+        thorough = getattr(backend, 'thorough_recognize', None)
+
+        if backend is not None and thorough is not None:
+            # Temporarily patch recognize → thorough_recognize
+            original_recognize = backend.recognize
+            backend.recognize = thorough  # type: ignore[method-assign]
+            try:
+                names, values, trace = self._ocr_and_pair(
+                    self._prepare(name_crop),
+                    self._prepare(value_crop),
+                    scan_index,
+                )
+            finally:
+                backend.recognize = original_recognize  # type: ignore[method-assign]
+        else:
+            # Backend has no thorough mode — plain re-run (clears the cache effect)
+            names, values, trace = self._ocr_and_pair(
+                self._prepare(name_crop),
+                self._prepare(value_crop),
+                scan_index,
+            )
+
+        logger.debug("Scan %d — retry stats names: %s", scan_index, names)
+        logger.debug("Scan %d — retry stats values: %s", scan_index, values)
+
+        tune_lv = max(0, len(values) - 2)
+        stats: dict = defaultdict(dict)
+        for idx, (stat_name, stat_value) in enumerate(zip(names, values)):
+            stat_name = echoStats.get(stat_name, stat_name)
+            bucket = 'main' if idx < 2 else 'sub'
+            try:
+                if stat_value.endswith('%'):
+                    stats[bucket][f"{stat_name}%"] = float(stat_value[:-1])
+                else:
+                    stats[bucket][stat_name] = int(stat_value)
+            except Exception:
+                stats[bucket][stat_name] = stat_value
+
+        return tune_lv, dict(stats), trace
+
 
 # ---------------------------------------------------------------------------
 # Concrete implementations

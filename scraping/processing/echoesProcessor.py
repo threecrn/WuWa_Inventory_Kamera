@@ -523,10 +523,76 @@ def _processRawScan(
         ocr_trace['stats'] = stats_trace
         ocr_trace['sonata'] = {'raw_ocr': sonata_raw, 'matched': sonata}
 
-        # --- Validation ---
+        # --- Validation (with automatic retry on errors) ---
         cost = cost_from_id if cost_from_id is not None else infer_cost(stats)
         if cost is not None:
             vresult = validate_echo_stats(cost, level, rarity, stats)
+
+            # Heuristic: a level-25 echo is always fully tuned (5 substats).
+            # Fewer than 5 means OCR almost certainly missed a value line, even
+            # when the validator doesn't flag a structural error.
+            _sub_count = len(stats.get('sub', {}))
+            _missing_substats = level == 25 and _sub_count < 5
+
+            if (_missing_substats or not vresult.valid) and extractor is not None:
+                if _missing_substats and vresult.valid:
+                    logger.info(
+                        "Scan %d — level 25 echo has only %d/5 substats; "
+                        "retrying with thorough OCR.",
+                        scan.index, _sub_count,
+                    )
+                else:
+                    logger.info(
+                        "Scan %d — fast-pass validation failed (%d error(s)); "
+                        "retrying with thorough OCR. Errors: %s",
+                        scan.index, len(vresult.errors), vresult.errors,
+                    )
+                name_crop = image[
+                    screenInfo.echoes.fullStatsName.y : screenInfo.echoes.fullStatsName.y + screenInfo.echoes.fullStatsName.h,
+                    screenInfo.echoes.fullStatsName.x : screenInfo.echoes.fullStatsName.x + screenInfo.echoes.fullStatsName.w,
+                ]
+                value_crop = image[
+                    screenInfo.echoes.fullStatsValue.y : screenInfo.echoes.fullStatsValue.y + screenInfo.echoes.fullStatsValue.h,
+                    screenInfo.echoes.fullStatsValue.x : screenInfo.echoes.fullStatsValue.x + screenInfo.echoes.fullStatsValue.w,
+                ]
+                name_crop  = darken_background_preserve_edges_ndarray(name_crop)
+                value_crop = darken_background_preserve_edges_ndarray(value_crop)
+
+                retry_tune_lv, retry_stats, retry_trace = extractor.retry_execute(
+                    name_crop, value_crop, scan.index
+                )
+                retry_vresult = validate_echo_stats(cost, level, rarity, retry_stats)
+
+                retry_sub_count = len(retry_stats.get('sub', {}))
+                retry_improved = (
+                    retry_vresult.valid or
+                    len(retry_vresult.errors) < len(vresult.errors) or
+                    retry_sub_count > _sub_count
+                )
+                if retry_improved:
+                    logger.info(
+                        "Scan %d — thorough-pass improved result "
+                        "(%d → %d validation error(s)).",
+                        scan.index, len(vresult.errors), len(retry_vresult.errors),
+                    )
+                    tune_lv, stats, stats_trace = retry_tune_lv, retry_stats, retry_trace
+                    vresult = retry_vresult
+                    echo = _buildEcho(name, level, tune_lv, sonata, rarity, stats)
+                    echo_data = next(iter(echo.values()))
+                    echo_data['_scanIndex'] = scan.index
+                    if monster_id is not None:
+                        echo_data['_monsterId'] = monster_id
+                    if cost_from_id is not None:
+                        echo_data['_cost'] = cost_from_id
+                    ocr_trace['stats'] = stats_trace
+                    ocr_trace['stats_retry'] = True
+                else:
+                    logger.debug(
+                        "Scan %d — thorough-pass did not improve result; "
+                        "keeping fast-pass output.",
+                        scan.index,
+                    )
+
             for msg in vresult.warnings:
                 logger.warning("Scan %d — validation warning: %s", scan.index, msg)
             if not vresult.valid:

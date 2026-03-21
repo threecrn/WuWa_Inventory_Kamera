@@ -101,15 +101,24 @@ def _print_token_table(results: list) -> None:
 # Extractor runner
 # ---------------------------------------------------------------------------
 
-def _run_extractor(name: str, extractor, name_img: np.ndarray, value_img: np.ndarray) -> None:
+def _run_extractor(
+    name: str,
+    extractor,
+    name_img: np.ndarray,
+    value_img: np.ndarray,
+    thorough: bool = False,
+) -> None:
     """Run *extractor* and print a human-readable summary of the result."""
     print(f'\n{"="*60}')
-    print(f'  Extractor: {name}')
+    print(f'  Extractor: {name}{" (thorough retry)" if thorough else ""}')
     print(f'  {extractor!r}')
     print('=' * 60)
 
     try:
-        tune_lv, stats, trace = extractor.execute(name_img, value_img, {}, scan_index=0)
+        if thorough:
+            tune_lv, stats, trace = extractor.retry_execute(name_img, value_img, scan_index=0)
+        else:
+            tune_lv, stats, trace = extractor.execute(name_img, value_img, {}, scan_index=0)
     except Exception as exc:
         print(f'  ERROR: {exc}')
         raise
@@ -143,13 +152,25 @@ def _run_extractor(name: str, extractor, name_img: np.ndarray, value_img: np.nda
 # Backend-level raw dump (bypasses the extractor layer)
 # ---------------------------------------------------------------------------
 
-def _dump_backend_raw(backend, name_img: np.ndarray, value_img: np.ndarray) -> tuple:
+def _dump_backend_raw(
+    backend,
+    name_img: np.ndarray,
+    value_img: np.ndarray,
+    thorough: bool = False,
+) -> tuple:
     """Run *backend* directly and return the raw token lists for both crops."""
-    name_results = backend.recognize(name_img)
-    value_results = backend.recognize(value_img)
-    print('\n  --- backend raw: name crop ---')
+    recognize = getattr(backend, 'thorough_recognize', None) if thorough else None
+    if recognize is None:
+        recognize = backend.recognize
+        if thorough:
+            print('  (backend has no thorough_recognize — using recognize)')
+
+    name_results  = recognize(name_img)
+    value_results = recognize(value_img)
+    label = 'thorough' if thorough else 'fast'
+    print(f'\n  --- backend raw [{label}]: name crop ---')
     _print_token_table(name_results)
-    print('\n  --- backend raw: value crop ---')
+    print(f'\n  --- backend raw [{label}]: value crop ---')
     _print_token_table(value_results)
     return name_results, value_results
 
@@ -181,6 +202,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument('--fallback-text-score', type=float, default=0.3, metavar='SCORE',
                    help='text_score for the low-conf fallback RapidOCR pass '
                         '(default: 0.3). Use 0 to disable.')
+    p.add_argument('--thorough', action='store_true',
+                   help='Run thorough_recognize (multi-pass) instead of fast single-pass '
+                        'for both the raw dump and the extractor calls.')
     p.add_argument('--annotate', action='store_true',
                    help='Save annotated bounding-box images alongside the originals.')
     p.add_argument('--no-preprocess', action='store_true',
@@ -283,17 +307,18 @@ def main() -> None:
         print('  RAW BACKEND OUTPUT (RapidOcrBackend)')
         print('#' * 60)
         name_raw_tokens, value_raw_tokens = _dump_backend_raw(
-            rapid_backend, name_img, value_img
+            rapid_backend, name_img, value_img, thorough=args.thorough
         )
         if args.annotate:
+            suffix = '_thorough' if args.thorough else ''
             _annotate(name_img,  name_raw_tokens,  'rapid_name',
-                      debug_dir / 'debug_ocr_rapid_name.png')
+                      debug_dir / f'debug_ocr_rapid_name{suffix}.png')
             _annotate(value_img, value_raw_tokens, 'rapid_value',
-                      debug_dir / 'debug_ocr_rapid_value.png')
+                      debug_dir / f'debug_ocr_rapid_value{suffix}.png')
 
     # Run each extractor
     for key, extractor in extractors.items():
-        _run_extractor(key, extractor, name_img, value_img)
+        _run_extractor(key, extractor, name_img, value_img, thorough=args.thorough)
 
     print('\nDone.')
 

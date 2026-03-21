@@ -393,9 +393,10 @@ def validate_echo_stats(
             )
         elif max_subs > 0 and len(sub) < max_subs:
             result.add_warning(
-                f"Fewer substats than expected: {len(sub)} found, "
-                f"maximum at level {level} is {max_subs} "
-                f"\u2014 possible missing OCR lines."
+                f"Suspicious substat count: {len(sub)} found but {max_subs} expected "
+                f"at level {level} — the echo should have been upgraded to "
+                f"{max_subs} substat(s) by now. Possible missing OCR line(s) "
+                f"or player skipped upgrade."
             )
 
     # -----------------------------------------------------------------------

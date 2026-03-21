@@ -16,12 +16,31 @@ from scraping.ocr._types import OcrResult
 logger = logging.getLogger(__name__)
 
 # Minimum Y-centre distance (pixels) for two bounding boxes to be considered
-# distinct tokens when merging dual-pass results.
+# distinct tokens when merging multi-pass results.
 _DEDUP_Y_THRESHOLD = 15
 
 
 def _y_center(bbox) -> float:
     return sum(pt[1] for pt in bbox) / len(bbox)
+
+
+def _merge_unique(base: list[OcrResult], candidates: list[OcrResult]) -> list[OcrResult]:
+    """
+    Append tokens from *candidates* whose Y-centre is absent in *base*
+    (within ``_DEDUP_Y_THRESHOLD`` pixels).  Returns the extended list.
+    """
+    existing_ys = [_y_center(bbox) for bbox, _, _ in base]
+    added = list(base)
+    for bbox, text, conf in candidates:
+        yc = _y_center(bbox)
+        if all(abs(yc - ey) > _DEDUP_Y_THRESHOLD for ey in existing_ys):
+            added.append((bbox, text, conf))
+            existing_ys.append(yc)
+            logger.debug(
+                'RapidOCR merge: added token %r (y=%.1f) missing from previous pass',
+                text, yc,
+            )
+    return added
 
 
 class RapidOcrBackend:
@@ -34,45 +53,41 @@ class RapidOcrBackend:
         RapidOcrBackend()                            # library defaults
         RapidOcrBackend(text_score=0.6)              # lower confidence threshold
         RapidOcrBackend(use_angle_cls=True)          # enable angle classification
-        RapidOcrBackend(
-            det_model_path='path/to/det.onnx',
-            rec_model_path='path/to/rec.onnx',
-        )
 
-    The ``RapidOCR`` import is deferred to ``__init__`` time so that simply
-    importing ``scraping.ocr`` does not eagerly load the ONNX runtime.
+    Two recognition modes are available:
+
+    * :meth:`recognize` — **fast single pass** on the original image.  This is
+      the normal path called by the OCR plumbing.
+    * :meth:`thorough_recognize` — **multi-pass** that additionally runs on an
+      edge-padded copy (to catch text flush against the boundary) and with a
+      lower ``text_score`` threshold (to catch interior low-confidence tokens).
+      Use this as a retry when semantic validation of the fast-pass result fails.
 
     Parameters
     ----------
     pad_px:
-        When non-zero, :meth:`recognize` runs RapidOCR **twice**: once on the
-        original image and once on a copy padded by *pad_px* pixels on every
-        side using ``mode='edge'``.  Results from the padded pass are merged
-        into the original-pass results, adding only tokens whose Y-centre
-        differs from every already-present token by more than
-        ``_DEDUP_Y_THRESHOLD`` pixels.  This catches text that sits flush
-        against the image boundary (which the detector often misses on the
-        original) **without** disturbing the detection of interior tokens
-        (which padding can sometimes suppress).  Defaults to ``10``.
+        Padding (pixels) used in :meth:`thorough_recognize`.  Text that sits
+        flush against the image boundary is often missed by the detector;
+        a small border provides the context it needs.  Defaults to ``10``.
     fallback_text_score:
-        When set, a second ``RapidOCR`` instance is created with
-        ``text_score`` overridden to this value (everything else is
-        identical to the primary instance).  After the primary + padded
-        passes, the fallback instance runs on the *original* image and any
-        tokens whose Y-centre is not already represented (within
-        ``_DEDUP_Y_THRESHOLD`` pixels) are appended.  This recovers
-        interior tokens that fall below the primary confidence threshold
-        without noising up tokens that were already detected.  Defaults to
-        ``0.3``.  Pass ``None`` to disable.
+        ``text_score`` used by the low-confidence fallback pass inside
+        :meth:`thorough_recognize`.  Defaults to ``0.3``.  Set to ``None``
+        to disable the fallback pass.
     **kwargs:
         Forwarded verbatim to ``RapidOCR(**kwargs)``.
     """
 
-    def __init__(self, pad_px: int = 10, fallback_text_score: float | None = 0.3, **kwargs):
+    def __init__(
+        self,
+        pad_px: int = 10,
+        fallback_text_score: float | None = 0.3,
+        **kwargs,
+    ):
         from rapidocr_onnxruntime import RapidOCR  # deferred — keeps top-level import fast
         self._ocr = RapidOCR(**kwargs)
         self._pad_px = pad_px
         self._kwargs = dict(kwargs)
+
         if fallback_text_score is not None:
             fallback_kwargs = dict(kwargs)
             fallback_kwargs['text_score'] = fallback_text_score
@@ -96,7 +111,7 @@ class RapidOcrBackend:
         return [(bbox, text, float(conf)) for bbox, text, conf in raw]
 
     def _padded_results(self, image: np.ndarray) -> list[OcrResult]:
-        """Return OCR results from the padded image, with coords shifted back."""
+        """Return OCR results from an edge-padded image, with coords shifted back."""
         p = self._pad_px
         pad_width = ((p, p), (p, p)) if image.ndim == 2 else ((p, p), (p, p), (0, 0))
         padded = np.pad(image, pad_width, mode='edge')
@@ -112,55 +127,46 @@ class RapidOcrBackend:
 
     def recognize(self, image: np.ndarray) -> list[OcrResult]:
         """
-        Run RapidOCR on *image* and return normalised token results.
+        Fast single-pass OCR on *image*.
 
-        ``RapidOCR.__call__`` returns ``(results | None, elapsed_time)``.
-        This method normalises ``confidence`` to a plain Python ``float``
-        so callers never have to handle string or numpy-scalar values (a
-        version-dependent quirk of the upstream library).
-
-        When :attr:`pad_px` is non-zero a second pass is run on a padded copy
-        of the image and any tokens not already present in the first-pass
-        results (judged by Y-centre proximity) are appended.  The merged list
-        is sorted by Y-centre so callers receive tokens in top-to-bottom order.
+        Runs ``RapidOCR`` once on the image as-is and returns the results
+        sorted by Y-centre.  This is the hot-path used during normal scanning.
         """
         results = self._run_once(image)
+        results.sort(key=lambda r: _y_center(r[0]))
+        return results
 
-        if not self._pad_px:
-            return results
+    def thorough_recognize(self, image: np.ndarray) -> list[OcrResult]:
+        """
+        Multi-pass OCR that maximises recall at the cost of extra time.
 
-        # Merge tokens from the padded pass that are absent in the original pass.
-        merged = list(results)
-        existing_ys = [_y_center(bbox) for bbox, _, _ in merged]
+        Runs three passes and merges results by Y-centre deduplication:
 
-        for bbox, text, conf in self._padded_results(image):
-            yc = _y_center(bbox)
-            if all(abs(yc - ey) > _DEDUP_Y_THRESHOLD for ey in existing_ys):
-                merged.append((bbox, text, conf))
-                existing_ys.append(yc)
-                logger.debug(
-                    'RapidOCR dual-pass: added edge token %r (y=%.1f) missing from first pass',
-                    text, yc,
-                )
+        1. **Primary pass** — same as :meth:`recognize`.
+        2. **Padded pass** — edge-padded image to catch tokens flush against
+           the image boundary.
+        3. **Fallback pass** — primary image with a lower ``text_score``
+           threshold to catch low-confidence interior tokens (skipped when
+           ``fallback_text_score=None``).
+
+        Each subsequent pass only contributes tokens whose Y-centre is more
+        than ``_DEDUP_Y_THRESHOLD`` pixels from every already-present token.
+        The final list is sorted by Y-centre.
+
+        Use this method as a retry when semantic validation of a fast-pass
+        result has flagged errors or suspicious values.
+        """
+        merged = self._run_once(image)
+
+        if self._pad_px:
+            merged = _merge_unique(merged, self._padded_results(image))
+
+        if self._fallback_ocr is not None:
+            merged = _merge_unique(
+                merged, self._run_once(image, ocr=self._fallback_ocr)
+            )
 
         merged.sort(key=lambda r: _y_center(r[0]))
-
-        # Merge tokens from the fallback (lower text_score) pass on the
-        # original image.  Recovers interior tokens that fell below the
-        # primary confidence threshold.
-        if self._fallback_ocr is not None:
-            for bbox, text, conf in self._run_once(image, ocr=self._fallback_ocr):
-                yc = _y_center(bbox)
-                if all(abs(yc - ey) > _DEDUP_Y_THRESHOLD for ey in existing_ys):
-                    merged.append((bbox, text, conf))
-                    existing_ys.append(yc)
-                    logger.debug(
-                        'RapidOCR fallback-pass: added low-conf token %r '
-                        '(y=%.1f, conf=%.3f) missing from primary passes',
-                        text, yc, conf,
-                    )
-            merged.sort(key=lambda r: _y_center(r[0]))
-
         return merged
 
     def __repr__(self) -> str:
