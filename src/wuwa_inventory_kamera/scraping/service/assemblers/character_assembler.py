@@ -1,0 +1,178 @@
+"""
+wuwa_inventory_kamera.scraping.service.assemblers.character_assembler
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Accumulates partial OCR results across the five character panel sections
+and merges them into a complete character dict.
+
+Section mapping
+---------------
+0 — resonator overview  (name, level, ascension)
+1 — weapon panel        (weapon name, level, rank)
+2 — echoes panel        (skipped; handled by the echo scraper)
+3 — skills panel        (active skill levels per node)
+4 — resonance chain     (Activated / not activated per chain node)
+
+The scanner submits one :class:`~...captures.CharCapture` per section.
+The assembler is **stateful**: it accumulates partial results for each
+character index and only resolves the future when section 4 arrives.
+Before that each :meth:`assemble` call returns a ``CharResult`` with the
+partial fields so the scanner can read navigation-relevant data (e.g.
+the resonator name from section 0 for duplicate detection).
+"""
+from __future__ import annotations
+
+import logging
+import re
+from difflib import get_close_matches
+
+from wuwa_inventory_kamera.scraping.ocr._types import OcrResult
+from wuwa_inventory_kamera.scraping.ocr import tokens_to_string, tokens_to_lines
+from wuwa_inventory_kamera.scraping.service.captures import CharCapture, CharResult
+
+logger = logging.getLogger(__name__)
+
+_LEVEL_RE = re.compile(r'(\d+)')
+
+
+def _get_data():
+    from scraping.data import charactersID, weaponsID, definedText
+    return charactersID, weaponsID, definedText
+
+
+class CharAssembler:
+    """
+    Stateful assembler that merges fields across all five character sections.
+
+    One :class:`CharAssembler` instance should be created per scanner
+    session.  It keeps a dict of partial results keyed by character index
+    so sections can arrive independently.
+
+    Call :meth:`assemble` for each :class:`CharCapture`.  The returned
+    :class:`CharResult` always contains ``fields`` for the sections seen
+    so far; section 4 also triggers an ``already_seen`` check.
+    """
+
+    def __init__(self) -> None:
+        # char_index → accumulated field dict
+        self._partial: dict[int, dict] = {}
+        # char_index → set of seen character names (for loop detection)
+        self._seen_names: set[str] = set()
+
+    def assemble(self, capture: CharCapture, *section_token_lists) -> CharResult:
+        """
+        Process one section of a character panel.
+
+        Parameters
+        ----------
+        capture:
+            The originating :class:`CharCapture`.
+        *section_token_lists:
+            Pre-computed OCR token lists for each crop in ``capture.crops``,
+            passed in the same order as the keys in ``capture.crops``.
+            The caller (``OcrService``) zips these based on crop order.
+
+        Returns
+        -------
+        CharResult
+            Partial or complete result for this character.
+        """
+        # Rebuild the (field_name → token_list) mapping from the positional args
+        crop_keys   = list(capture.crops.keys())
+        token_map   = dict(zip(crop_keys, section_token_lists))
+        idx         = capture.char_index
+        section     = capture.section
+
+        partial = self._partial.setdefault(idx, {})
+        fields: dict = {}
+
+        if section == 0:
+            fields.update(self._parse_overview(token_map))
+            name = fields.get('name', '')
+            if name in self._seen_names:
+                fields['already_seen'] = True
+            else:
+                self._seen_names.add(name)
+                fields['already_seen'] = False
+
+        elif section == 1:
+            fields.update(self._parse_weapon(token_map))
+
+        elif section == 3:
+            fields.update(self._parse_skills(token_map))
+
+        elif section == 4:
+            fields.update(self._parse_chain(token_map))
+
+        partial.update(fields)
+        return CharResult(char_index=idx, section=section, fields=dict(partial))
+
+    # ------------------------------------------------------------------
+    # Section parsers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_overview(token_map: dict[str, list[OcrResult]]) -> dict:
+        """Section 0: resonator name and level."""
+        result = {}
+        if 'name' in token_map:
+            name_text = tokens_to_string(token_map['name'], divisor='').lower().strip()
+            chars, _, _ = _get_data()
+            close = get_close_matches(name_text, chars, n=1, cutoff=0.75)
+            result['name']    = close[0] if close else name_text
+            result['char_id'] = chars.get(result['name'])
+
+        if 'level' in token_map:
+            level_text = tokens_to_string(token_map['level'], divisor='')
+            m = _LEVEL_RE.search(level_text)
+            result['level'] = int(m.group(1)) if m else 0
+
+        return result
+
+    @staticmethod
+    def _parse_weapon(token_map: dict[str, list[OcrResult]]) -> dict:
+        """Section 1: equipped weapon name, level, and refinement rank."""
+        result = {}
+        _, weaponsID, _ = _get_data()
+
+        if 'weaponName' in token_map:
+            name_text = tokens_to_string(token_map['weaponName'], divisor='').lower().strip()
+            close = get_close_matches(name_text, weaponsID, n=1, cutoff=0.8)
+            result['weaponName'] = close[0] if close else name_text
+            result['weaponId']   = weaponsID.get(result['weaponName'])
+
+        if 'weaponLevel' in token_map:
+            level_text = tokens_to_string(token_map['weaponLevel'], divisor=' ')
+            m = re.search(r'(\d+)\s*/\s*(\d+)', level_text)
+            result['weaponLevel']    = int(m.group(1)) if m else 0
+            result['weaponMaxLevel'] = int(m.group(2)) if m else 0
+
+        if 'weaponRank' in token_map:
+            rank_text = tokens_to_string(token_map['weaponRank'], divisor='')
+            m = re.search(r'\d', rank_text)
+            result['weaponRank'] = int(m.group()) if m else 1
+
+        return result
+
+    @staticmethod
+    def _parse_skills(token_map: dict[str, list[OcrResult]]) -> dict:
+        """Section 3: skill levels for all active nodes."""
+        result: dict = {'skills': {}}
+        for key, tokens in token_map.items():
+            if key.startswith('skill_'):
+                text = tokens_to_string(tokens, divisor='')
+                m = _LEVEL_RE.search(text)
+                result['skills'][key] = int(m.group(1)) if m else 0
+        return result
+
+    @staticmethod
+    def _parse_chain(token_map: dict[str, list[OcrResult]]) -> dict:
+        """Section 4: resonance chain node activation status."""
+        _, _, definedText = _get_data()
+        activated_text = definedText.get('PrefabTextItem_3963945691_Text', 'activated').lower()
+        result: dict = {'chain': {}}
+        for key, tokens in token_map.items():
+            if key.startswith('chain_'):
+                text = tokens_to_string(tokens, divisor='').lower()
+                result['chain'][key] = activated_text in text
+        return result
