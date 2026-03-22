@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "wuwa-inventory-kamera"
+version = "2.0.0.dev0"
+description = "WuWa Inventory Kamera — GPU-accelerated inventory scanner v2"
+requires-python = ">=3.11"
+readme = "README.md"
+license = { file = "LICENSE" }
+
+dependencies = [
+    "numpy",
+    "opencv-python",
+    "rapidocr-onnxruntime",
+    "PyYAML",
+    "onnxruntime-directml",
+]
+
+[project.optional-dependencies]
+# Full application (UI + game capture)
+app = [
+    "PySide6-Fluent-Widgets>=1.8.7",
+    "mss>=10.1.0",
+    "PyWinCtl>=0.4.1",
+    "PyMonCtl>=0.92",
+]
+# Build / packaging
+build = [
+    "cx_freeze>=8.4.1",
+]
+dev = [
+    "pytest",
+    "pytest-cov",
+]
+
+[project.scripts]
+wuwa-reprocess = "wuwa_inventory_kamera.cli.reprocess:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/wuwa_inventory_kamera"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

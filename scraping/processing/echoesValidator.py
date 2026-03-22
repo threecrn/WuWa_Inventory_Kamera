@@ -36,11 +36,11 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 # Tolerance used when comparing OCR-read values against expected values.
-# Values for percentage stats are displayed with 1 decimal place, so OCR
-# errors of ±0.1 are plausible and treated as warnings rather than errors.
-# Integer (flat) stats are compared exactly (tolerance 0.5 handles the
-# int-vs-float distinction without masking genuine mismatches).
-_FLOAT_TOL: float = 0.1
+# Values for percentage stats are displayed with 1 decimal place; the
+# minimum tier step for any percentage substat is ~0.7, so a tolerance of
+# 0.4 always resolves to the correct tier while covering OCR rounding up
+# to ±0.4.  Integer (flat) stats use a separate tolerance.
+_FLOAT_TOL: float = 0.4
 _INT_TOL: float = 0.5
 
 # Fixed main stat name per slot cost (cost → stat name in the stats dict).

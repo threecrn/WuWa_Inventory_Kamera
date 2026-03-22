@@ -135,13 +135,18 @@ def tokens_to_lines(
     divisor: str = ' ',
     bannedChars: str | None = None,
     allowedChars: str | None = None,
+    row_gap: int = 10,
 ) -> list[str]:
     """
     Group OCR *tokens* into text lines.
 
-    Tokens are assigned to the same row when their Y-min is within 10 px of
-    the previous token's Y-max.  Within each row tokens are sorted
+    Tokens are assigned to the same row when their Y-min is within *row_gap*
+    px of the current row's running Y-max.  Within each row tokens are sorted
     left-to-right by their leftmost X coordinate.
+
+    *row_gap* defaults to 10 for general text.  Use a smaller value (e.g. 3)
+    for vertically-dense layouts like the echo stats panel where adjacent rows
+    may be separated by fewer than 10 px.
 
     Returns
     -------
@@ -163,17 +168,22 @@ def tokens_to_lines(
     current_row: list[tuple[list, str]] = []
     last_y_max: float | None = None
 
+    # Sort by y-min so the row-grouping heuristic is order-independent.
+    filtered.sort(key=lambda item: min(pt[1] for pt in item[0]))
+
     for bbox, text in filtered:
         y_min = min(pt[1] for pt in bbox)
         y_max = max(pt[1] for pt in bbox)
 
-        if last_y_max is None or y_min < last_y_max + 10:
+        if last_y_max is None or y_min < last_y_max + row_gap:
             current_row.append((bbox, text))
         else:
             grouped.append(current_row)
             current_row = [(bbox, text)]
 
-        last_y_max = y_max
+        # Track the maximum y-extent seen so far in this row so that a short
+        # token following a taller one doesn't shrink the effective threshold.
+        last_y_max = y_max if last_y_max is None else max(last_y_max, y_max)
 
     if current_row:
         grouped.append(current_row)

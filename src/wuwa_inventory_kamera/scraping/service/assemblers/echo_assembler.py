@@ -90,20 +90,28 @@ def _detect_rarity(card_image: np.ndarray) -> int:
 # Stat-name matching
 # ---------------------------------------------------------------------------
 
+_NONALPHA_RE = re.compile(r'[^a-z]')
+
+
+def _norm_stat(text: str) -> str:
+    """Lowercase and strip non-alpha chars so OCR output matches echoStats keys."""
+    return _NONALPHA_RE.sub('', text.lower())
+
+
 def _match_stats(text_lines: list[str], valid_stats: set[str]) -> list[str]:
     """
     Resolve OCR text lines to known stat name keys.
 
-    Tries combining adjacent tokens for two-word names (e.g. ``'crit'`` +
-    ``'rate'`` → ``'critrate'``).  Spaces within each token are stripped
-    before lookup.
+    Normalises each line (lowercase, strip non-alpha) before lookup.
+    Also tries combining adjacent lines for names that wrap across two
+    display rows (e.g. ``'Resonance Skill DMG'`` + ``'Bonus'``).
     """
     results: list[str] = []
     i = 0
     while i < len(text_lines):
-        t0 = text_lines[i].replace(' ', '')
+        t0 = _norm_stat(text_lines[i])
         if i < len(text_lines) - 1:
-            t1 = text_lines[i + 1].replace(' ', '')
+            t1 = _norm_stat(text_lines[i + 1])
             combined = t0 + t1
             if combined in valid_stats:
                 results.append(combined)
@@ -328,8 +336,11 @@ class EchoAssembler:
         """
         valid_stats = set(echoStats)
 
-        name_lines  = tokens_to_lines(name_tokens,  divisor=' ')
-        value_lines = tokens_to_lines(value_tokens, divisor=' ')
+        # Use a tight row gap for the densely-packed stats panel: adjacent
+        # stat rows are only ~5 px apart, so the default 10 px gap causes
+        # tokens from different rows to merge into one line.
+        name_lines  = tokens_to_lines(name_tokens,  divisor=' ', row_gap=3)
+        value_lines = tokens_to_lines(value_tokens, divisor=' ', row_gap=3)
 
         matched_names  = _match_stats(name_lines,  valid_stats)
         matched_values = value_lines[:len(matched_names)]  # align by line order

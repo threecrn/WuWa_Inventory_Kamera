@@ -67,70 +67,16 @@ class BatchOcr:
 
     def __init__(self, backend) -> None:
         ocr = backend._ocr
-        self._det = ocr.text_detector
-        self._rec = ocr.text_recognizer
-
-        det_session = self._det.infer.session
-        rec_session = self._rec.session.session
-
-        self._det_in  = det_session.get_inputs()[0].name
-        self._det_out = det_session.get_outputs()[0].name
-        self._rec_in  = rec_session.get_inputs()[0].name
-        self._rec_out = rec_session.get_outputs()[0].name
-
-        self._det_session = det_session
-        self._rec_session = rec_session
-
-        from rapidocr_onnxruntime.ch_ppocr_v3_det.utils import (
-            create_operators,
-            DBPostProcess,
-        )
-
-        self._det_ops = create_operators({
-            'DetResizeForTest': {'limit_side_len': 736, 'limit_type': 'min'},
-            'NormalizeImage': {
-                'std': [0.229, 0.224, 0.225],
-                'mean': [0.485, 0.456, 0.406],
-                'scale': '1./255.',
-                'order': 'hwc',
-            },
-            'ToCHWImage': None,
-            'KeepKeys': {'keep_keys': ['image', 'shape']},
-        })
-
-        self._det_post = DBPostProcess(
-            thresh=0.3, box_thresh=0.5, max_candidates=1000,
-            unclip_ratio=1.6, use_dilation=True, score_mode='fast',
-        )
-
-        self._rec_h     = self._rec.rec_image_shape[1]   # 48
-        self._rec_batch = self._rec.rec_batch_num         # 6
+        self._det = ocr.text_det
+        self._rec = ocr.text_rec
 
         logger.debug(
             'BatchOcr init — det providers: %s | rec providers: %s',
-            det_session.get_providers(),
-            rec_session.get_providers(),
+            self._det.infer.session.get_providers(),
+            self._rec.session.session.get_providers(),
         )
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _det_preprocess(self, img_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Returns ``(chw_float32, shape_list)`` for one image."""
-        from rapidocr_onnxruntime.ch_ppocr_v3_det.utils import transform
-        data = transform({'image': img_bgr}, self._det_ops)
-        chw, shape = data
-        return chw.astype(np.float32), np.array(shape, dtype=np.float32)
-
-    def _rec_preprocess_batch(self, crops: list[np.ndarray]) -> np.ndarray:
-        """
-        Resize-and-normalise *crops* to the same width (max aspect ratio
-        of the batch), returning a ``[B, 3, 48, W]`` float32 array.
-        """
-        max_ratio = max(c.shape[1] / float(c.shape[0]) for c in crops)
-        norm_imgs = [self._rec.resize_norm_img(c, max_ratio) for c in crops]
-        return np.stack(norm_imgs, axis=0).astype(np.float32)
+    # no private helpers needed — TextDetector and TextRecognizer expose the full pipeline
 
     # ------------------------------------------------------------------
     # Public API
@@ -138,11 +84,10 @@ class BatchOcr:
 
     def detect_batch(self, images_bgr: list[np.ndarray]) -> list[np.ndarray]:
         """
-        Run text detection on *images_bgr* in a single batched forward pass.
+        Run text detection on each image in *images_bgr*.
 
-        All images in one call must have the **same spatial dimensions**
-        (height, width).  For same-size images (typical in a single scraper
-        session) no padding is needed.
+        The PPOCRv3 detection model runs best with batch size 1; we call
+        :class:`TextDetector` once per image and collect results.
 
         Returns
         -------
@@ -151,29 +96,13 @@ class BatchOcr:
             quads, each quad is 4 ``[x, y]`` corners.  An empty array
             (shape ``(0, 4, 2)``) is returned when nothing is detected.
         """
-        preprocessed = [self._det_preprocess(img) for img in images_bgr]
-        chw_list   = [p[0] for p in preprocessed]
-        shape_list = [p[1] for p in preprocessed]
-
-        batch  = np.stack(chw_list,   axis=0)   # [N, 3, H, W]
-        shapes = np.stack(shape_list, axis=0)   # [N, 4]
-
-        io = self._det_session.io_binding()
-        io.bind_cpu_input(self._det_in, batch)
-        io.bind_output(self._det_out)
-        self._det_session.run_with_iobinding(io)
-
-        heatmap_batch: np.ndarray = io.get_outputs()[0].numpy()  # [N, 1, H, W]
-
         all_boxes: list[np.ndarray] = []
-        for i, img in enumerate(images_bgr):
-            hm = heatmap_batch[i : i + 1]      # [1, 1, H, W]
-            sh = shapes[i : i + 1]             # [1, 4]
-            post = self._det_post(hm, sh)
-            raw_boxes = post[0]['points']
-            boxes = self._det.filter_tag_det_res(raw_boxes, img.shape[:2])
-            all_boxes.append(boxes)
-
+        for img in images_bgr:
+            boxes, _ = self._det(img)
+            if boxes is None or len(boxes) == 0:
+                all_boxes.append(np.empty((0, 4, 2), dtype=np.float32))
+            else:
+                all_boxes.append(boxes)
         return all_boxes
 
     @staticmethod
@@ -211,19 +140,18 @@ class BatchOcr:
         for img_idx, (img, boxes) in enumerate(zip(images_bgr, boxes_per_image)):
             if boxes is None or len(boxes) == 0:
                 continue
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             for box_idx, box in enumerate(boxes):
-                crop = self._warp_crop(img_rgb, box)
+                crop = self._warp_crop(img, box)
                 if crop.size > 0:
                     crops.append(ImageCrop(img_idx, box_idx, crop, box))
         return crops
 
     def recognize_batch(self, crops: list[np.ndarray]) -> list[tuple[str, float]]:
         """
-        Run text recognition on *crops* using batched ``io_binding`` calls.
+        Run text recognition on *crops*.
 
-        Crops are sorted by aspect ratio so images in the same sub-batch
-        need minimal width-padding.
+        Delegates to :class:`TextRecognizer`, which already batches crops
+        internally by ``rec_batch_num`` and sorts by aspect ratio.
 
         Returns
         -------
@@ -232,28 +160,7 @@ class BatchOcr:
         """
         if not crops:
             return []
-
-        ratios  = [c.shape[1] / float(c.shape[0]) for c in crops]
-        order   = np.argsort(ratios)
-        results: list[tuple[str, float]] = [('', 0.0)] * len(crops)
-
-        for start in range(0, len(crops), self._rec_batch):
-            idx_slice = order[start : start + self._rec_batch]
-            batch_crops = [crops[i] for i in idx_slice]
-
-            norm_batch = self._rec_preprocess_batch(batch_crops)
-
-            io = self._rec_session.io_binding()
-            io.bind_cpu_input(self._rec_in, norm_batch)
-            io.bind_output(self._rec_out)
-            self._rec_session.run_with_iobinding(io)
-
-            logits: np.ndarray = io.get_outputs()[0].numpy()
-            decoded = self._rec.postprocess_op(logits)
-
-            for local_i, global_i in enumerate(idx_slice):
-                results[global_i] = decoded[local_i]
-
+        results, _ = self._rec(crops)
         return results
 
     def ocr_images(
