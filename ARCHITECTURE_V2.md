@@ -1,5 +1,179 @@
 # Inventory Scanner v2 — Architecture Proposal
 
+## Game Manipulation Layer (NEW)
+
+The v2 architecture introduces a **UI-independent game interaction layer** under
+`src/wuwa_inventory_kamera/game/` that cleanly separates game control from both
+the Qt UI and the scraper logic.
+
+### Layer overview
+
+```
+game/
+  __init__.py
+  input_controller.py    — Low-level mouse/keyboard/scroll (wraps win32api)
+  screen.py              — Window detection, ScreenLayout, screenshot capture
+  navigation.py          — High-level: open inventory, switch tabs, sort orders,
+                           grid cell coordinates, page scrolling, menu detection
+```
+
+### Key design decisions
+
+| Decision | Rationale |
+|---|---|
+| `InputController` is a thin win32api wrapper | Testable with a mock; no mss leak |
+| `ScreenLayout` wraps `game.screenInfo.ScreenInfo` | Single place to resolve coordinates; v2 code never imports `ScreenInfo` directly |
+| `GameWindow` owns DPI, monitor index, layout | Replaces scattered `WindowManager` + `ScreenInfo` construction |
+| `GameNavigator` is stateful | Tracks open tab, sort order, avoids redundant clicks |
+| Sort-order control via `SortOrder` enum | Echo/weapon scanning can set a specific sort before scanning |
+| All coordinate math lives in `navigation.py` | `grid_cell_center()`, `scroll_to_page()`, `scroll_to_sonata()` |
+| Nav-only OCR is inline (not batched) | Page-count reads use the OCR registry default; no OcrService overhead |
+
+### `InputController`
+
+```python
+ctrl = InputController(monitor_index=1)
+ctrl.click(500, 300)                  # left-click relative to monitor
+ctrl.scroll(-3)                        # scroll up 3 notches
+ctrl.press_key('esc')                  # single key
+ctrl.hotkey('ctrl', 'v')               # modifier combo
+ctrl.paste("search text")             # clipboard + Ctrl+V
+```
+
+### `GameNavigator`
+
+```python
+nav = GameNavigator(ctrl, game_window)
+nav.open_inventory()
+nav.switch_tab(InventoryTab.ECHOES)
+nav.set_sort_order(SortOrder.LEVEL_DESC)
+count, pages = nav.read_item_count()
+nav.click_grid_cell(row=2, col=3)
+nav.scroll_to_sonata()                # echo-specific detail panel scroll
+nav.scroll_back_from_sonata()
+nav.scroll_to_page(target=2, current=0)
+```
+
+### Callable from CLI or UI
+
+The game layer has **zero Qt dependencies**. The CLI tool (`wuwa-scan`) and
+the Qt UI can both construct the same `InputController` + `GameNavigator` stack.
+
+---
+
+## Scanning Workflows (NEW)
+
+The scanning logic under `src/wuwa_inventory_kamera/scraping/scanning/` uses the
+game manipulation layer and the OcrService to implement complete scan workflows.
+
+### Module overview
+
+```
+scraping/scanning/
+  scan_state.py            — ScanSession, ScanItem, GridPosition, rescan queue
+  grid_navigator.py        — Forward scan + random-access cell navigation
+  echo_workflow.py         — Full echo scan with lookahead + rescan support
+  weapon_workflow.py       — Weapon/item scan (synchronous per cell)
+  session_orchestrator.py  — Top-level runner for multi-scraper sessions
+```
+
+### Scan state tracking
+
+`ScanSession` maintains the complete lifecycle of one scan run:
+
+```python
+session = ScanSession(total_items=240, sort_order=SortOrder.NEWEST)
+
+session.mark_scanned(42, result=echo_dict)
+session.request_rescan(42, reason="missing substats: 2/5 parsed")
+idx = session.pop_rescan()        # → 42
+session.mark_rescanned(42, result=better_dict)
+
+print(session.progress)           # 0.0–1.0
+print(session.rescan_pending)     # 0
+```
+
+Each `ScanItem` tracks: position (page/row/col), status (pending → scanned →
+needs_rescan → rescanned | failed | skipped), attempt count, and result.
+
+### Grid navigator
+
+`GridNavigator` drives the `GameNavigator` through the inventory grid:
+
+```python
+grid = GridNavigator(nav, total_items=240, total_pages=10)
+
+# Forward scan — visits every cell in order
+grid.scan_forward(visitor_callback)
+
+# Random access — for rescans
+grid.navigate_to_cell(GridPosition(page=3, row=2, col=4, scan_index=76))
+
+# Batch rescan — sorted by page to minimize scrolling
+grid.visit_positions([pos1, pos2, pos3], visitor_callback)
+```
+
+### Echo workflow (rescan-aware)
+
+`EchoWorkflow.run()` executes:
+
+1. Open inventory → echoes tab → set sort order
+2. Read echo count from UI
+3. **Forward scan**: iterate all grid cells, capture 4 crops per echo,
+   submit `EchoCapture` to OcrService → collect `Future[EchoResult]`
+4. **Collect results**: resolve all futures, mark session items
+5. **Rescan pass(es)**: any echo where the assembler flagged
+   "missing substats" or "sonata scroll failure" is queued for rescan.
+   The grid navigator jumps to the specific cell, re-captures, and
+   re-submits. Up to `max_rescans` attempts per item.
+6. Return accepted echo dicts.
+
+### Weapon/item workflow
+
+`WeaponWorkflow.run()` is simpler — each cell is captured and the future
+is resolved immediately (blocking). Image-hash dedup skips identical cells.
+
+### Session orchestrator
+
+`SessionOrchestrator` replaces the V1 `scraperManager.scrapers()`:
+
+```python
+orch = SessionOrchestrator(
+    scrapers=['echoes', 'weapons', 'devItems'],
+    ocr_providers=['DmlExecutionProvider', 'CPUExecutionProvider'],
+    min_rarity=4, min_level=10,
+    sort_order=SortOrder.LEVEL_DESC,
+    save_raw=Path('export'),
+    on_progress=my_callback,
+)
+result = orch.run()
+# result = {'date': '...', 'echoes': [...], 'weapons': [...], ...}
+```
+
+---
+
+## CLI Tools
+
+### `wuwa-scan` (NEW)
+
+Headless scanning entry point — uses the game manipulation layer and
+scanning workflows without any Qt UI:
+
+```
+wuwa-scan --scrapers echoes weapons --provider dml --min-rarity 4
+wuwa-scan --scrapers echoes --sort-order level_desc --save-raw
+```
+
+### `wuwa-reprocess` (existing)
+
+Offline re-processing of saved raw scans (no game needed):
+
+```
+wuwa-reprocess --session-id 2026-02-28_14-30-00 --service --provider dml
+```
+
+---
+
 ## Scraper inventory
 
 Before discussing the new design, here is a summary of what each scraper does now and what it needs from OCR.
@@ -86,32 +260,49 @@ Characters sit in the middle: they are strictly sequential but have many sub-rea
 ## New package layout
 
 ```
-scraping/
-  ocr/
-    _rapidocr.py          (existing — RapidOcrBackend + _provider_patch, keep as-is)
-    batch.py              (NEW — detect_batch / extract_crops / recognize_batch
-                                 extracted from batch_ocr.py)
-  service/                (NEW package)
+src/wuwa_inventory_kamera/
+  game/                     (NEW — UI-independent game manipulation layer)
     __init__.py
-    captures.py           (all Capture + Result dataclasses, one per scraper type)
-    ocrService.py         (OcrService — the queue + DML thread)
-    assemblers/
+    input_controller.py     (low-level mouse/keyboard/scroll via win32api)
+    screen.py               (GameWindow, ScreenLayout, capture helpers)
+    navigation.py           (GameNavigator — tabs, sort, grid coords, scrolling)
+  cli/
+    __init__.py
+    reprocess.py            (existing — offline reprocess CLI)
+    scan.py                 (NEW — live scan CLI entry point)
+  scraping/
+    ocr/
+      __init__.py           (OCR backend registry + imageToString)
+      _types.py             (OcrBackend protocol, OcrResult type)
+      _rapidocr.py          (RapidOcrBackend + _provider_patch + thorough mode)
+      batch.py              (BatchOcr — detect + crop + recognize pipeline)
+    service/
       __init__.py
-      echoAssembler.py    (replaces _processRawScan internals)
-      weaponAssembler.py
-      itemAssembler.py
-      characterAssembler.py
+      captures.py           (all Capture + Result dataclasses per scraper type)
+      ocr_service.py        (OcrService — the queue + DML thread)
+      assemblers/
+        __init__.py
+        echo_assembler.py
+        weapon_assembler.py
+        item_assembler.py
+        character_assembler.py
+    scanning/               (NEW — scanning workflows + state tracking)
+      __init__.py
+      scan_state.py         (ScanSession, ScanItem, GridPosition, rescan queue)
+      grid_navigator.py     (forward scan + random-access navigation)
+      echo_workflow.py      (echo scan with lookahead + rescan support)
+      weapon_workflow.py    (weapon/item scan — synchronous per cell)
+      session_orchestrator.py (top-level multi-scraper runner)
+
+scraping/                   (legacy V1 — kept for backward compat)
   scanning/
-    echoesScanner.py      (submit EchoCapture instead of saveRawScan)
-    weaponsScraper.py     (submit WeaponCapture, or inline if simpler)
-    itemsScraper.py       (submit ItemCapture)
-    charactersScraper.py  (submit CharCapture per character)
-    achievementsScraper.py (inline imageToString — no change needed)
-    shellScraper.py        (inline imageToString — no change needed)
+    echoesScanner.py        (Phase 1 raw capture)
   processing/
-    echoesProcessor.py    (kept for cli/reprocess.py offline path only)
-    echoesValidator.py    (unchanged)
-    statsExtractor.py     (unchanged — used by reprocess path)
+    echoesProcessor.py      (Phase 2 offline processing)
+    echoesValidator.py      (stat validation — shared)
+    statsExtractor.py       (legacy extractors — reprocess path)
+  models/
+    rawScan.py              (RawEchoScan — disk serialisation)
 ```
 
 ---
