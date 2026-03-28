@@ -49,8 +49,8 @@ Command                            Description
 ``open-inventory``                 Press the inventory keybind
 ``close-inventory``                Press Esc
 ``switch-tab <tab>``               echoes | weapons | devItems | resources
-``set-sort <order>``               newest | oldest | quality_desc | quality_asc |
-                                   level_desc | level_asc
+``set-sort <order>``               level | rarity | time_added | tuning_status |
+                                   discarded_first
 ``goto-page <n>``                  Scroll to page N (1-based)
 ``goto-cell <row> <col>``          Click cell at 0-based row, col
 ``goto-index <n>``                 Navigate to 0-based scan index (page + click)
@@ -66,6 +66,13 @@ Command                            Description
 ``state``                          Print current :class:`~...game.state.GameState` JSON
 ``in-menu``                        OCR-check whether the main-menu screen is visible
 ``wait <seconds>``                 Sleep for N seconds
+``set <name> <value …>``           Store a variable; value = all remaining tokens
+``echo <text …>``                  Print text with ``$name`` substitution
+``assert-eq <a> <b>``              Abort command if *a* ≠ *b* (after expansion)
+``assert-ne <a> <b>``              Abort command if *a* = *b*
+``if-eq <a> <b>``                  Skip next command if *a* ≠ *b*
+``if-ne <a> <b>``                  Skip next command if *a* = *b*
+``ocr-roi [opts]``                 Capture + OCR a layout region; see below
 =================================  =====================================================
 
 Screenshot syntax::
@@ -91,6 +98,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import shlex
 import sys
 import time
@@ -198,6 +206,13 @@ class NavCommandDispatcher:
         self._page_0: int = 0                        # 0-based current page
         self._cell: Optional[tuple[int, int]] = None  # (row, col)
 
+        # Variable store for the DSL scripting layer.
+        self._vars: dict[str, str] = {}
+        # Number of upcoming commands to skip (set by if-eq / if-ne).
+        self._skip_count: int = 0
+        # Lazily-initialised OCR backend (first ocr-roi call creates it).
+        self._ocr_backend = None
+
     # ── Dispatch ────────────────────────────────────────────────────────
 
     def run_tokens(self, tokens: list[str]) -> str | None:
@@ -215,8 +230,16 @@ class NavCommandDispatcher:
         if not tokens:
             return None
 
+        # Honor a pending skip queued by if-eq / if-ne.
+        if self._skip_count > 0:
+            self._skip_count -= 1
+            logger.debug('skip: %s', ' '.join(tokens))
+            return None
+
+        # Expand $variable references in arguments before dispatch.
+        # The verb itself is not expanded to prevent accidental aliasing.
         verb = tokens[0].lower()
-        args = tokens[1:]
+        args = [self._expand_vars(t) for t in tokens[1:]]
 
         # Build dispatch table as a local dict so the linter can verify
         # all handlers exist.
@@ -241,6 +264,15 @@ class NavCommandDispatcher:
             'state':           self._cmd_state,
             'in-menu':         self._cmd_in_menu,
             'wait':            self._cmd_wait,
+            # Variables / control flow
+            'set':             self._cmd_set,
+            'echo':            self._cmd_echo,
+            'assert-eq':       self._cmd_assert_eq,
+            'assert-ne':       self._cmd_assert_ne,
+            'if-eq':           self._cmd_if_eq,
+            'if-ne':           self._cmd_if_ne,
+            # OCR
+            'ocr-roi':         self._cmd_ocr_roi,
         }
 
         handler = _dispatch.get(verb)
@@ -586,6 +618,185 @@ class NavCommandDispatcher:
         if not self.dry_run:
             time.sleep(secs)
 
+    # ── Variable helpers ────────────────────────────────────────────────
+
+    _VAR_RE = re.compile(r'\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)')
+
+    def _expand_vars(self, token: str) -> str:
+        """Replace ``$name`` / ``${name}`` with the stored variable value.
+
+        Unknown variables are left as-is so that literal ``$`` characters in
+        values are not silently swallowed.
+        """
+        def _sub(m: re.Match) -> str:
+            name = m.group(1) or m.group(2) or ''
+            return self._vars.get(name, m.group(0) or '')
+        return self._VAR_RE.sub(_sub, token)
+
+    # ── Variable / control-flow commands ────────────────────────────────
+
+    def _cmd_set(self, args: list[str]) -> None:
+        """``set <name> <value …>`` — Assign a DSL variable.
+
+        The value is all remaining tokens joined with a single space so that
+        multi-word values do not need quoting::
+
+            set greeting Hello, world
+            echo $greeting          # prints: Hello, world
+        """
+        if not args:
+            raise CommandError('set requires a variable name and value')
+        name = args[0]
+        if not re.match(r'^[A-Za-z_]\w*$', name):
+            raise CommandError(
+                f'set: {name!r} is not a valid variable name '
+                f'(must match [A-Za-z_]\\w*)'
+            )
+        value = ' '.join(args[1:])
+        self._vars[name] = value
+        logger.debug('set %s = %r', name, value)
+
+    def _cmd_echo(self, args: list[str]) -> str:
+        """``echo <text …>`` — Print text (``$var`` already expanded)."""
+        text = ' '.join(args)
+        print(text)
+        return text
+
+    def _cmd_assert_eq(self, args: list[str]) -> None:
+        """``assert-eq <a> <b>`` — Raise CommandError if *a* ≠ *b* after expansion.
+
+        Useful to stop a script early when an OCR result does not match an
+        expected value::
+
+            ocr-roi --roi echo-card --into name
+            assert-eq $name "Impermanence Heron"
+        """
+        if len(args) < 2:
+            raise CommandError('assert-eq requires two arguments')
+        a, b = args[0], args[1]
+        if a != b:
+            raise CommandError(f'assert-eq failed: {a!r} ≠ {b!r}')
+        logger.debug('assert-eq ok: %r == %r', a, b)
+
+    def _cmd_assert_ne(self, args: list[str]) -> None:
+        """``assert-ne <a> <b>`` — Raise CommandError if *a* = *b* after expansion."""
+        if len(args) < 2:
+            raise CommandError('assert-ne requires two arguments')
+        a, b = args[0], args[1]
+        if a == b:
+            raise CommandError(f'assert-ne failed: {a!r} = {b!r}')
+        logger.debug('assert-ne ok: %r ≠ %r', a, b)
+
+    def _cmd_if_eq(self, args: list[str]) -> None:
+        """``if-eq <a> <b>`` — Skip the next command if *a* ≠ *b*.
+
+        Both arguments are already expanded before this handler is called::
+
+            ocr-roi --roi echo-card --into name
+            if-eq $name "Impermanence Heron"
+            screenshot --out found.png
+        """
+        if len(args) < 2:
+            raise CommandError('if-eq requires two arguments')
+        if args[0] != args[1]:
+            self._skip_count += 1
+            logger.debug('if-eq %r != %r → skip next', args[0], args[1])
+
+    def _cmd_if_ne(self, args: list[str]) -> None:
+        """``if-ne <a> <b>`` — Skip the next command if *a* = *b*."""
+        if len(args) < 2:
+            raise CommandError('if-ne requires two arguments')
+        if args[0] == args[1]:
+            self._skip_count += 1
+            logger.debug('if-ne %r == %r → skip next', args[0], args[1])
+
+    # ── OCR command ──────────────────────────────────────────────────────
+
+    def _cmd_ocr_roi(self, args: list[str]) -> str:
+        """
+        Capture the current game screen, crop to a named ROI, and run OCR.
+
+        Options
+        -------
+        --roi <name>     Layout ROI to crop.  Accepts the same names as
+                         ``screenshot --roi``.  Default: ``full``.
+        --thorough       Use multi-pass OCR (higher recall, slower).
+        --into <var>     Store the first recognised text line in a DSL
+                         variable for later comparison with ``assert-eq`` /
+                         ``if-eq``.
+
+        Returns a JSON object::
+
+            {"roi": "echo-card", "lines": [{"text": "…", "conf": 0.97}, …]}
+
+        Variables are expanded in all arguments before this handler is
+        called, so ``--roi $my_roi`` works as expected.
+        """
+        roi_name = 'full'
+        thorough = False
+        into_var: str | None = None
+
+        i = 0
+        while i < len(args):
+            if args[i] == '--roi' and i + 1 < len(args):
+                roi_name = args[i + 1]
+                i += 2
+            elif args[i] == '--thorough':
+                thorough = True
+                i += 1
+            elif args[i] == '--into' and i + 1 < len(args):
+                into_var = args[i + 1]
+                i += 2
+            else:
+                raise CommandError(
+                    f'ocr-roi: unexpected argument {args[i]!r}  '
+                    f'(expected --roi, --thorough, or --into)'
+                )
+
+        logger.info('ocr-roi --roi %s%s%s', roi_name,
+                    ' --thorough' if thorough else '',
+                    f' --into {into_var}' if into_var else '')
+
+        if self.dry_run:
+            return json.dumps({'roi': roi_name, 'lines': [], 'dry_run': True})
+
+        from wuwa_inventory_kamera.game.screen import capture_full
+        from wuwa_inventory_kamera.scraping.ocr._rapidocr import RapidOcrBackend
+
+        layout = self.nav.layout
+        full = capture_full(layout.width, layout.height, layout.monitor)
+
+        roi = _resolve_roi(layout, roi_name)
+        if roi is not None:
+            crop = full[
+                int(roi.y) : int(roi.y + roi.h),
+                int(roi.x) : int(roi.x + roi.w),
+            ]
+        else:
+            crop = full
+
+        # Lazily initialise the backend — first call takes ~2 s to load models.
+        if self._ocr_backend is None:
+            self._ocr_backend = RapidOcrBackend()
+
+        recognize = (
+            self._ocr_backend.thorough_recognize
+            if thorough
+            else self._ocr_backend.recognize
+        )
+        results = recognize(crop)
+
+        lines = [
+            {'text': text, 'conf': round(float(conf), 4)}
+            for _, text, conf in results
+        ]
+
+        if into_var is not None:
+            self._vars[into_var] = lines[0]['text'] if lines else ''
+            logger.debug('ocr-roi --into %s = %r', into_var, self._vars[into_var])
+
+        return json.dumps({'roi': roi_name, 'lines': lines})
+
 
 # ---------------------------------------------------------------------------
 # Script parser
@@ -625,8 +836,8 @@ Navigation:
   open-inventory            Press inventory key
   close-inventory           Press Esc
   switch-tab <tab>          echoes | weapons | devItems | resources
-  set-sort <order>          newest | oldest | quality_desc | quality_asc |
-                            level_desc | level_asc
+  set-sort <order>          level | rarity | time_added | tuning_status |
+                            discarded_first
   goto-page <n>             Scroll to page N (1-based)
   goto-cell <row> <col>     Click cell (0-based row, col)
   goto-index <n>            Navigate to 0-based scan index
@@ -653,6 +864,20 @@ State / inspection:
   state                     Print current state JSON
   in-menu                   OCR-check for main-menu screen
   wait <seconds>            Sleep
+
+Variables:
+  set <name> <value>        Store a variable  (value = all remaining tokens)
+  echo <text>               Print text with $var expansion
+  assert-eq <a> <b>         Raise error if a != b  (stops the script line)
+  assert-ne <a> <b>         Raise error if a == b
+  if-eq <a> <b>             Skip next command if a != b
+  if-ne <a> <b>             Skip next command if a == b
+
+OCR:
+  ocr-roi                   OCR full window
+  ocr-roi --roi <name>      Crop to ROI then OCR  (same names as screenshot)
+  ocr-roi --thorough        Multi-pass OCR (higher recall, ~3× slower)
+  ocr-roi --into <var>      Store first recognised line in $var
 
 Script / REPL:
   # line comment
