@@ -116,7 +116,7 @@ class ScanSession:
     def __init__(
         self,
         total_items: int,
-        sort_order: SortOrder = SortOrder.NEWEST,
+        sort_order: SortOrder = SortOrder.TIME_ADDED,
         session_id: str | None = None,
     ) -> None:
         self.session_id = session_id or datetime.now().strftime('%Y-%m-%d_%H-%M-%S')

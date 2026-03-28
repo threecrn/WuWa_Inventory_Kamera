@@ -171,7 +171,7 @@ class SessionOrchestrator:
 
         session = ScanSession(
             total_items=0,  # placeholder; workflow reads from game
-            sort_order=self.sort_order or SortOrder.NEWEST,
+            sort_order=self.sort_order or SortOrder.TIME_ADDED,
             session_id=session_id,
         )
 
@@ -201,7 +201,7 @@ class SessionOrchestrator:
 
         session = ScanSession(
             total_items=0,
-            sort_order=self.sort_order or SortOrder.NEWEST,
+            sort_order=self.sort_order or SortOrder.TIME_ADDED,
             session_id=session_id,
         )
 

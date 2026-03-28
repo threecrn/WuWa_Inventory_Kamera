@@ -69,7 +69,23 @@ COORDINATES = {
                 "sonata": Coordinates(1298, 397, 554, 467),
                 "mouseMovement": Coordinates(1576.5, 665.5),
                 "fullStatsName": Coordinates(1380, 430, 360, 380),
-                "fullStatsValue": Coordinates(1740, 430, 100, 380)
+                "fullStatsValue": Coordinates(1740, 430, 100, 380),
+                # Sort dropdown (opens upward from the button).
+                # Measured from screenshots/screenshot_inventory_echoes_sort_drop_down.png
+                # at 1920x1080.  button = trigger that opens the dropdown;
+                # items[N] = center of the N-th option (0 = topmost/farthest from button).
+                # Options top→bottom: Sort by Level / Rarity / Time Added / Tuning Status /
+                # Show Discarded First.  Spacing = 72 px; selected item (Time Added) at y=775.
+                "sort": {
+                    "button": Coordinates(431, 963),
+                    "items": [
+                        Coordinates(431, 631),   # 0 – Sort by Level
+                        Coordinates(431, 703),   # 1 – Sort by Rarity
+                        Coordinates(431, 775),   # 2 – Sort by Time Added  (selected in ref screenshot)
+                        Coordinates(431, 847),   # 3 – Sort by Tuning Status
+                        Coordinates(431, 919),   # 4 – Show Discarded First
+                    ],
+                },
             },
             "achievements": {
                 "status": Coordinates(1579, 230, 256, 65),
@@ -154,7 +170,18 @@ COORDINATES = {
                 "sonata": Coordinates(1135, 400, 486, 408),
                 "mouseMovement": Coordinates(1576.5, 665.5),
                 "fullStatsName": Coordinates(1200, 420, 320, 380),
-                "fullStatsValue": Coordinates(1510, 420, 100, 380)
+                "fullStatsValue": Coordinates(1510, 420, 100, 380),
+                # Sort dropdown – proportionally scaled from 1920x1080 measurements.
+                "sort": {
+                    "button": Coordinates(377, 936),
+                    "items": [
+                        Coordinates(377, 614),   # 0 – Sort by Level
+                        Coordinates(377, 683),   # 1 – Sort by Rarity
+                        Coordinates(377, 754),   # 2 – Sort by Time Added
+                        Coordinates(377, 824),   # 3 – Sort by Tuning Status
+                        Coordinates(377, 894),   # 4 – Sort Discarded First
+                    ],
+                },
             },
             "achievements": {
                 "status": Coordinates(1579, 197, 256, 65),

@@ -7,10 +7,21 @@
   - [x] add monster id to the resulting json ("_monsterId": 310000020)
   - [x] add echo cost to the resulting json ("_cost": (monster_id prefix 31 -> 1, 32 -> 3, 34 -> 4))
   - [ ] mixed processing mode: start processing and cleanup up image data in the background
-  - [ ] detect sort mode
   - [ ] identify echoes by their attributes
   - [ ] finer control for scan pass
   - [ ] finer control for recognition pass
   - [ ] domain specific recognition interface
     - [ ] control use of bw/rgb mode for ocr calls
     - [ ] don't write entire screenshots to file, only necessary image fragments?
+- [ ] game screen nav:
+  - [ ] test scaffolding for nav functions / workflows
+  - [ ] "pacing" (waits between actions)
+    - [ ] strategy how to fine-tune pacing to make them as fast as possible without breaking things
+    - [ ] adjust waits, run pacing tests, fine-tune, repeat
+  - [ ] ocr support inside nav
+  - [ ] echo screen
+    - [ ] echo sort mode
+      - [x] set sort mode
+      - [ ] set sort direction (needs to distingush between two symbols for up and down)
+      - [ ] other resolutions than 1920x1080
+    - [ ] echo list filter submenu (gonna be hard)

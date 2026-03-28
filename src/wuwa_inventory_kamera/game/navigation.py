@@ -31,7 +31,7 @@ Usage::
 
     nav.open_inventory()
     nav.switch_tab('echoes')
-    nav.set_sort_order(SortOrder.NEWEST)
+    nav.set_sort_order(SortOrder.TIME_ADDED)
 """
 from __future__ import annotations
 
@@ -67,16 +67,16 @@ class InventoryTab(enum.Enum):
 
 class SortOrder(enum.Enum):
     """
-    Sort orders available in the echo / weapon inventory dropdown.
+    Sort orders available in the echo inventory dropdown (top → bottom).
 
-    The values are the 0-based position in the dropdown list.
+    The values are the 0-based position in the dropdown list as it opens
+    upward from the sort button.
     """
-    NEWEST       = 0    # date acquired (newest first)
-    OLDEST       = 1    # date acquired (oldest first)
-    QUALITY_DESC = 2    # rarity descending
-    QUALITY_ASC  = 3    # rarity ascending
-    LEVEL_DESC   = 4    # level descending
-    LEVEL_ASC    = 5    # level ascending
+    LEVEL           = 0   # Sort by Level
+    RARITY          = 1   # Sort by Rarity
+    TIME_ADDED      = 2   # Sort by Time Added  (most recently acquired first)
+    TUNING_STATUS   = 3   # Sort by Tuning Status
+    DISCARDED_FIRST = 4   # Sort Discarded First
 
 
 # Grid geometry shared across all grid-based inventories.
@@ -187,35 +187,41 @@ class GameNavigator:
         """
         Activate a specific sort order in the current inventory tab.
 
-        Opens the sort dropdown, scrolls/clicks to the desired position,
-        then closes it.  Sort state is tracked so repeated calls for the
-        same order are no-ops.
+        Clicks the sort-button to open the upward-opening dropdown, then
+        clicks the desired option.  Sort state is tracked so repeated calls
+        for the same order are skipped.
+
+        The dropdown opens *above* the trigger button.  Coordinates are
+        stored in ``game_roi.COORDINATES`` under ``echoes.sort``.  Only
+        the options visible in the default dropdown (indices 0-3) are
+        directly reachable; higher indices raise ``ValueError``.
         """
         if self._current_sort == order:
             logger.debug('Sort order already %s', order.name)
             return
 
-        # The sort button is near the top-right of the grid area.
-        # Its exact coordinates depend on the resolution; we compute them
-        # relative to the page-count area, offset to the right.
-        page_roi = self._page_count_roi()
-        if page_roi is None:
-            logger.warning('Cannot determine sort button position — skipping sort change')
+        sort_coords = getattr(getattr(self.layout, 'echoes', None), 'sort', None)
+        if sort_coords is None:
+            logger.warning(
+                'No sort coordinates in layout for %dx%d — skipping sort change',
+                self.layout.width, self.layout.height,
+            )
             return
 
-        # Sort dropdown button is roughly at the right edge of the page
-        # counter area, offset further right.  This is a conservative
-        # estimate that works for 16:9 and 16:10.
-        sort_btn_x = page_roi.x + page_roi.w + 60
-        sort_btn_y = page_roi.y + page_roi.h // 2
+        sort_items = getattr(sort_coords, 'items', [])
+        if order.value >= len(sort_items):
+            raise ValueError(
+                f'SortOrder {order.name!r} (index {order.value}) is outside the '
+                f'{len(sort_items)}-item dropdown visible in the current layout.'
+            )
 
-        # Click the sort button to open the dropdown
-        self.ctrl.click(sort_btn_x, sort_btn_y, wait=0.3)
+        # Open the dropdown
+        btn = sort_coords.button
+        self.ctrl.click(btn.x, btn.y, wait=0.3)
 
-        # Each entry in the dropdown is about 35px tall.  Click the
-        # desired entry relative to the button position.
-        entry_y = sort_btn_y + 40 + order.value * 35
-        self.ctrl.click(sort_btn_x, entry_y, wait=wait)
+        # Click the target option (dropdown opens upward: index 0 = topmost)
+        item = sort_items[order.value]
+        self.ctrl.click(item.x, item.y, wait=wait)
 
         self._current_sort = order
         logger.info('Sort order set to %s', order.name)
