@@ -45,6 +45,7 @@ arguments.  Quoted strings are supported for paths with spaces
 =================================  =====================================================
 Command                            Description
 =================================  =====================================================
+``focus-window``                   Bring the game window to the foreground
 ``open-inventory``                 Press the inventory keybind
 ``close-inventory``                Press Esc
 ``switch-tab <tab>``               echoes | weapons | devItems | resources
@@ -109,7 +110,7 @@ _ROI_ALIASES: dict[str, str] = {
     'echo-card':        'echoes.echoCard',
     'echo-stats-name':  'echoes.fullStatsName',
     'echo-stats-value': 'echoes.fullStatsValue',
-    'sonata':           'echoes.sonataName',
+    'sonata':           'echoes.sonata',
     'weapon-name':      'weapons.name',
     'weapon-level':     'weapons.level',
 }
@@ -220,6 +221,7 @@ class NavCommandDispatcher:
         # Build dispatch table as a local dict so the linter can verify
         # all handlers exist.
         _dispatch: dict[str, Callable] = {
+            'focus-window':     self._cmd_focus_window,
             'open-inventory':  self._cmd_open_inventory,
             'close-inventory': self._cmd_close_inventory,
             'switch-tab':      self._cmd_switch_tab,
@@ -306,6 +308,13 @@ class NavCommandDispatcher:
         return s
 
     # ── Navigation commands ──────────────────────────────────────────────
+
+    def _cmd_focus_window(self, args: list[str]) -> None:
+        logger.info('focus-window')
+        if not self.dry_run:
+            ok = self.gw.activate()
+            if not ok:
+                raise CommandError('focus-window: game window not found')
 
     def _cmd_open_inventory(self, args: list[str]) -> None:
         logger.info('open-inventory')
@@ -612,6 +621,7 @@ def _parse_script(text: str) -> list[tuple[int, list[str]]]:
 def _print_help() -> None:
     print("""\
 Navigation:
+  focus-window              Bring the game window to the foreground
   open-inventory            Press inventory key
   close-inventory           Press Esc
   switch-tab <tab>          echoes | weapons | devItems | resources

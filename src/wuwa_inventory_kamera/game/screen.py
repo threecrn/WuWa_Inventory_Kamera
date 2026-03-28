@@ -167,14 +167,33 @@ class GameWindow:
     # ── Foreground management ────────────────────────────────────────────
 
     def activate(self) -> bool:
-        """Bring the game window to the foreground.  Returns success."""
+        """
+        Bring the game window to the foreground.  Returns success.
+
+        Windows restricts which processes may call ``SetForegroundWindow`` —
+        only the currently-active process is normally allowed.  The standard
+        workaround is to briefly simulate an ALT key press so the shell
+        acquires the foreground permission before handing it over.
+        """
         if not self._window:
             return False
-        import win32gui, win32con
-        self._window.activate()
-        win32gui.PostMessage(
-            self._window._hWnd, win32con.WM_ACTIVATE, win32con.WA_ACTIVE, 0,
-        )
+        import ctypes
+        import win32con
+        import win32gui
+
+        hwnd = self._window._hWnd
+
+        # Restore the window if it is minimised.
+        if win32gui.IsIconic(hwnd):
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+
+        # Acquire the foreground-permission token via a synthetic ALT press,
+        # then immediately call SetForegroundWindow.
+        user32 = ctypes.WinDLL('user32', use_last_error=True)
+        user32.keybd_event(win32con.VK_MENU, 0, 0, 0)                   # ALT down
+        user32.SetForegroundWindow(hwnd)
+        user32.keybd_event(win32con.VK_MENU, 0, win32con.KEYEVENTF_KEYUP, 0)  # ALT up
+
         return True
 
     def is_foreground(self) -> bool:
