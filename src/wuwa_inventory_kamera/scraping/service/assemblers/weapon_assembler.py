@@ -32,7 +32,7 @@ _RANK_RE  = re.compile(r'\d')
 
 
 def _get_data():
-    from scraping.data import weaponsID, itemsID
+    from wuwa_inventory_kamera.scraping.data import weaponsID, itemsID
     return weaponsID, itemsID
 
 

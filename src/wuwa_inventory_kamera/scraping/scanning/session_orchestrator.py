@@ -24,6 +24,7 @@ Key differences from the V1 orchestrator:
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -32,6 +33,7 @@ from typing import Any, Callable
 from wuwa_inventory_kamera.game.input_controller import InputController
 from wuwa_inventory_kamera.game.navigation import GameNavigator, InventoryTab, SortOrder
 from wuwa_inventory_kamera.game.screen import GameWindow
+from wuwa_inventory_kamera.game.stop_signal import StopSignal
 from wuwa_inventory_kamera.scraping.scanning.scan_state import ScanSession
 from wuwa_inventory_kamera.scraping.service.ocr_service import OcrService
 
@@ -95,6 +97,8 @@ class SessionOrchestrator:
         -------
         dict
             ``{'date': ..., 'echoes': [...], 'weapons': [...], ...}``
+            When the user pressed Enter to stop early the dict also
+            contains ``'cancelled': True``.
         """
         session_id = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         result: dict[str, Any] = {'date': session_id}
@@ -117,6 +121,9 @@ class SessionOrchestrator:
             logger.error('Game is not on the main menu')
             return {'error': 'Not on main menu', **result}
 
+        # Start the Enter-key stop signal watcher
+        stop = StopSignal()
+
         # Start OcrService
         with OcrService(
             providers=self.ocr_providers,
@@ -125,13 +132,18 @@ class SessionOrchestrator:
         ) as ocr_service:
 
             for scraper_name in self.scrapers:
+                if stop.is_set():
+                    logger.info('Scan cancelled by user — skipping remaining scrapers')
+                    result['cancelled'] = True
+                    break
+
                 logger.info('Running scraper: %s', scraper_name)
                 # Esc to reset before each scraper (matches V1 behaviour)
                 ctrl.press_key('esc', wait=0.5)
 
                 try:
                     scraper_result = self._run_scraper(
-                        scraper_name, nav, ocr_service, session_id,
+                        scraper_name, nav, ocr_service, session_id, stop.event,
                     )
                     result[scraper_name] = scraper_result
                 except Exception:
@@ -141,6 +153,11 @@ class SessionOrchestrator:
             # Final Esc
             ctrl.press_key('esc')
 
+        stop.stop()  # clean shutdown of the polling thread
+
+        if stop.is_set() and 'cancelled' not in result:
+            result['cancelled'] = True
+
         return result
 
     def _run_scraper(
@@ -149,23 +166,25 @@ class SessionOrchestrator:
         nav: GameNavigator,
         ocr_service: OcrService,
         session_id: str,
+        stop_event: threading.Event,
     ) -> Any:
         """Dispatch to the appropriate workflow."""
         from wuwa_inventory_kamera.game.navigation import InventoryTab
 
         if name == 'echoes':
-            return self._run_echoes(nav, ocr_service, session_id)
+            return self._run_echoes(nav, ocr_service, session_id, stop_event)
         elif name == 'weapons':
-            return self._run_weapons(nav, ocr_service, session_id, InventoryTab.WEAPONS)
+            return self._run_weapons(nav, ocr_service, session_id, InventoryTab.WEAPONS, stop_event)
         elif name in ('devItems', 'resources'):
             tab = InventoryTab.DEV_ITEMS if name == 'devItems' else InventoryTab.RESOURCES
-            return self._run_weapons(nav, ocr_service, session_id, tab)
+            return self._run_weapons(nav, ocr_service, session_id, tab, stop_event)
         else:
             logger.warning('Scraper %r not yet implemented in v2', name)
             return {'error': f'{name} not yet implemented'}
 
     def _run_echoes(
         self, nav: GameNavigator, ocr_service: OcrService, session_id: str,
+        stop_event: threading.Event,
     ) -> list[dict]:
         from wuwa_inventory_kamera.scraping.scanning.echo_workflow import EchoWorkflow
 
@@ -183,6 +202,7 @@ class SessionOrchestrator:
             session=session,
             sort_order=self.sort_order,
             save_raw=raw_path,
+            stop_event=stop_event,
         )
 
         def _on_progress(scanned: int, total: int) -> None:
@@ -196,6 +216,7 @@ class SessionOrchestrator:
         ocr_service: OcrService,
         session_id: str,
         tab: 'InventoryTab',
+        stop_event: threading.Event,
     ) -> list[dict]:
         from wuwa_inventory_kamera.scraping.scanning.weapon_workflow import WeaponWorkflow
 
@@ -211,6 +232,7 @@ class SessionOrchestrator:
             session=session,
             tab=tab,
             sort_order=self.sort_order,
+            stop_event=stop_event,
         )
 
         def _on_progress(scanned: int, total: int) -> None:

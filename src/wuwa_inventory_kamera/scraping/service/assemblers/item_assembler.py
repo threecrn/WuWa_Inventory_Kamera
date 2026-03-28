@@ -26,7 +26,7 @@ _DIGITS_RE = re.compile(r'\d[\d,]*')
 
 
 def _get_data():
-    from scraping.data import itemsID
+    from wuwa_inventory_kamera.scraping.data import itemsID
     return itemsID
 
 

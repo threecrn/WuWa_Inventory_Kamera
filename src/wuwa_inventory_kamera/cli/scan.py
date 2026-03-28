@@ -154,6 +154,7 @@ def main() -> None:
     )
 
     logger.info('Starting scan — scrapers=%s provider=%s', args.scrapers, args.provider)
+    print('  Press Enter at any time to stop the scan early (results collected so far will be saved).')
     result = orchestrator.run()
 
     if 'error' in result:
@@ -171,7 +172,10 @@ def main() -> None:
         len(v) for k, v in result.items()
         if isinstance(v, list)
     )
-    print(f'\nDone. {total_items} item(s) written to {out_path}')
+    if result.get('cancelled'):
+        print(f'\nScan stopped early. {total_items} item(s) written to {out_path}')
+    else:
+        print(f'\nDone. {total_items} item(s) written to {out_path}')
 
 
 if __name__ == '__main__':

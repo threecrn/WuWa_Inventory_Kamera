@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
+import threading
 from pathlib import Path
 from typing import Callable
 
@@ -83,6 +84,7 @@ class EchoWorkflow:
         sort_order: SortOrder | None = None,
         save_raw: Path | None = None,
         max_rescans: int = 2,
+        stop_event: threading.Event | None = None,
     ) -> None:
         self.nav = nav
         self.ocr = ocr_service
@@ -90,6 +92,7 @@ class EchoWorkflow:
         self.sort_order = sort_order
         self.save_raw = save_raw
         self.max_rescans = max_rescans
+        self._stop_event = stop_event
 
     # ── Public entry point ───────────────────────────────────────────────
 
@@ -149,6 +152,8 @@ class EchoWorkflow:
         futures: list[tuple[int, concurrent.futures.Future]] = []
 
         def _forward_visitor(position: GridPosition) -> bool:
+            if self._stop_event and self._stop_event.is_set():
+                return False
             future = self._capture_echo(position)
             futures.append((position.scan_index, future))
             if on_progress:
@@ -160,9 +165,13 @@ class EchoWorkflow:
         # 5. Collect results
         self._collect_results(futures)
 
-        # 6. Rescan pass(es)
+        # 6. Rescan pass(es) — skip if cancelled
         rescan_pass = 0
-        while self.session.rescan_pending > 0 and rescan_pass < self.max_rescans:
+        while (
+            self.session.rescan_pending > 0
+            and rescan_pass < self.max_rescans
+            and not (self._stop_event and self._stop_event.is_set())
+        ):
             rescan_pass += 1
             logger.info(
                 'Echo rescan pass %d — %d item(s) queued',
@@ -303,6 +312,8 @@ class EchoWorkflow:
         ))
 
         def _rescan_visitor(position: GridPosition) -> bool:
+            if self._stop_event and self._stop_event.is_set():
+                return False
             future = self._capture_echo(position)
             rescan_futures.append((position.scan_index, future))
             return True

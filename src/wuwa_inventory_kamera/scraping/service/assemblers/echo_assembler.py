@@ -44,12 +44,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _get_data():
-    from scraping.data import echoesID, echoStats, sonataName
+    from wuwa_inventory_kamera.scraping.data import echoesID, echoStats, sonataName
     return echoesID, echoStats, sonataName
 
 
 def _get_validators():
-    from scraping.processing.echoesValidator import (
+    from wuwa_inventory_kamera.scraping.processing.echoesValidator import (
         infer_cost,
         expected_sub_count,
         validate_echo_stats,

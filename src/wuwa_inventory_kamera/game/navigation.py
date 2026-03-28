@@ -345,7 +345,7 @@ class GameNavigator:
         Quick OCR check to see if the game is showing the main terminal
         menu.
         """
-        from scraping.utils.common import definedText
+        from wuwa_inventory_kamera.scraping.data import definedText
         full = capture_full(self.layout.width, self.layout.height, self.layout.monitor)
         terminal_roi = self.layout.terminal
         crop = full[

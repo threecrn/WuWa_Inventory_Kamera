@@ -18,6 +18,7 @@ The workflow reuses the same :class:`~.grid_navigator.GridNavigator` and
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Callable
 
 from wuwa_inventory_kamera.game.navigation import (
@@ -67,12 +68,14 @@ class WeaponWorkflow:
         session: ScanSession,
         tab: InventoryTab = InventoryTab.WEAPONS,
         sort_order: SortOrder | None = None,
+        stop_event: threading.Event | None = None,
     ) -> None:
         self.nav = nav
         self.ocr = ocr_service
         self.session = session
         self.tab = tab
         self.sort_order = sort_order
+        self._stop_event = stop_event
 
     def run(self, on_progress: Callable | None = None) -> list[dict]:
         """
@@ -102,6 +105,8 @@ class WeaponWorkflow:
         results: list[dict] = []
 
         def _visitor(position: GridPosition) -> bool:
+            if self._stop_event and self._stop_event.is_set():
+                return False
             layout = self.nav.layout
 
             # Full screenshot for this cell

@@ -36,7 +36,7 @@ _LEVEL_RE = re.compile(r'(\d+)')
 
 
 def _get_data():
-    from scraping.data import charactersID, weaponsID, definedText
+    from wuwa_inventory_kamera.scraping.data import charactersID, weaponsID, definedText
     return charactersID, weaponsID, definedText
 
 
