@@ -37,7 +37,8 @@ dev = [
 
 [project.scripts]
 wuwa-reprocess = "wuwa_inventory_kamera.cli.reprocess:main"
-wuwa-scan = "wuwa_inventory_kamera.cli.scan:main"
+wuwa-scan      = "wuwa_inventory_kamera.cli.scan:main"
+wuwa-nav       = "wuwa_inventory_kamera.cli.nav:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/wuwa_inventory_kamera"]

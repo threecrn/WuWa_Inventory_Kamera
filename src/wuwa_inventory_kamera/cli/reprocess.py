@@ -161,7 +161,7 @@ def _run_service(
     """
     from wuwa_inventory_kamera.scraping.service.ocr_service import OcrService
     from wuwa_inventory_kamera.scraping.service.captures import EchoCapture
-    from game.screenInfo import ScreenInfo
+    from wuwa_inventory_kamera.game.screen_info import ScreenInfo
 
     echoes: list[dict] = []
 
