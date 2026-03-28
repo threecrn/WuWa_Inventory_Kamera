@@ -1,93 +1,49 @@
-"""
+﻿"""
 wuwa_inventory_kamera.cli.nav
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Interactive / scripted game-navigation CLI.
+Python API for scripted game navigation plus an interactive REPL.
 
-Provides a simple **command DSL** for:
+Usage
+-----
+Run a Python script with all nav functions already in scope::
 
-* Navigating the game inventory — open/close, switch tabs, set sort order,
-  scroll pages, click specific grid cells or scan indices.
-* Capturing screenshots — full window or specific named UI regions.
-* Inspecting the current logical screen state.
+    wuwa-nav session.py
 
-Three usage modes
------------------
-One-shot command::
+One-liner::
 
-    wuwa-nav switch-tab echoes
-    wuwa-nav goto-index 47
-    wuwa-nav screenshot --roi echo-card --out echo_47.png
-
-Script file::
-
-    wuwa-nav --script my_session.wuwa
+    wuwa-nav -c "focus_window(); switch_tab('echoes')"
 
 Interactive REPL::
 
-    wuwa-nav --interactive
+    wuwa-nav
+
+Scripts are plain Python â€” use any language features naturally::
+
+    # session.py
+    focus_window()
+    switch_tab('echoes')
+    set_sort('rarity')
+
+    for idx in range(10):
+        goto_index(idx)
+        result = ocr_roi('echo-card')
+        print(result['lines'])
 
 State round-tripping::
 
-    # Save state at the end of a session
-    wuwa-nav --state-out state.json switch-tab echoes
+    # Save state at the end of a run
+    wuwa-nav --state-out state.json session.py
 
-    # Resume a session — no redundant navigation clicks
-    wuwa-nav --state-in state.json goto-index 72
+    # Resume â€” skips redundant navigation
+    wuwa-nav --state-in state.json session.py
 
-Command DSL reference
----------------------
-Lines starting with ``#`` are comments.  Empty lines are ignored.
-Each line is one command: the first token is the verb, the rest are
-arguments.  Quoted strings are supported for paths with spaces
-(standard POSIX shell quoting via :func:`shlex.split`).
-
-=================================  =====================================================
-Command                            Description
-=================================  =====================================================
-``focus-window``                   Bring the game window to the foreground
-``open-inventory``                 Press the inventory keybind
-``close-inventory``                Press Esc
-``switch-tab <tab>``               echoes | weapons | devItems | resources
-``set-sort <order>``               level | rarity | time_added | tuning_status |
-                                   discarded_first
-``goto-page <n>``                  Scroll to page N (1-based)
-``goto-cell <row> <col>``          Click cell at 0-based row, col
-``goto-index <n>``                 Navigate to 0-based scan index (page + click)
-``read-count``                     Print ``{"items": N, "pages": N}``
-``sonata-down``                    Scroll echo panel to reveal sonata section
-``sonata-up``                      Scroll echo panel back to stats
-``click <x> <y>``                  Raw left-click at game-relative coords
-``move <x> <y>``                   Move the cursor
-``scroll <amount>``                Scroll wheel (positive = down, negative = up)
-``key <name>``                     Press a single key (e.g. ``esc``, ``b``, ``f5``)
-``hotkey <k1> [<k2> …]``           Press a combination (e.g. ``ctrl v``)
-``screenshot [opts]``              Capture a screenshot; see below
-``state``                          Print current :class:`~...game.state.GameState` JSON
-``in-menu``                        OCR-check whether the main-menu screen is visible
-``wait <seconds>``                 Sleep for N seconds
-``set <name> <value …>``           Store a variable; value = all remaining tokens
-``echo <text …>``                  Print text with ``$name`` substitution
-``assert-eq <a> <b>``              Abort command if *a* ≠ *b* (after expansion)
-``assert-ne <a> <b>``              Abort command if *a* = *b*
-``if-eq <a> <b>``                  Skip next command if *a* ≠ *b*
-``if-ne <a> <b>``                  Skip next command if *a* = *b*
-``ocr-roi [opts]``                 Capture + OCR a layout region; see below
-=================================  =====================================================
-
-Screenshot syntax::
-
-    screenshot
-    screenshot --roi full
-    screenshot --roi echo-card
-    screenshot --roi echoes.fullStatsName   # dot-path into layout tree
-    screenshot --out /tmp/echo47.png
-
-Named ROIs: ``full`` | ``echo-card`` | ``echo-stats-name`` |
-``echo-stats-value`` | ``sonata`` | ``weapon-name`` | ``weapon-level``
-
-Any dot-path string (e.g. ``echoes.echoCard``) navigates the
-:class:`~...game.screen.ScreenLayout` attribute tree directly.
+Available nav functions
+-----------------------
+focus_window, open_inventory, close_inventory, switch_tab, set_sort,
+goto_page, goto_cell, goto_index, read_count, sonata_down, sonata_up,
+click, move, scroll, key, hotkey, screenshot, state, in_menu, wait,
+ocr_roi, snapshot
 
 Entry point
 -----------
@@ -98,13 +54,11 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import re
-import shlex
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
 logger = logging.getLogger('wuwa.nav')
 
@@ -113,7 +67,6 @@ logger = logging.getLogger('wuwa.nav')
 # Named ROI aliases
 # ---------------------------------------------------------------------------
 
-#: Mapping from friendly ROI name → dot-path into a ScreenLayout.
 _ROI_ALIASES: dict[str, str] = {
     'echo-card':        'echoes.echoCard',
     'echo-stats-name':  'echoes.fullStatsName',
@@ -125,68 +78,64 @@ _ROI_ALIASES: dict[str, str] = {
 
 
 def _resolve_roi(layout, roi_name: str):
-    """
-    Resolve *roi_name* to a coordinate object from *layout*.
-
-    Accepts:
-
-    * ``'full'`` → ``None`` (capture the full window, no crop).
-    * A key from :data:`_ROI_ALIASES`.
-    * Any dot-separated path, e.g. ``'echoes.echoCard'``.
-
-    Returns the coordinate object (with ``.x``, ``.y``, ``.w``, ``.h``)
-    or ``None`` for a full-window capture.
-
-    Raises :class:`CommandError` on unresolvable names.
-    """
+    """Resolve *roi_name* to a coordinate object, or ``None`` for ``'full'``."""
     if roi_name == 'full':
         return None
-
     path = _ROI_ALIASES.get(roi_name, roi_name)
     obj = layout
     for part in path.split('.'):
         obj = getattr(obj, part, None)
         if obj is None:
-            raise CommandError(
-                f'ROI {roi_name!r} → layout path {path!r}: '
+            raise NavError(
+                f'ROI {roi_name!r} â†’ layout path {path!r}: '
                 f'attribute {part!r} not found'
             )
     return obj
 
 
 # ---------------------------------------------------------------------------
-# Command error
+# Domain error
 # ---------------------------------------------------------------------------
 
-class CommandError(Exception):
-    """Raised by a command handler on bad arguments or failed preconditions."""
+class NavError(Exception):
+    """Raised by :class:`NavSession` methods on bad arguments or failed preconditions."""
 
 
 # ---------------------------------------------------------------------------
-# NavCommandDispatcher
+# Public API exposed to nav scripts and the REPL
 # ---------------------------------------------------------------------------
 
-class NavCommandDispatcher:
+_SCRIPT_API: frozenset[str] = frozenset({
+    'focus_window', 'open_inventory', 'close_inventory',
+    'switch_tab', 'set_sort',
+    'goto_page', 'goto_cell', 'goto_index', 'read_count',
+    'sonata_down', 'sonata_up',
+    'click', 'move', 'scroll', 'key', 'hotkey',
+    'screenshot', 'state', 'in_menu', 'wait', 'ocr_roi',
+    'snapshot',
+})
+
+
+# ---------------------------------------------------------------------------
+# NavSession
+# ---------------------------------------------------------------------------
+
+class NavSession:
     """
-    Parses and executes navigation DSL commands.
+    Python API for controlling the WuWa game window.
 
-    Each public ``run_*`` method accepts commands in different forms
-    (token list, script string, interactive REPL).  All commands ultimately
-    call the private ``_cmd_*`` handlers which interact with the game via
-    a :class:`~...game.navigation.GameNavigator`.
+    All methods interact with the live game via a
+    :class:`~...game.navigation.GameNavigator`.  In *dry-run* mode they log
+    their intent without sending any input.
 
-    Parameters
-    ----------
-    nav:
-        Live :class:`~...game.navigation.GameNavigator`.
-    gw:
-        Live :class:`~...game.screen.GameWindow`.
-    screenshot_dir:
-        Directory for auto-named screenshots (default: ``screenshots/``
-        in the current working directory).
-    dry_run:
-        If ``True``, log commands without sending any game input.
-        Useful for testing scripts.
+    Typical nav script::
+
+        focus_window()
+        switch_tab('echoes')
+        set_sort('rarity')
+        goto_index(47)
+        data = ocr_roi('echo-card')
+        print(data['lines'])
     """
 
     def __init__(
@@ -200,698 +149,304 @@ class NavCommandDispatcher:
         self.gw  = gw
         self.screenshot_dir = screenshot_dir or Path('screenshots')
         self.dry_run = dry_run
-
-        # Page and cell are tracked here explicitly so the state snapshot
-        # can expose them cleanly without OCR round-trips.
-        self._page_0: int = 0                        # 0-based current page
-        self._cell: Optional[tuple[int, int]] = None  # (row, col)
-
-        # Variable store for the DSL scripting layer.
-        self._vars: dict[str, str] = {}
-        # Number of upcoming commands to skip (set by if-eq / if-ne).
-        self._skip_count: int = 0
-        # Lazily-initialised OCR backend (first ocr-roi call creates it).
+        self._page_0: int = 0
+        self._cell: Optional[tuple[int, int]] = None
         self._ocr_backend = None
 
-    # ── Dispatch ────────────────────────────────────────────────────────
+    # â”€â”€ Script execution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def run_tokens(self, tokens: list[str]) -> str | None:
-        """
-        Execute a single command represented as a *tokens* list.
+    def run_script(self, path: Path) -> None:
+        """Execute a Python script with all session methods in scope."""
+        env = self._script_namespace()
+        exec(compile(path.read_text('utf-8'), str(path), 'exec'), env)  # noqa: S102
 
-        The first token is the verb; the rest are arguments.
+    def repl(self) -> None:
+        """Start an interactive Python REPL with all session methods in scope."""
+        import code as _code
+        banner = (
+            'WuWa Navigator â€” Python REPL\n'
+            'Nav functions are already in scope.  '
+            'Type help(focus_window) for docs.\n'
+            'Press Ctrl-D (Ctrl-Z on Windows) to quit.\n'
+        )
+        _code.interact(local=self._script_namespace(), banner=banner, exitmsg='')
 
-        Returns a result string for inspection commands (``state``,
-        ``screenshot``, ``read-count``, ``in-menu``), or ``None`` for
-        side-effect-only commands.
+    def _script_namespace(self) -> dict:
+        """Build the globals dict exposed to scripts and the REPL."""
+        import builtins
+        ns: dict = {name: getattr(self, name) for name in _SCRIPT_API}
+        ns.update({'__builtins__': builtins, 'Path': Path, 'json': json})
+        return ns
 
-        Raises :class:`CommandError` on unknown verbs or bad arguments.
-        """
-        if not tokens:
-            return None
-
-        # Honor a pending skip queued by if-eq / if-ne.
-        if self._skip_count > 0:
-            self._skip_count -= 1
-            logger.debug('skip: %s', ' '.join(tokens))
-            return None
-
-        # Expand $variable references in arguments before dispatch.
-        # The verb itself is not expanded to prevent accidental aliasing.
-        verb = tokens[0].lower()
-        args = [self._expand_vars(t) for t in tokens[1:]]
-
-        # Build dispatch table as a local dict so the linter can verify
-        # all handlers exist.
-        _dispatch: dict[str, Callable] = {
-            'focus-window':     self._cmd_focus_window,
-            'open-inventory':  self._cmd_open_inventory,
-            'close-inventory': self._cmd_close_inventory,
-            'switch-tab':      self._cmd_switch_tab,
-            'set-sort':        self._cmd_set_sort,
-            'goto-page':       self._cmd_goto_page,
-            'goto-cell':       self._cmd_goto_cell,
-            'goto-index':      self._cmd_goto_index,
-            'read-count':      self._cmd_read_count,
-            'sonata-down':     self._cmd_sonata_down,
-            'sonata-up':       self._cmd_sonata_up,
-            'click':           self._cmd_click,
-            'move':            self._cmd_move,
-            'scroll':          self._cmd_scroll,
-            'key':             self._cmd_key,
-            'hotkey':          self._cmd_hotkey,
-            'screenshot':      self._cmd_screenshot,
-            'state':           self._cmd_state,
-            'in-menu':         self._cmd_in_menu,
-            'wait':            self._cmd_wait,
-            # Variables / control flow
-            'set':             self._cmd_set,
-            'echo':            self._cmd_echo,
-            'assert-eq':       self._cmd_assert_eq,
-            'assert-ne':       self._cmd_assert_ne,
-            'if-eq':           self._cmd_if_eq,
-            'if-ne':           self._cmd_if_ne,
-            # OCR
-            'ocr-roi':         self._cmd_ocr_roi,
-        }
-
-        handler = _dispatch.get(verb)
-        if handler is None:
-            raise CommandError(
-                f'Unknown command {verb!r}. Type "help" for a command list.'
-            )
-        return handler(args)
-
-    def run_script(self, text: str) -> None:
-        """Execute all commands in a script string, ignoring nothing."""
-        for lineno, tokens in _parse_script(text):
-            try:
-                result = self.run_tokens(tokens)
-                if result is not None:
-                    print(result)
-            except CommandError as exc:
-                logger.error('Line %d: %s', lineno, exc)
-
-    def run_interactive(self) -> None:
-        """
-        Start an interactive REPL.
-
-        Reads one command per line.  Type ``help`` for reference,
-        ``exit`` / ``quit`` to stop.
-        """
-        print("WuWa Navigator  —  type 'help' for commands, 'exit' to quit.")
-        while True:
-            try:
-                line = input('wuwa> ').strip()
-            except (EOFError, KeyboardInterrupt):
-                print()
-                break
-
-            if not line or line.startswith('#'):
-                continue
-            if line.lower() in ('exit', 'quit', 'q'):
-                break
-            if line.lower() == 'help':
-                _print_help()
-                continue
-
-            try:
-                tokens = shlex.split(line)
-            except ValueError as exc:
-                print(f'Parse error: {exc}')
-                continue
-
-            try:
-                result = self.run_tokens(tokens)
-                if result is not None:
-                    print(result)
-            except CommandError as exc:
-                print(f'Error: {exc}')
-
-    # ── State snapshot helper ────────────────────────────────────────────
+    # â”€â”€ State snapshot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def snapshot(self):
         """Return a :class:`~...game.state.GameState` reflecting current state."""
         from wuwa_inventory_kamera.game.state import CellRef, GameState
         s = GameState.from_navigator(self.nav, self.gw)
-        s.page = self._page_0 + 1  # expose as 1-based
+        s.page = self._page_0 + 1
         if self._cell is not None:
             s.cell = CellRef(self._cell[0], self._cell[1])
         return s
 
-    # ── Navigation commands ──────────────────────────────────────────────
+    # â”€â”€ Navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def _cmd_focus_window(self, args: list[str]) -> None:
+    def focus_window(self) -> None:
+        """Bring the game window to the foreground."""
         logger.info('focus-window')
         if not self.dry_run:
-            ok = self.gw.activate()
-            if not ok:
-                raise CommandError('focus-window: game window not found')
+            if not self.gw.activate():
+                raise NavError('focus_window: game window not found')
 
-    def _cmd_open_inventory(self, args: list[str]) -> None:
+    def open_inventory(self) -> None:
+        """Press the inventory keybind."""
         logger.info('open-inventory')
         if not self.dry_run:
             self.nav.open_inventory()
         self._page_0 = 0
         self._cell   = None
 
-    def _cmd_close_inventory(self, args: list[str]) -> None:
+    def close_inventory(self) -> None:
+        """Press Esc to close the inventory."""
         logger.info('close-inventory')
         if not self.dry_run:
             self.nav.close_inventory()
         self._page_0 = 0
         self._cell   = None
 
-    def _cmd_switch_tab(self, args: list[str]) -> None:
-        if not args:
-            raise CommandError('switch-tab requires a tab name')
-        tab_name = args[0]
-        logger.info('switch-tab %s', tab_name)
+    def switch_tab(self, tab: str) -> None:
+        """Switch to an inventory tab.  tab: echoes | weapons | devItems | resources"""
+        logger.info('switch-tab %s', tab)
         if not self.dry_run:
             from wuwa_inventory_kamera.game.navigation import InventoryTab
             try:
-                tab = InventoryTab(tab_name)
+                t = InventoryTab(tab)
             except ValueError:
-                valid = ', '.join(t.value for t in InventoryTab)
-                raise CommandError(
-                    f'Unknown tab {tab_name!r}. Valid values: {valid}'
-                )
-            self.nav.switch_tab(tab)
+                valid = ', '.join(v.value for v in InventoryTab)
+                raise NavError(f'Unknown tab {tab!r}. Valid: {valid}')
+            self.nav.switch_tab(t)
         self._page_0 = 0
         self._cell   = None
 
-    def _cmd_set_sort(self, args: list[str]) -> None:
-        if not args:
-            raise CommandError('set-sort requires a sort order name')
-        order_name = args[0]
-        logger.info('set-sort %s', order_name)
+    def set_sort(self, order: str) -> None:
+        """Set inventory sort order.  order: level | rarity | time_added | tuning_status | discarded_first"""
+        logger.info('set-sort %s', order)
         if not self.dry_run:
             from wuwa_inventory_kamera.game.navigation import SortOrder
             try:
-                order = SortOrder[order_name.upper()]
+                o = SortOrder[order.upper()]
             except KeyError:
                 valid = ', '.join(s.name.lower() for s in SortOrder)
-                raise CommandError(
-                    f'Unknown sort order {order_name!r}. Valid: {valid}'
-                )
-            self.nav.set_sort_order(order)
+                raise NavError(f'Unknown sort order {order!r}. Valid: {valid}')
+            self.nav.set_sort_order(o)
 
-    def _cmd_goto_page(self, args: list[str]) -> None:
-        if not args:
-            raise CommandError('goto-page requires a page number (1-based)')
-        try:
-            page_1 = int(args[0])
-        except ValueError:
-            raise CommandError(f'goto-page: {args[0]!r} is not an integer')
-        if page_1 < 1:
-            raise CommandError('goto-page: page number must be ≥ 1')
-        target_0 = page_1 - 1
-        logger.info('goto-page %d (internal 0-based: %d)', page_1, target_0)
+    def goto_page(self, n: int) -> None:
+        """Scroll to page *n* (1-based)."""
+        if n < 1:
+            raise NavError('goto_page: page number must be >= 1')
+        target_0 = n - 1
+        logger.info('goto-page %d', n)
         if not self.dry_run:
             self.nav.scroll_to_page(target_0, self._page_0)
         self._page_0 = target_0
         self._cell   = None
 
-    def _cmd_goto_cell(self, args: list[str]) -> None:
-        if len(args) < 2:
-            raise CommandError('goto-cell requires row and col (both 0-based)')
-        try:
-            row, col = int(args[0]), int(args[1])
-        except ValueError:
-            raise CommandError('goto-cell: row and col must be integers')
+    def goto_cell(self, row: int, col: int) -> None:
+        """Click grid cell at 0-based *row*, *col*."""
         logger.info('goto-cell row=%d col=%d', row, col)
         if not self.dry_run:
             self.nav.click_grid_cell(row, col)
         self._cell = (row, col)
 
-    def _cmd_goto_index(self, args: list[str]) -> None:
-        """
-        Navigate to a 0-based scan index.
-
-        The index matches the flat traversal order used by
-        :class:`~...scraping.scanning.scan_state.ScanSession`:
-        page 0 row 0 col 0 = index 0, page 0 row 0 col 5 = index 5,
-        page 0 row 1 col 0 = index 6, page 1 row 0 col 0 = index 24, …
-        """
-        if not args:
-            raise CommandError('goto-index requires a 0-based scan index')
-        try:
-            idx = int(args[0])
-        except ValueError:
-            raise CommandError(f'goto-index: {args[0]!r} is not an integer')
-        if idx < 0:
-            raise CommandError('goto-index: index must be ≥ 0')
-        logger.info('goto-index %d', idx)
+    def goto_index(self, n: int) -> None:
+        """Navigate to a 0-based scan index (page-aware)."""
+        if n < 0:
+            raise NavError('goto_index: index must be >= 0')
+        logger.info('goto-index %d', n)
+        from wuwa_inventory_kamera.game.navigation import GRID_COLS
+        from wuwa_inventory_kamera.scraping.scanning.scan_state import GridPosition
+        pos = GridPosition.from_index(n, GRID_COLS)
         if not self.dry_run:
-            from wuwa_inventory_kamera.game.navigation import GRID_COLS
-            from wuwa_inventory_kamera.scraping.scanning.scan_state import GridPosition
-            pos = GridPosition.from_index(idx, GRID_COLS)
             self.nav.scroll_to_page(pos.page, self._page_0)
             self.nav.click_grid_cell(pos.row, pos.col)
-            self._page_0 = pos.page
-            self._cell   = (pos.row, pos.col)
-        else:
-            from wuwa_inventory_kamera.game.navigation import GRID_COLS
-            from wuwa_inventory_kamera.scraping.scanning.scan_state import GridPosition
-            pos = GridPosition.from_index(idx, GRID_COLS)
-            logger.info(
-                'dry-run: would navigate to page=%d row=%d col=%d',
-                pos.page, pos.row, pos.col,
-            )
+        self._page_0 = pos.page
+        self._cell   = (pos.row, pos.col)
 
-    def _cmd_read_count(self, args: list[str]) -> str:
+    def read_count(self) -> dict:
+        """Return ``{"items": N, "pages": N}``."""
         logger.info('read-count')
         if self.dry_run:
-            return json.dumps({'items': 0, 'pages': 0, 'dry_run': True})
+            return {'items': 0, 'pages': 0}
         count, pages = self.nav.read_item_count()
-        return json.dumps({'items': count, 'pages': pages})
+        return {'items': count, 'pages': pages}
 
-    # ── Echo detail commands ─────────────────────────────────────────────
+    # â”€â”€ Echo detail â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def _cmd_sonata_down(self, args: list[str]) -> None:
+    def sonata_down(self) -> None:
+        """Scroll the echo panel to reveal the sonata section."""
         logger.info('sonata-down')
         if not self.dry_run:
             self.nav.scroll_to_sonata()
 
-    def _cmd_sonata_up(self, args: list[str]) -> None:
+    def sonata_up(self) -> None:
+        """Scroll the echo panel back from the sonata section."""
         logger.info('sonata-up')
         if not self.dry_run:
             self.nav.scroll_back_from_sonata()
 
-    # ── Raw input commands ───────────────────────────────────────────────
+    # â”€â”€ Raw input â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def _cmd_click(self, args: list[str]) -> None:
-        if len(args) < 2:
-            raise CommandError('click requires x and y coordinates')
-        try:
-            x, y = float(args[0]), float(args[1])
-        except ValueError:
-            raise CommandError('click: x and y must be numbers')
+    def click(self, x: float, y: float) -> None:
+        """Left-click at game-relative coords."""
         logger.info('click %.1f %.1f', x, y)
         if not self.dry_run:
             self.nav.ctrl.click(x, y)
 
-    def _cmd_move(self, args: list[str]) -> None:
-        if len(args) < 2:
-            raise CommandError('move requires x and y coordinates')
-        try:
-            x, y = float(args[0]), float(args[1])
-        except ValueError:
-            raise CommandError('move: x and y must be numbers')
+    def move(self, x: float, y: float) -> None:
+        """Move cursor to game-relative coords."""
         logger.info('move %.1f %.1f', x, y)
         if not self.dry_run:
             self.nav.ctrl.move(x, y)
 
-    def _cmd_scroll(self, args: list[str]) -> None:
-        if not args:
-            raise CommandError('scroll requires an amount (positive=down, negative=up)')
-        try:
-            amount = float(args[0])
-        except ValueError:
-            raise CommandError(f'scroll: {args[0]!r} is not a number')
+    def scroll(self, amount: float) -> None:
+        """Scroll the mouse wheel.  Positive = down, negative = up."""
         logger.info('scroll %.2f', amount)
         if not self.dry_run:
             self.nav.ctrl.scroll(amount)
 
-    def _cmd_key(self, args: list[str]) -> None:
-        if not args:
-            raise CommandError('key requires a key name (e.g. esc, b, f5)')
-        key = args[0]
-        logger.info('key %s', key)
+    def key(self, name: str) -> None:
+        """Press a single key (e.g. ``'esc'``, ``'b'``, ``'f5'``)."""
+        logger.info('key %s', name)
         if not self.dry_run:
-            self.nav.ctrl.press_key(key)
+            self.nav.ctrl.press_key(name)
 
-    def _cmd_hotkey(self, args: list[str]) -> None:
-        if len(args) < 2:
-            raise CommandError('hotkey requires at least 2 key names')
-        logger.info('hotkey %s', ' '.join(args))
+    def hotkey(self, *keys: str) -> None:
+        """Press a key combination (e.g. ``hotkey('ctrl', 'v')``)."""
+        if len(keys) < 2:
+            raise NavError('hotkey requires at least 2 key names')
+        logger.info('hotkey %s', ' '.join(keys))
         if not self.dry_run:
-            self.nav.ctrl.hotkey(*args)
+            self.nav.ctrl.hotkey(*keys)
 
-    # ── Screenshot command ───────────────────────────────────────────────
+    # â”€â”€ Screenshot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def _cmd_screenshot(self, args: list[str]) -> str:
+    def screenshot(self, roi: str = 'full', out: str | Path | None = None) -> dict:
         """
-        Capture a screenshot and save it to disk.
+        Capture and save a screenshot.
 
-        Options
-        -------
-        --roi <name>     ROI to crop.  Default: ``full``.
-        --out <path>     Output file.  Default: auto-named under
-                         ``screenshot_dir``.
+        Parameters
+        ----------
+        roi:
+            ``'full'``, a named ROI (``'echo-card'``, ``'sonata'``, â€¦), or a
+            dot-path into the layout tree (e.g. ``'echoes.echoCard'``).
+        out:
+            Output file path.  Auto-generated under ``screenshot_dir`` if omitted.
+
+        Returns a dict with ``saved``, ``roi``, and ``shape`` keys.
         """
-        roi_name = 'full'
-        out_path: Path | None = None
-
-        i = 0
-        while i < len(args):
-            if args[i] == '--roi' and i + 1 < len(args):
-                roi_name = args[i + 1]
-                i += 2
-            elif args[i] == '--out' and i + 1 < len(args):
-                out_path = Path(args[i + 1])
-                i += 2
-            else:
-                raise CommandError(
-                    f'screenshot: unexpected argument {args[i]!r}  '
-                    f'(expected --roi or --out)'
-                )
-
+        out_path = Path(out) if out is not None else None
         if out_path is None:
             ts = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
             self.screenshot_dir.mkdir(parents=True, exist_ok=True)
             out_path = self.screenshot_dir / f'screenshot_{ts}.png'
 
-        logger.info('screenshot --roi %s --out %s', roi_name, out_path)
-
+        logger.info('screenshot roi=%s out=%s', roi, out_path)
         if self.dry_run:
-            return json.dumps({'saved': str(out_path), 'dry_run': True})
+            return {'saved': str(out_path), 'roi': roi, 'dry_run': True}
 
         import cv2
         from wuwa_inventory_kamera.game.screen import capture_full
 
-        layout = self.nav.layout
-        full = capture_full(layout.width, layout.height, layout.monitor)
-
-        try:
-            roi = _resolve_roi(layout, roi_name)
-        except CommandError:
-            raise
-
-        if roi is None:
-            img = full
-        else:
-            img = full[
-                int(roi.y) : int(roi.y + roi.h),
-                int(roi.x) : int(roi.x + roi.w),
+        layout  = self.nav.layout
+        full    = capture_full(layout.width, layout.height, layout.monitor)
+        roi_obj = _resolve_roi(layout, roi)
+        img = (
+            full if roi_obj is None
+            else full[
+                int(roi_obj.y): int(roi_obj.y + roi_obj.h),
+                int(roi_obj.x): int(roi_obj.x + roi_obj.w),
             ]
-
+        )
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        # capture_full returns RGB; cv2 expects BGR
         cv2.imwrite(str(out_path), cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
-        return json.dumps({
-            'saved': str(out_path),
-            'roi':   roi_name,
-            'shape': list(img.shape),
-        })
+        return {'saved': str(out_path), 'roi': roi, 'shape': list(img.shape)}
 
-    # ── State / inspection commands ──────────────────────────────────────
+    # â”€â”€ State / inspection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def _cmd_state(self, args: list[str]) -> str:
+    def state(self) -> str:
+        """Return the current GameState as a JSON string."""
         return self.snapshot().to_json()
 
-    def _cmd_in_menu(self, args: list[str]) -> str:
+    def in_menu(self) -> dict:
+        """OCR-check whether the main-menu screen is currently visible."""
         logger.info('in-menu')
         if self.dry_run:
-            return json.dumps({'in_menu': False, 'dry_run': True})
-        result = self.nav.is_in_main_menu()
-        return json.dumps({'in_menu': result})
+            return {'in_menu': False}
+        return {'in_menu': self.nav.is_in_main_menu()}
 
-    def _cmd_wait(self, args: list[str]) -> None:
-        if not args:
-            raise CommandError('wait requires a duration in seconds')
-        try:
-            secs = float(args[0])
-        except ValueError:
-            raise CommandError(f'wait: {args[0]!r} is not a number')
-        logger.info('wait %.2fs', secs)
+    def wait(self, seconds: float) -> None:
+        """Sleep for *seconds* seconds."""
+        logger.info('wait %.2fs', seconds)
         if not self.dry_run:
-            time.sleep(secs)
+            time.sleep(seconds)
 
-    # ── Variable helpers ────────────────────────────────────────────────
+    # â”€â”€ OCR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    _VAR_RE = re.compile(r'\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)')
-
-    def _expand_vars(self, token: str) -> str:
-        """Replace ``$name`` / ``${name}`` with the stored variable value.
-
-        Unknown variables are left as-is so that literal ``$`` characters in
-        values are not silently swallowed.
+    def ocr_roi(self, roi: str = 'full', *, thorough: bool = False) -> dict:
         """
-        def _sub(m: re.Match) -> str:
-            name = m.group(1) or m.group(2) or ''
-            return self._vars.get(name, m.group(0) or '')
-        return self._VAR_RE.sub(_sub, token)
+        Capture the game screen, crop to *roi*, and run OCR.
 
-    # ── Variable / control-flow commands ────────────────────────────────
+        Parameters
+        ----------
+        roi:
+            ROI name or dot-path â€” same values accepted as :meth:`screenshot`.
+        thorough:
+            Use multi-pass OCR (higher recall, ~3Ã— slower).
 
-    def _cmd_set(self, args: list[str]) -> None:
-        """``set <name> <value …>`` — Assign a DSL variable.
+        Returns a dict::
 
-        The value is all remaining tokens joined with a single space so that
-        multi-word values do not need quoting::
-
-            set greeting Hello, world
-            echo $greeting          # prints: Hello, world
+            {"roi": "echo-card", "lines": [{"text": "â€¦", "conf": 0.97}, â€¦]}
         """
-        if not args:
-            raise CommandError('set requires a variable name and value')
-        name = args[0]
-        if not re.match(r'^[A-Za-z_]\w*$', name):
-            raise CommandError(
-                f'set: {name!r} is not a valid variable name '
-                f'(must match [A-Za-z_]\\w*)'
-            )
-        value = ' '.join(args[1:])
-        self._vars[name] = value
-        logger.debug('set %s = %r', name, value)
-
-    def _cmd_echo(self, args: list[str]) -> str:
-        """``echo <text …>`` — Print text (``$var`` already expanded)."""
-        text = ' '.join(args)
-        print(text)
-        return text
-
-    def _cmd_assert_eq(self, args: list[str]) -> None:
-        """``assert-eq <a> <b>`` — Raise CommandError if *a* ≠ *b* after expansion.
-
-        Useful to stop a script early when an OCR result does not match an
-        expected value::
-
-            ocr-roi --roi echo-card --into name
-            assert-eq $name "Impermanence Heron"
-        """
-        if len(args) < 2:
-            raise CommandError('assert-eq requires two arguments')
-        a, b = args[0], args[1]
-        if a != b:
-            raise CommandError(f'assert-eq failed: {a!r} ≠ {b!r}')
-        logger.debug('assert-eq ok: %r == %r', a, b)
-
-    def _cmd_assert_ne(self, args: list[str]) -> None:
-        """``assert-ne <a> <b>`` — Raise CommandError if *a* = *b* after expansion."""
-        if len(args) < 2:
-            raise CommandError('assert-ne requires two arguments')
-        a, b = args[0], args[1]
-        if a == b:
-            raise CommandError(f'assert-ne failed: {a!r} = {b!r}')
-        logger.debug('assert-ne ok: %r ≠ %r', a, b)
-
-    def _cmd_if_eq(self, args: list[str]) -> None:
-        """``if-eq <a> <b>`` — Skip the next command if *a* ≠ *b*.
-
-        Both arguments are already expanded before this handler is called::
-
-            ocr-roi --roi echo-card --into name
-            if-eq $name "Impermanence Heron"
-            screenshot --out found.png
-        """
-        if len(args) < 2:
-            raise CommandError('if-eq requires two arguments')
-        if args[0] != args[1]:
-            self._skip_count += 1
-            logger.debug('if-eq %r != %r → skip next', args[0], args[1])
-
-    def _cmd_if_ne(self, args: list[str]) -> None:
-        """``if-ne <a> <b>`` — Skip the next command if *a* = *b*."""
-        if len(args) < 2:
-            raise CommandError('if-ne requires two arguments')
-        if args[0] == args[1]:
-            self._skip_count += 1
-            logger.debug('if-ne %r == %r → skip next', args[0], args[1])
-
-    # ── OCR command ──────────────────────────────────────────────────────
-
-    def _cmd_ocr_roi(self, args: list[str]) -> str:
-        """
-        Capture the current game screen, crop to a named ROI, and run OCR.
-
-        Options
-        -------
-        --roi <name>     Layout ROI to crop.  Accepts the same names as
-                         ``screenshot --roi``.  Default: ``full``.
-        --thorough       Use multi-pass OCR (higher recall, slower).
-        --into <var>     Store the first recognised text line in a DSL
-                         variable for later comparison with ``assert-eq`` /
-                         ``if-eq``.
-
-        Returns a JSON object::
-
-            {"roi": "echo-card", "lines": [{"text": "…", "conf": 0.97}, …]}
-
-        Variables are expanded in all arguments before this handler is
-        called, so ``--roi $my_roi`` works as expected.
-        """
-        roi_name = 'full'
-        thorough = False
-        into_var: str | None = None
-
-        i = 0
-        while i < len(args):
-            if args[i] == '--roi' and i + 1 < len(args):
-                roi_name = args[i + 1]
-                i += 2
-            elif args[i] == '--thorough':
-                thorough = True
-                i += 1
-            elif args[i] == '--into' and i + 1 < len(args):
-                into_var = args[i + 1]
-                i += 2
-            else:
-                raise CommandError(
-                    f'ocr-roi: unexpected argument {args[i]!r}  '
-                    f'(expected --roi, --thorough, or --into)'
-                )
-
-        logger.info('ocr-roi --roi %s%s%s', roi_name,
-                    ' --thorough' if thorough else '',
-                    f' --into {into_var}' if into_var else '')
-
+        logger.info('ocr-roi roi=%s thorough=%s', roi, thorough)
         if self.dry_run:
-            return json.dumps({'roi': roi_name, 'lines': [], 'dry_run': True})
+            return {'roi': roi, 'lines': []}
 
         from wuwa_inventory_kamera.game.screen import capture_full
         from wuwa_inventory_kamera.scraping.ocr._rapidocr import RapidOcrBackend
 
-        layout = self.nav.layout
-        full = capture_full(layout.width, layout.height, layout.monitor)
-
-        roi = _resolve_roi(layout, roi_name)
-        if roi is not None:
-            crop = full[
-                int(roi.y) : int(roi.y + roi.h),
-                int(roi.x) : int(roi.x + roi.w),
+        layout  = self.nav.layout
+        full    = capture_full(layout.width, layout.height, layout.monitor)
+        roi_obj = _resolve_roi(layout, roi)
+        crop = (
+            full if roi_obj is None
+            else full[
+                int(roi_obj.y): int(roi_obj.y + roi_obj.h),
+                int(roi_obj.x): int(roi_obj.x + roi_obj.w),
             ]
-        else:
-            crop = full
-
-        # Lazily initialise the backend — first call takes ~2 s to load models.
+        )
         if self._ocr_backend is None:
             self._ocr_backend = RapidOcrBackend()
-
         recognize = (
-            self._ocr_backend.thorough_recognize
-            if thorough
+            self._ocr_backend.thorough_recognize if thorough
             else self._ocr_backend.recognize
         )
-        results = recognize(crop)
-
-        lines = [
-            {'text': text, 'conf': round(float(conf), 4)}
-            for _, text, conf in results
-        ]
-
-        if into_var is not None:
-            self._vars[into_var] = lines[0]['text'] if lines else ''
-            logger.debug('ocr-roi --into %s = %r', into_var, self._vars[into_var])
-
-        return json.dumps({'roi': roi_name, 'lines': lines})
+        return {
+            'roi': roi,
+            'lines': [
+                {'text': t, 'conf': round(float(c), 4)}
+                for _, t, c in recognize(crop)
+            ],
+        }
 
 
 # ---------------------------------------------------------------------------
-# Script parser
-# ---------------------------------------------------------------------------
-
-def _parse_script(text: str) -> list[tuple[int, list[str]]]:
-    """
-    Parse a DSL script string into ``(lineno, tokens)`` pairs.
-
-    * Lines starting with ``#`` are comments.
-    * Empty lines are ignored.
-    * Tokenisation uses :func:`shlex.split` so quoted paths work.
-    """
-    result: list[tuple[int, list[str]]] = []
-    for lineno, raw_line in enumerate(text.splitlines(), start=1):
-        line = raw_line.strip()
-        if not line or line.startswith('#'):
-            continue
-        try:
-            tokens = shlex.split(line)
-        except ValueError as exc:
-            logger.warning('Line %d: parse error — %s', lineno, exc)
-            continue
-        if tokens:
-            result.append((lineno, tokens))
-    return result
-
-
-# ---------------------------------------------------------------------------
-# Help text
-# ---------------------------------------------------------------------------
-
-def _print_help() -> None:
-    print("""\
-Navigation:
-  focus-window              Bring the game window to the foreground
-  open-inventory            Press inventory key
-  close-inventory           Press Esc
-  switch-tab <tab>          echoes | weapons | devItems | resources
-  set-sort <order>          level | rarity | time_added | tuning_status |
-                            discarded_first
-  goto-page <n>             Scroll to page N (1-based)
-  goto-cell <row> <col>     Click cell (0-based row, col)
-  goto-index <n>            Navigate to 0-based scan index
-
-Echo detail:
-  sonata-down               Scroll to show sonata section
-  sonata-up                 Scroll back to stats
-
-Raw input:
-  click <x> <y>             Left-click at game-relative coords
-  move <x> <y>              Move cursor
-  scroll <amount>           Scroll wheel (+ve=down, -ve=up)
-  key <name>                Press a key  (esc, b, f5, ...)
-  hotkey <k1> [<k2> ...]   Key combo  (ctrl v,  alt f4, ...)
-
-Screenshots:
-  screenshot                Full window  →  screenshots/screenshot_<ts>.png
-  screenshot --roi <name>   full | echo-card | echo-stats-name |
-                            echo-stats-value | sonata | <layout.dot.path>
-  screenshot --out <path>   Save to a specific file
-
-State / inspection:
-  read-count                Print {"items": N, "pages": N}
-  state                     Print current state JSON
-  in-menu                   OCR-check for main-menu screen
-  wait <seconds>            Sleep
-
-Variables:
-  set <name> <value>        Store a variable  (value = all remaining tokens)
-  echo <text>               Print text with $var expansion
-  assert-eq <a> <b>         Raise error if a != b  (stops the script line)
-  assert-ne <a> <b>         Raise error if a == b
-  if-eq <a> <b>             Skip next command if a != b
-  if-ne <a> <b>             Skip next command if a == b
-
-OCR:
-  ocr-roi                   OCR full window
-  ocr-roi --roi <name>      Crop to ROI then OCR  (same names as screenshot)
-  ocr-roi --thorough        Multi-pass OCR (higher recall, ~3× slower)
-  ocr-roi --into <var>      Store first recognised line in $var
-
-Script / REPL:
-  # line comment
-  exit | quit               Quit the REPL""")
-
-
-# ---------------------------------------------------------------------------
-# Logging setup
+# Logging
 # ---------------------------------------------------------------------------
 
 def _configure_logging(level_name: str) -> None:
     level = getattr(logging, level_name.upper(), logging.INFO)
-    fmt = logging.Formatter('%(asctime)s | %(levelname)-8s | %(name)s | %(message)s')
-    root = logging.getLogger()
+    fmt   = logging.Formatter('%(asctime)s | %(levelname)-8s | %(name)s | %(message)s')
+    root  = logging.getLogger()
     root.setLevel(level)
     if root.handlers:
         for h in root.handlers:
@@ -910,41 +465,35 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         prog='wuwa-nav',
         description=(
-            'Navigate and control the WuWa game window from the command line.\n\n'
-            'Three usage modes:\n'
-            '  One-shot:    wuwa-nav switch-tab echoes\n'
-            '  Script file: wuwa-nav --script session.wuwa\n'
-            '  Interactive: wuwa-nav --interactive\n\n'
-            'Run wuwa-nav --interactive and type "help" for a command reference.\n\n'
-            'The final logical state is printed as JSON to stdout after every run,\n'
-            'or written to --state-out.  Use --state-in to resume a previous session.'
+            'Navigate and control the WuWa game window.\n\n'
+            'Usage modes:\n'
+            '  Script:      wuwa-nav session.py\n'
+            '  One-liner:   wuwa-nav -c "focus_window(); switch_tab(\'echoes\')"\n'
+            '  Interactive: wuwa-nav\n\n'
+            'Scripts are plain Python â€” all nav session methods are pre-imported.\n'
+            'Use any Python control flow: if/else, for, while, try/except.'
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-
+    parser.add_argument(
+        'script', nargs='?', metavar='SCRIPT',
+        help='Python nav script to run (session methods are in scope).',
+    )
+    parser.add_argument(
+        '-c', dest='oneliner', metavar='CODE',
+        help='Execute a Python one-liner (session methods are in scope).',
+    )
     parser.add_argument(
         '--state-in', metavar='FILE',
-        help=(
-            'Load initial navigator state from a JSON file.  '
-            'The navigator\'s internal tab/sort/page are set accordingly '
-            'without sending any game input.'
-        ),
+        help='Load initial navigator state from a JSON file.',
     )
     parser.add_argument(
         '--state-out', metavar='FILE',
         help='Write final state JSON to FILE instead of stdout.',
     )
     parser.add_argument(
-        '--script', metavar='FILE',
-        help='Execute commands from a DSL script file.',
-    )
-    parser.add_argument(
-        '--interactive', '-i', action='store_true',
-        help='Start an interactive REPL.',
-    )
-    parser.add_argument(
         '--dry-run', action='store_true',
-        help='Parse and log commands without sending any game input.',
+        help='Log commands without sending any game input.',
     )
     parser.add_argument(
         '--inventory-key', default='b', metavar='KEY',
@@ -959,27 +508,14 @@ def main() -> None:
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
         help='Logging verbosity (default: INFO).',
     )
-    parser.add_argument(
-        'command', nargs='*',
-        metavar='COMMAND',
-        help=(
-            'One-shot command with its arguments, e.g. '
-            '"switch-tab echoes" or "goto-index 47".  '
-            'Mutually exclusive with --script and --interactive.'
-        ),
-    )
 
     args = parser.parse_args()
     _configure_logging(args.log_level)
 
-    # Validate: at most one execution mode
-    n_modes = sum([bool(args.command), bool(args.script), args.interactive])
-    if n_modes > 1:
-        parser.error(
-            'Specify at most one of: a positional command, --script, --interactive.'
-        )
+    if args.script and args.oneliner:
+        parser.error('Specify at most one of: script, -c.')
 
-    # --- Delayed imports (keeps --help instantaneous) ---
+    # Delayed imports so --help is fast
     from wuwa_inventory_kamera.game.input_controller import InputController
     from wuwa_inventory_kamera.game.navigation import GameNavigator
     from wuwa_inventory_kamera.game.screen import GameWindow
@@ -993,63 +529,41 @@ def main() -> None:
     ctrl = InputController(gw.monitor_index if gw.found else 1)
     nav  = GameNavigator(ctrl, gw, inventory_key=args.inventory_key)
 
-    # Restore prior state if requested
-    initial_state: GameState | None = None
-    if args.state_in:
-        try:
-            text = Path(args.state_in).read_text(encoding='utf-8')
-            initial_state = GameState.from_json(text)
-            initial_state.apply_to_navigator(nav)
-            logger.info('Restored state from %s: %s', args.state_in, initial_state)
-        except Exception as exc:
-            logger.warning('Could not load state from %s: %s', args.state_in, exc)
-
-    dispatcher = NavCommandDispatcher(
+    session = NavSession(
         nav=nav,
         gw=gw,
         screenshot_dir=Path(args.screenshot_dir),
         dry_run=args.dry_run,
     )
 
-    # Sync dispatcher's page/cell tracking from the loaded state
-    if initial_state is not None:
-        if initial_state.page is not None:
-            dispatcher._page_0 = initial_state.page - 1  # 1-based → 0-based
-        if initial_state.cell is not None:
-            dispatcher._cell = (initial_state.cell.row, initial_state.cell.col)
-
-    # ── Execute ──────────────────────────────────────────────────────────
-
-    if args.interactive:
-        dispatcher.run_interactive()
-
-    elif args.script:
-        script_text = Path(args.script).read_text(encoding='utf-8')
-        dispatcher.run_script(script_text)
-
-    elif args.command:
+    if args.state_in:
         try:
-            result = dispatcher.run_tokens(args.command)
-            if result is not None:
-                print(result)
-        except CommandError as exc:
-            print(f'Error: {exc}', file=sys.stderr)
-            sys.exit(1)
+            text    = Path(args.state_in).read_text(encoding='utf-8')
+            initial = GameState.from_json(text)
+            initial.apply_to_navigator(nav)
+            if initial.page is not None:
+                session._page_0 = initial.page - 1
+            if initial.cell is not None:
+                session._cell = (initial.cell.row, initial.cell.col)
+            logger.info('Restored state from %s', args.state_in)
+        except Exception as exc:
+            logger.warning('Could not load state from %s: %s', args.state_in, exc)
 
+    if args.script:
+        session.run_script(Path(args.script))
+    elif args.oneliner:
+        env = session._script_namespace()
+        exec(compile(args.oneliner, '<-c>', 'exec'), env)  # noqa: S102
     else:
-        # No command given — just print the current state and exit
-        print(dispatcher._cmd_state([]))
-        return   # state already printed; skip the duplicate below
+        session.repl()
+        return  # final state irrelevant for interactive sessions
 
-    # ── Output final state ────────────────────────────────────────────────
-
-    final_json = dispatcher.snapshot().to_json()
-
+    final_json = session.snapshot().to_json()
     if args.state_out:
         out = Path(args.state_out)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(final_json, encoding='utf-8')
-        logger.info('State written to %s', out)
+        logger.info('State written to %s', args.state_out)
     else:
         print(final_json)
 
