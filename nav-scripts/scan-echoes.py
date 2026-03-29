@@ -23,9 +23,7 @@
 
 # ── CONFIG — edit before running ─────────────────────────────────────────────
 
-SORT_ORDER = None         # set sort before scanning; None = keep current order
-                          # values: 'level_desc' | 'level_asc' | 'newest' | 'oldest'
-                          #         'quality_desc' | 'quality_asc'
+SORT_ORDER = 'level'      # set sort before scanning; None = keep current order
 OUTPUT_DIR = 'captures'   # root directory; session subfolder is created automatically
 
 # ── Script body — no changes needed below this line ──────────────────────────
@@ -57,32 +55,58 @@ print(f'  sort     : {SORT_ORDER or "(unchanged)"}')
 print(f'  output   : {base_dir}')
 
 focus_window()
+
+# Capture screen geometry so wuwa-reprocess can reconstruct ScreenInfo.
+_snap = snapshot()
+screen_width  = _snap.window.width
+screen_height = _snap.window.height
+monitor       = _snap.window.monitor
+manifest['screen_width']  = screen_width
+manifest['screen_height'] = screen_height
+manifest['monitor']       = monitor
+print(f'  screen   : {screen_width}x{screen_height} (monitor {monitor})')
+
 open_inventory()
 
 switch_tab("echoes")
 
+set_sort('rarity')       # hotfix: toggle once so the UI re-sorts reliably
 if SORT_ORDER:
     set_sort(SORT_ORDER)
 
-info  = read_count()
-total = info['items']
-print(f'\n  [{scraper}] {total} item(s) found')
+# TODO: until it works, hardcode total
+total = 24
+#info  = read_count()
+#total = info['items']
+#print(f'\n  {total} item(s) found')
 
-is_echo = (scraper == 'echoes')
+is_echo = True
 
 # Echoes live under raw/ so wuwa-reprocess can pick them up directly.
 # Other scrapers get their own named subdirectory.
-out_dir = (base_dir / 'raw') if is_echo else (base_dir / scraper)
+out_dir = (base_dir / 'raw')
 out_dir.mkdir(parents=True, exist_ok=True)
 
 saved: list[dict] = []
 
-for idx in range(50): # range(total):
-    goto_index(idx)
+# 24 is one "page" of echoes on 1920x1080
+batch=0
+batch_size=24
 
-    page, row, col = _grid_pos(idx)
+# per batch:
+# 1. run with full screenshot for echo data / stats (fast because no scrolling inside the echo section)
+# 2. run with sonata screenshot for sonata data (slower because we scroll each echo to get the sonata section into the ROI)
+while batch*batch_size < total:
 
-    if is_echo:
+    goto_index(batch*batch_size)  # ensure we're at the start of the list before beginning
+    sonata_down()  # ensure sonata section is scrolled into view for the first item
+    sonata_down()  # echoes tab needs an extra scroll to get the first item fully into the sonata ROI
+
+    for idx in range(batch*batch_size, (batch+1)*batch_size): # range(total):
+        goto_index(idx, scroll_wait=0.5, click_wait=0.1)  # add waits to ensure UI has time to update before screenshots
+
+        page, row, col = _grid_pos(idx)
+
         item_dir = out_dir / f'echo_{idx:04d}'
         item_dir.mkdir(parents=True, exist_ok=True)
 
@@ -90,17 +114,20 @@ for idx in range(50): # range(total):
         screenshot(roi='full', out=item_dir / 'full.png')
 
         # Sonata section: scroll into view, capture the ROI crop, scroll back.
-        sonata_down()
-        screenshot(roi='sonata', out=item_dir / 'sonata.png')
-        sonata_up()
+        #sonata_down()
+        #screenshot(roi='sonata', out=item_dir / 'sonata.png')
+        #sonata_up()
 
         # Metadata consumed by wuwa-reprocess
         meta = {
-            'session_id': session_id,
-            'index':      idx,
-            'page':       page,
-            'row':        row,
-            'col':        col,
+            'session_id':   session_id,
+            'index':        idx,
+            'page':         page,
+            'row':          row,
+            'col':          col,
+            'screen_width':  screen_width,
+            'screen_height': screen_height,
+            'monitor':       monitor,
         }
         (item_dir / 'meta.json').write_text(
             json.dumps(meta, indent=2), encoding='utf-8'
@@ -108,27 +135,42 @@ for idx in range(50): # range(total):
 
         files = [
             str(item_dir / 'full.png'),
-            str(item_dir / 'sonata.png'),
+            #str(item_dir / 'sonata.png'),
         ]
 
-    else:
-        # Weapons / devItems / resources — one full screenshot per item.
-        item_path = out_dir / f'{idx:04d}_full.png'
-        screenshot(roi='full', out=item_path)
-        files = [str(item_path)]
+        saved.append({
+            'index': idx,
+            'page':  page,
+            'row':   row,
+            'col':   col,
+            'files': files,
+        })
 
-    saved.append({
-        'index': idx,
-        'page':  page,
-        'row':   row,
-        'col':   col,
-        'files': files,
-    })
+        pct = (idx + 1) / total * 100
+        print(f'\r  {idx + 1}/{total} ({pct:.0f}%)', end='', flush=True)
 
-    pct = (idx + 1) / total * 100
-    print(f'\r  [{scraper}] {idx + 1}/{total} ({pct:.0f}%)', end='', flush=True)
+    print()  # newline after progress line
 
-print()  # newline after progress line
+    goto_index(batch*batch_size, scroll_wait=1.0)  # ensure we're at the start of the list before beginning
+    sonata_down()  # ensure sonata section is scrolled into view for the first item
+    sonata_down()  # echoes tab needs an extra scroll to get the first item fully into the sonata ROI
+    sonata_up()
+    sonata_up()
+
+    for idx in range(batch*batch_size, (batch+1)*batch_size): # range(total):
+        goto_index(idx, click_wait=0.1)  # add waits to ensure UI has time to update before screenshots
+
+        page, row, col = _grid_pos(idx)
+
+        item_dir = out_dir / f'echo_{idx:04d}'
+        item_dir.mkdir(parents=True, exist_ok=True)
+
+        move(1600, 500); scroll(-500.0, wait=1.0); scroll(5.0, wait=0.5)
+        #sonata_up()
+        screenshot(roi='sonata', out=item_dir / 'sonata.png')
+        goto_index(idx, click_wait=0.0)
+
+    batch += 1
 
 manifest['scrapers'] = {
     'echoes': {

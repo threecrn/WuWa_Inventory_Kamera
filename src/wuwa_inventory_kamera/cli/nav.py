@@ -264,7 +264,7 @@ class NavSession:
             self.nav.click_grid_cell(row, col, **kw)
         self._cell = (row, col)
 
-    def goto_index(self, n: int, wait: float | None = None) -> None:
+    def goto_index(self, n: int, scroll_wait: float | None = None, click_wait: float | None = None) -> None:
         """Navigate to a 0-based scan index (page-aware)."""
         if n < 0:
             raise NavError('goto_index: index must be >= 0')
@@ -273,9 +273,10 @@ class NavSession:
         from wuwa_inventory_kamera.scraping.scanning.scan_state import GridPosition
         pos = GridPosition.from_index(n, GRID_COLS)
         if not self.dry_run:
-            self.nav.scroll_to_page(pos.page, self._page_0)
-            kw = {} if wait is None else {'wait': wait}
-            self.nav.click_grid_cell(pos.row, pos.col, **kw)
+            scroll_kw = {} if scroll_wait is None else {'wait': scroll_wait}
+            self.nav.scroll_to_page(pos.page, self._page_0, **scroll_kw)
+            click_kw = {} if click_wait is None else {'wait': click_wait}
+            self.nav.click_grid_cell(pos.row, pos.col, **click_kw)
         self._page_0 = pos.page
         self._cell   = (pos.row, pos.col)
 

@@ -197,6 +197,13 @@ def loadRawScans(base_path: Path) -> list:
     base_path = Path(base_path)
     scans: list = []
 
+    # Load session manifest once for fallback screen dimensions (may be absent).
+    _manifest_file = base_path.parent / 'manifest.json'
+    _session_manifest: dict = {}
+    if _manifest_file.exists():
+        with open(_manifest_file, 'r', encoding='utf-8') as _mf:
+            _session_manifest = json.load(_mf)
+
     for echo_dir in sorted(base_path.glob("echo_*/")):
         meta_path   = echo_dir / "meta.json"
         full_path   = echo_dir / "full.png"
@@ -227,9 +234,9 @@ def loadRawScans(base_path: Path) -> list:
             col           = meta['col'],
             full_path     = full_path,
             sonata_path   = sonata_path,
-            screen_width  = meta['screen_width'],
-            screen_height = meta['screen_height'],
-            monitor       = meta['monitor'],
+            screen_width  = meta.get('screen_width', _session_manifest.get('screen_width', 1920)),
+            screen_height = meta.get('screen_height', _session_manifest.get('screen_height', 1080)),
+            monitor       = meta.get('monitor', _session_manifest.get('monitor', 1)),
         ))
 
     _raw_logger.debug("Loaded %d raw scan(s) from %s", len(scans), base_path)
