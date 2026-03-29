@@ -139,7 +139,7 @@ class NavSession:
     """
 
     def __init__(
-        self,
+        self: NavSession,
         nav,
         gw,
         screenshot_dir: Path | None = None,
@@ -198,23 +198,25 @@ class NavSession:
             if not self.gw.activate():
                 raise NavError('focus_window: game window not found')
 
-    def open_inventory(self) -> None:
+    def open_inventory(self, wait: float | None = None) -> None:
         """Press the inventory keybind."""
         logger.info('open-inventory')
         if not self.dry_run:
-            self.nav.open_inventory()
+            kw = {} if wait is None else {'wait': wait}
+            self.nav.open_inventory(**kw)
         self._page_0 = 0
         self._cell   = None
 
-    def close_inventory(self) -> None:
+    def close_inventory(self, wait: float | None = None) -> None:
         """Press Esc to close the inventory."""
         logger.info('close-inventory')
         if not self.dry_run:
-            self.nav.close_inventory()
+            kw = {} if wait is None else {'wait': wait}
+            self.nav.close_inventory(**kw)
         self._page_0 = 0
         self._cell   = None
 
-    def switch_tab(self, tab: str) -> None:
+    def switch_tab(self, tab: str, wait: float | None = None) -> None:
         """Switch to an inventory tab.  tab: echoes | weapons | devItems | resources"""
         logger.info('switch-tab %s', tab)
         if not self.dry_run:
@@ -224,11 +226,12 @@ class NavSession:
             except ValueError:
                 valid = ', '.join(v.value for v in InventoryTab)
                 raise NavError(f'Unknown tab {tab!r}. Valid: {valid}')
-            self.nav.switch_tab(t)
+            kw = {} if wait is None else {'wait': wait}
+            self.nav.switch_tab(t, **kw)
         self._page_0 = 0
         self._cell   = None
 
-    def set_sort(self, order: str) -> None:
+    def set_sort(self, order: str, wait: float | None = None) -> None:
         """Set inventory sort order.  order: level | rarity | time_added | tuning_status | discarded_first"""
         logger.info('set-sort %s', order)
         if not self.dry_run:
@@ -238,27 +241,30 @@ class NavSession:
             except KeyError:
                 valid = ', '.join(s.name.lower() for s in SortOrder)
                 raise NavError(f'Unknown sort order {order!r}. Valid: {valid}')
-            self.nav.set_sort_order(o)
+            kw = {} if wait is None else {'wait': wait}
+            self.nav.set_sort_order(o, **kw)
 
-    def goto_page(self, n: int) -> None:
+    def goto_page(self, n: int, wait: float | None = None) -> None:
         """Scroll to page *n* (1-based)."""
         if n < 1:
             raise NavError('goto_page: page number must be >= 1')
         target_0 = n - 1
         logger.info('goto-page %d', n)
         if not self.dry_run:
-            self.nav.scroll_to_page(target_0, self._page_0)
+            kw = {} if wait is None else {'wait': wait}
+            self.nav.scroll_to_page(target_0, self._page_0, **kw)
         self._page_0 = target_0
         self._cell   = None
 
-    def goto_cell(self, row: int, col: int) -> None:
+    def goto_cell(self, row: int, col: int, wait: float | None = None) -> None:
         """Click grid cell at 0-based *row*, *col*."""
         logger.info('goto-cell row=%d col=%d', row, col)
         if not self.dry_run:
-            self.nav.click_grid_cell(row, col)
+            kw = {} if wait is None else {'wait': wait}
+            self.nav.click_grid_cell(row, col, **kw)
         self._cell = (row, col)
 
-    def goto_index(self, n: int) -> None:
+    def goto_index(self, n: int, wait: float | None = None) -> None:
         """Navigate to a 0-based scan index (page-aware)."""
         if n < 0:
             raise NavError('goto_index: index must be >= 0')
@@ -268,7 +274,8 @@ class NavSession:
         pos = GridPosition.from_index(n, GRID_COLS)
         if not self.dry_run:
             self.nav.scroll_to_page(pos.page, self._page_0)
-            self.nav.click_grid_cell(pos.row, pos.col)
+            kw = {} if wait is None else {'wait': wait}
+            self.nav.click_grid_cell(pos.row, pos.col, **kw)
         self._page_0 = pos.page
         self._cell   = (pos.row, pos.col)
 
@@ -282,51 +289,60 @@ class NavSession:
 
     # â”€â”€ Echo detail â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def sonata_down(self) -> None:
+    def sonata_down(self, wait: float | None = None) -> None:
         """Scroll the echo panel to reveal the sonata section."""
         logger.info('sonata-down')
         if not self.dry_run:
             self.nav.scroll_to_sonata()
+            if wait:
+                time.sleep(wait)
 
-    def sonata_up(self) -> None:
+    def sonata_up(self, wait: float | None = None) -> None:
         """Scroll the echo panel back from the sonata section."""
         logger.info('sonata-up')
         if not self.dry_run:
             self.nav.scroll_back_from_sonata()
+            if wait:
+                time.sleep(wait)
 
     # â”€â”€ Raw input â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def click(self, x: float, y: float) -> None:
+    def click(self, x: float, y: float, wait: float | None = None) -> None:
         """Left-click at game-relative coords."""
         logger.info('click %.1f %.1f', x, y)
         if not self.dry_run:
-            self.nav.ctrl.click(x, y)
+            kw = {} if wait is None else {'wait': wait}
+            self.nav.ctrl.click(x, y, **kw)
 
-    def move(self, x: float, y: float) -> None:
+    def move(self, x: float, y: float, wait: float | None = None) -> None:
         """Move cursor to game-relative coords."""
         logger.info('move %.1f %.1f', x, y)
         if not self.dry_run:
-            self.nav.ctrl.move(x, y)
+            kw = {} if wait is None else {'wait': wait}
+            self.nav.ctrl.move(x, y, **kw)
 
-    def scroll(self, amount: float) -> None:
+    def scroll(self, amount: float, wait: float | None = None) -> None:
         """Scroll the mouse wheel.  Positive = down, negative = up."""
         logger.info('scroll %.2f', amount)
         if not self.dry_run:
-            self.nav.ctrl.scroll(amount)
+            kw = {} if wait is None else {'wait': wait}
+            self.nav.ctrl.scroll(amount, **kw)
 
-    def key(self, name: str) -> None:
+    def key(self, name: str, wait: float | None = None) -> None:
         """Press a single key (e.g. ``'esc'``, ``'b'``, ``'f5'``)."""
         logger.info('key %s', name)
         if not self.dry_run:
-            self.nav.ctrl.press_key(name)
+            kw = {} if wait is None else {'wait': wait}
+            self.nav.ctrl.press_key(name, **kw)
 
-    def hotkey(self, *keys: str) -> None:
+    def hotkey(self, *keys: str, wait: float | None = None) -> None:
         """Press a key combination (e.g. ``hotkey('ctrl', 'v')``)."""
         if len(keys) < 2:
             raise NavError('hotkey requires at least 2 key names')
         logger.info('hotkey %s', ' '.join(keys))
         if not self.dry_run:
-            self.nav.ctrl.hotkey(*keys)
+            kw = {} if wait is None else {'wait': wait}
+            self.nav.ctrl.hotkey(*keys, **kw)
 
     # â”€â”€ Screenshot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

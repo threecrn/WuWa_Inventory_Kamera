@@ -295,7 +295,7 @@ class GameNavigator:
         amount = self.layout.scroll.page.y * direction
         self.ctrl.scroll(amount, wait=wait)
 
-    def scroll_to_page(self, target_page: int, current_page: int) -> None:
+    def scroll_to_page(self, target_page: int, current_page: int, wait: float | None = None) -> None:
         """
         Scroll from *current_page* to *target_page* (0-based).
 
@@ -304,8 +304,9 @@ class GameNavigator:
         if target_page == current_page:
             return
         direction = 1 if target_page > current_page else -1
+        kw = {} if wait is None else {'wait': wait}
         for _ in range(abs(target_page - current_page)):
-            self.scroll_page(direction)
+            self.scroll_page(direction, **kw)
         logger.debug('Scrolled from page %d to page %d', current_page, target_page)
 
     # ── Echo-specific: sonata scroll ─────────────────────────────────────
