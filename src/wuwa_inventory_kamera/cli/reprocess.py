@@ -89,6 +89,17 @@ _PROVIDER_MAP: dict[str, list[str]] = {
     'dml': ['DmlExecutionProvider', 'CPUExecutionProvider'],
 }
 
+
+def _auto_providers() -> list[str]:
+    """Return the best available ONNX Runtime provider list."""
+    try:
+        import onnxruntime as ort
+        if 'DmlExecutionProvider' in ort.get_available_providers():
+            return ['DmlExecutionProvider', 'CPUExecutionProvider']
+    except Exception:
+        pass
+    return ['CPUExecutionProvider']
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -486,7 +497,7 @@ def main() -> None:
 
     # ── Process ────────────────────────────────────────────────────────────
     if args.service:
-        providers = _PROVIDER_MAP[args.provider] if args.provider else ['CPUExecutionProvider']
+        providers = _PROVIDER_MAP[args.provider] if args.provider else _auto_providers()
         logger.info('Mode      : OcrService (v2)  providers=%s', providers)
         echoes = _run_service(
             scans, raw_dir, session_id,

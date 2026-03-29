@@ -185,8 +185,10 @@ class OcrService:
     def __enter__(self) -> 'OcrService':
         return self
 
-    def __exit__(self, *_) -> None:
-        self.shutdown()
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        # Don't block joining the OCR thread when an exception (e.g. KeyboardInterrupt)
+        # is propagating — just fire the stop signal and let the daemon thread die.
+        self.shutdown(wait=exc_type is None)
 
     # ------------------------------------------------------------------
     # Service thread
