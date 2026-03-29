@@ -45,3 +45,12 @@ packages = ["src/wuwa_inventory_kamera"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.uv]
+# rapidocr-onnxruntime transitively requires plain `onnxruntime`, but we use
+# onnxruntime-directml (which provides the same runtime + DirectML EP on Windows).
+# This override marks plain onnxruntime as only needed on sys_platform=='never',
+# so uv never installs it and onnxruntime-directml remains the sole provider.
+override-dependencies = [
+    "onnxruntime ; sys_platform == 'never'",
+]
