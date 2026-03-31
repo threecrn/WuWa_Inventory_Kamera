@@ -25,6 +25,7 @@ app = [
     "mss>=10.1.0",
     "PyWinCtl>=0.4.1",
     "PyMonCtl>=0.92",
+    "pyreadline3>=3.4",
 ]
 # Build / packaging
 build = [

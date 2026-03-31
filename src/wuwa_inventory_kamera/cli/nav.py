@@ -43,7 +43,7 @@ Available nav functions
 focus_window, open_inventory, close_inventory, switch_tab, set_sort,
 goto_page, goto_cell, goto_index, read_count, sonata_down, sonata_up,
 click, move, scroll, key, hotkey, screenshot, state, in_menu, wait,
-ocr_roi, snapshot
+ocr_roi, snapshot, mouse_pos
 
 Entry point
 -----------
@@ -112,7 +112,7 @@ _SCRIPT_API: frozenset[str] = frozenset({
     'sonata_down', 'sonata_up',
     'click', 'move', 'scroll', 'key', 'hotkey',
     'screenshot', 'state', 'in_menu', 'wait', 'ocr_roi',
-    'snapshot',
+    'snapshot', 'mouse_pos',
 })
 
 
@@ -160,16 +160,38 @@ class NavSession:
         env = self._script_namespace()
         exec(compile(path.read_text('utf-8'), str(path), 'exec'), env)  # noqa: S102
 
-    def repl(self) -> None:
-        """Start an interactive Python REPL with all session methods in scope."""
+    def repl(self, auto_focus: bool = True) -> None:
+        """
+        Start an interactive Python REPL with all session methods in scope.
+
+        Parameters
+        ----------
+        auto_focus:
+            When *True* (default), the game window is automatically focused
+            before every command and the terminal is restored afterwards.
+            This removes the need to type ``focus_window()`` manually before
+            each interactive command.
+        """
         import code as _code
+        af_line = (
+            'Auto-focus ON  — game is focused before each command, '
+            'terminal restored after.\n'
+            if auto_focus else
+            'Auto-focus OFF — call focus_window() manually as needed.\n'
+        )
         banner = (
-            'WuWa Navigator â€” Python REPL\n'
+            'WuWa Navigator â€" Python REPL\n'
+            + af_line +
             'Nav functions are already in scope.  '
             'Type help(focus_window) for docs.\n'
             'Press Ctrl-D (Ctrl-Z on Windows) to quit.\n'
         )
-        _code.interact(local=self._script_namespace(), banner=banner, exitmsg='')
+        ns = self._script_namespace()
+        if auto_focus:
+            console = _AutoFocusConsole(self, ns)
+            console.interact(banner=banner, exitmsg='')
+        else:
+            _code.interact(local=ns, banner=banner, exitmsg='')
 
     def _script_namespace(self) -> dict:
         """Build the globals dict exposed to scripts and the REPL."""
@@ -322,6 +344,24 @@ class NavSession:
             kw = {} if wait is None else {'wait': wait}
             self.nav.ctrl.move(x, y, **kw)
 
+    def mouse_pos(self) -> dict:
+        """
+        Return the current mouse cursor position relative to the game window.
+
+        Returns a dict ``{"x": <float>, "y": <float>}`` with game-relative
+        coordinates (same coordinate space used by :meth:`move` and
+        :meth:`click`).  Returns ``{"x": None, "y": None}`` in dry-run mode.
+        """
+        logger.info('mouse-pos')
+        if self.dry_run:
+            return {'x': None, 'y': None}
+        abs_x, abs_y = self.nav.ctrl._w32.GetCursorPos()
+        monitor = self.nav.ctrl._monitor
+        return {
+            'x': abs_x - monitor['left'],
+            'y': abs_y - monitor['top'],
+        }
+
     def scroll(self, amount: float, wait: float | None = None) -> None:
         """Scroll the mouse wheel.  Positive = down, negative = up."""
         logger.info('scroll %.2f', amount)
@@ -457,6 +497,118 @@ class NavSession:
 
 
 # ---------------------------------------------------------------------------
+# Auto-focus REPL console — helpers
+# ---------------------------------------------------------------------------
+
+def _setup_readline() -> None:
+    """
+    Enable readline history and key-bindings for the interactive REPL.
+
+    Tries the stdlib ``readline`` module first (available on Linux/macOS),
+    then falls back to ``pyreadline3`` (Windows).  When neither is present
+    the REPL still works but has no arrow-key history and Ctrl+D is
+    inoperative (use Ctrl+Z on Windows).
+    """
+    try:
+        import readline
+        readline.parse_and_bind('tab: complete')
+    except ImportError:
+        try:
+            import pyreadline3  # noqa: F401 — self-registers as readline on import
+        except ImportError:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Auto-focus REPL console
+# ---------------------------------------------------------------------------
+
+class _AutoFocusConsole:
+    """
+    An :class:`code.InteractiveConsole` wrapper that automatically focuses
+    the game window before executing each command and restores focus to the
+    terminal window afterwards.
+
+    The terminal HWND is captured via ``GetForegroundWindow()`` at
+    construction time, while the terminal still has focus.  Focus is
+    restored via ``AttachThreadInput`` + ``SetForegroundWindow``, which
+    avoids the Alt-key injection side-effect of the standard foreground-lock
+    workaround and therefore leaves the console input buffer clean.
+    """
+
+    def __init__(self, session: NavSession, local: dict) -> None:
+        import code as _code
+        import ctypes
+        self._session = session
+        self._console = _code.InteractiveConsole(local)
+        self._console.runcode = self._runcode  # type: ignore[method-assign]
+        # Capture terminal HWND now while we still have focus.
+        self._terminal_hwnd: int = ctypes.windll.user32.GetForegroundWindow()
+        # Enable readline history (no-op if pyreadline3 is absent).
+        _setup_readline()
+
+    def interact(self, *, banner: str, exitmsg: str) -> None:
+        """
+        Custom REPL loop providing history (via readline) and Ctrl+D / Ctrl+Z support.
+
+        Delegates compilation and execution to the underlying
+        :class:`code.InteractiveConsole`, which calls through to our
+        monkey-patched :meth:`_runcode` for focus management.
+        """
+        sys.stdout.write(banner)
+        ps1 = getattr(sys, 'ps1', '>>> ')
+        ps2 = getattr(sys, 'ps2', '... ')
+        more = False
+        while True:
+            prompt = ps2 if more else ps1
+            try:
+                line = input(prompt)
+            except EOFError:          # Ctrl+D (readline) or Ctrl+Z+Enter (Windows)
+                sys.stdout.write('\n')
+                break
+            except KeyboardInterrupt:
+                sys.stdout.write('\nKeyboardInterrupt\n')
+                more = False
+                self._console.resetbuffer()
+                continue
+            more = self._console.push(line)
+        if exitmsg:
+            sys.stdout.write(exitmsg)
+
+    def _restore_terminal_focus(self) -> None:
+        if not self._terminal_hwnd:
+            return
+        try:
+            import ctypes
+            user32   = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
+            # Attach our input thread to the game window's thread temporarily
+            # so that SetForegroundWindow succeeds without injecting Alt keys.
+            fg_hwnd = user32.GetForegroundWindow()
+            if fg_hwnd:
+                fg_tid = user32.GetWindowThreadProcessId(fg_hwnd, None)
+                my_tid = kernel32.GetCurrentThreadId()
+                user32.AttachThreadInput(fg_tid, my_tid, True)
+                try:
+                    user32.SetForegroundWindow(self._terminal_hwnd)
+                finally:
+                    user32.AttachThreadInput(fg_tid, my_tid, False)
+        except Exception:
+            pass
+
+    def _runcode(self, code_obj) -> None:  # signature matches InteractiveConsole.runcode
+        import code as _code
+        try:
+            self._session.focus_window()
+        except NavError as exc:
+            logger.warning('auto-focus: %s', exc)
+        try:
+            _code.InteractiveConsole.runcode(self._console, code_obj)
+        finally:
+            self._restore_terminal_focus()
+
+
+# ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 
@@ -521,6 +673,14 @@ def main() -> None:
         help='Directory for auto-named screenshots (default: screenshots).',
     )
     parser.add_argument(
+        '--no-auto-focus', action='store_true',
+        help=(
+            'Disable automatic game-window focus in interactive mode.  '
+            'By default the game is focused before each REPL command and '
+            'the terminal is restored afterwards.'
+        ),
+    )
+    parser.add_argument(
         '--log-level', default='INFO',
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
         help='Logging verbosity (default: INFO).',
@@ -572,7 +732,7 @@ def main() -> None:
         env = session._script_namespace()
         exec(compile(args.oneliner, '<-c>', 'exec'), env)  # noqa: S102
     else:
-        session.repl()
+        session.repl(auto_focus=not args.no_auto_focus)
         return  # final state irrelevant for interactive sessions
 
     final_json = session.snapshot().to_json()

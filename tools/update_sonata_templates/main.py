@@ -31,6 +31,11 @@ Fetch icons *and* rebuild templates from labeled echo screenshots::
     python tools/update_sonata_templates/main.py update \\
         --raw-dir K:/wuwa/export/current/raw
 
+Rebuild templates from pre-cropped sonata icons (from ``scan-sonata-icons``::
+
+    python tools/update_sonata_templates/main.py update \\
+        --crop-dir captures/2026-03-31_12-00-00
+
 Force re-download of all wiki icons (even if they exist)::
 
     python tools/update_sonata_templates/main.py update --force
@@ -224,6 +229,82 @@ def _icon_roi(width: int, height: int) -> tuple[int, int, int, int]:
     )
 
 
+def _circular_mask(h: int, w: int) -> np.ndarray:
+    """Return a uint8 mask with a filled circle inscribed in (h, w)."""
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.circle(mask, (w // 2, h // 2), min(w // 2, h // 2), 255, -1)
+    return mask
+
+
+def load_wiki_icons() -> dict[str, np.ndarray]:
+    """Return ``{stem: bgr_image}`` for every PNG in ``assets/IconS/``."""
+    icons: dict[str, np.ndarray] = {}
+    for p in sorted(ICONS_DIR.glob("*.png")):
+        img = cv2.imread(str(p), cv2.IMREAD_COLOR)
+        if img is not None:
+            icons[p.stem] = img
+    return icons
+
+
+def match_sonata_crop(
+    crop: np.ndarray,
+    wiki_icons: dict[str, np.ndarray],
+) -> tuple[str, float]:
+    """
+    Return ``(best_sonata_key, score)`` by comparing a pre-cropped sonata
+    icon BGR image against every wiki icon using normalised cross-correlation.
+    """
+    h, w = crop.shape[:2]
+    mask = _circular_mask(h, w)
+    crop_m = cv2.bitwise_and(crop, crop, mask=mask)
+
+    best_key = ""
+    best_score = -1.0
+    for key, icon in wiki_icons.items():
+        tmpl = (
+            cv2.resize(icon, (w, h), interpolation=cv2.INTER_AREA)
+            if icon.shape[:2] != (h, w)
+            else icon
+        )
+        tmpl_m = cv2.bitwise_and(tmpl, tmpl, mask=mask)
+        score: float = cv2.matchTemplate(
+            crop_m, tmpl_m, cv2.TM_CCOEFF_NORMED
+        )[0][0]
+        if score > best_score:
+            best_score = score
+            best_key = key
+
+    return best_key, best_score
+
+
+def write_templates(
+    crops_by_sonata: dict[str, list[np.ndarray]],
+) -> tuple[list[str], int]:
+    """
+    Compute per-sonata median crops and write PNGs to ``TEMPLATES_DIR``.
+
+    Returns ``(built_keys, total_samples)``.
+    """
+    TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+    total_samples = 0
+    built: list[str] = []
+
+    for name, crops in sorted(crops_by_sonata.items()):
+        stack = np.stack(crops, axis=0).astype(np.float32)
+        median = np.median(stack, axis=0).astype(np.uint8)
+        dest = TEMPLATES_DIR / f"{name}.png"
+        cv2.imwrite(str(dest), median)
+        built.append(name)
+        total_samples += len(crops)
+        log.info("  %-30s %4d samples → %s", name, len(crops), dest.name)
+
+    log.info(
+        "Built %d templates from %d samples → %s",
+        len(built), total_samples, TEMPLATES_DIR,
+    )
+    return built, total_samples
+
+
 def rebuild_templates(raw_dir: Path) -> tuple[list[str], int]:
     """
     Build median templates from labeled echo screenshots.
@@ -267,24 +348,93 @@ def rebuild_templates(raw_dir: Path) -> tuple[list[str], int]:
         log.error("No labeled echo screenshots found in %s", raw_dir)
         return [], 0
 
-    TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
-    total_samples = 0
-    built: list[str] = []
+    return write_templates(crops_by_sonata)
 
-    for name, crops in sorted(crops_by_sonata.items()):
-        stack = np.stack(crops, axis=0).astype(np.float32)
-        median = np.median(stack, axis=0).astype(np.uint8)
-        dest = TEMPLATES_DIR / f"{name}.png"
-        cv2.imwrite(str(dest), median)
-        built.append(name)
-        total_samples += len(crops)
-        log.info("  %-30s %4d samples → %s", name, len(crops), dest.name)
 
-    log.info(
-        "Built %d templates from %d samples → %s",
-        len(built), total_samples, TEMPLATES_DIR,
-    )
-    return built, total_samples
+def rebuild_templates_from_crops(
+    crops_dir: Path,
+    *,
+    min_score: float = 0.50,
+) -> tuple[list[str], int]:
+    """
+    Build median templates from pre-cropped sonata icon images.
+
+    Expects directories named ``echo_NNNN/`` inside *crops_dir*, each
+    containing a ``sonata.png`` that is already cropped to the icon region
+    (as produced by the ``scan-sonata-icons`` nav-script).
+
+    Labels are resolved in this order:
+
+    1. ``echo_NNNN/debug/ocr.json`` → ``sonata.matched`` field (preferred).
+    2. Auto-match against wiki icons in ``assets/IconS/`` using normalised
+       cross-correlation.  Crops whose best score is below *min_score* are
+       discarded with a warning.
+
+    Returns ``(built_keys, total_samples)``.
+    """
+    if not crops_dir.is_dir():
+        log.error("--crop-dir does not exist: %s", crops_dir)
+        sys.exit(1)
+
+    wiki_icons = load_wiki_icons()
+    if not wiki_icons:
+        log.warning(
+            "assets/IconS/ has no icons — auto-labeling unavailable. "
+            "Run 'update' without --crop-dir first to fetch wiki icons."
+        )
+
+    crops_by_sonata: dict[str, list[np.ndarray]] = defaultdict(list)
+    skipped: list[str] = []
+
+    for echo_dir in sorted(crops_dir.iterdir()):
+        if not echo_dir.is_dir() or not echo_dir.name.startswith("echo_"):
+            continue
+        crop_path = echo_dir / "sonata.png"
+        if not crop_path.exists():
+            continue
+
+        crop = cv2.imread(str(crop_path), cv2.IMREAD_COLOR)
+        if crop is None:
+            log.warning("Could not read %s", crop_path)
+            continue
+
+        # 1. Prefer OCR label if available.
+        key: str | None = None
+        ocr_path = echo_dir / "debug" / "ocr.json"
+        if ocr_path.exists():
+            with open(ocr_path, encoding="utf-8") as f:
+                ocr = json.load(f)
+            sonata_data = ocr.get("sonata", {})
+            matched = sonata_data.get("matched") if isinstance(sonata_data, dict) else None
+            if matched:
+                key = normalize(matched)
+
+        # 2. Fall back to auto-match against wiki icons.
+        if key is None:
+            if not wiki_icons:
+                log.warning("No wiki icons and no OCR label for %s — skipping", echo_dir.name)
+                skipped.append(echo_dir.name)
+                continue
+            key, score = match_sonata_crop(crop, wiki_icons)
+            if score < min_score:
+                log.warning(
+                    "%s: auto-match score %.2f < %.2f for '%s' — skipping",
+                    echo_dir.name, score, min_score, key,
+                )
+                skipped.append(echo_dir.name)
+                continue
+            log.debug("%s: auto-matched → %s (score %.3f)", echo_dir.name, key, score)
+
+        crops_by_sonata[key].append(crop)
+
+    if skipped:
+        log.warning("%d crop(s) skipped: %s", len(skipped), ", ".join(skipped))
+
+    if not crops_by_sonata:
+        log.error("No usable sonata.png files found in %s", crops_dir)
+        return [], 0
+
+    return write_templates(crops_by_sonata)
 
 
 # ---------------------------------------------------------------------------
@@ -356,11 +506,18 @@ def cmd_update(args: argparse.Namespace) -> None:
     if failed:
         print(f"Failed to fetch {len(failed)} icon(s): {', '.join(failed)}")
 
-    # 2. Rebuild templates if --raw-dir was given
-    if args.raw_dir:
-        raw_dir = Path(args.raw_dir)
+    # 2. Rebuild templates
+    if args.raw_dir and args.crop_dir:
+        log.error("Specify only one of --raw-dir or --crop-dir, not both.")
+        sys.exit(1)
+    elif args.raw_dir:
         print()
-        built, total = rebuild_templates(raw_dir)
+        built, total = rebuild_templates(Path(args.raw_dir))
+        if built:
+            print(f"Rebuilt {len(built)} template(s) from {total} samples.")
+    elif args.crop_dir:
+        print()
+        built, total = rebuild_templates_from_crops(Path(args.crop_dir))
         if built:
             print(f"Rebuilt {len(built)} template(s) from {total} samples.")
     else:
@@ -369,7 +526,7 @@ def cmd_update(args: argparse.Namespace) -> None:
         if missing_tmpl:
             log.info(
                 "Templates missing for %d sonata(s). "
-                "Pass --raw-dir to rebuild from labeled screenshots.",
+                "Pass --raw-dir or --crop-dir to rebuild.",
                 len(missing_tmpl),
             )
 
@@ -405,6 +562,14 @@ def main() -> None:
         metavar="PATH",
         help="Directory with echo_NNNN/ folders (full.png + debug/ocr.json) "
         "to rebuild templates from.",
+    )
+    update_p.add_argument(
+        "--crop-dir",
+        metavar="PATH",
+        help="Directory with echo_NNNN/sonata.png pre-cropped icon images "
+        "(as produced by the scan-sonata-icons nav-script). "
+        "Labels come from debug/ocr.json when present, otherwise "
+        "auto-matched against wiki icons.",
     )
     update_p.add_argument(
         "--force",
