@@ -387,10 +387,10 @@ class NavSession:
         if self.dry_run:
             return {'x': None, 'y': None}
         abs_x, abs_y = self.nav.ctrl._w32.GetCursorPos()
-        monitor = self.nav.ctrl._monitor
+        ox, oy = self.nav.ctrl._origin()
         return {
-            'x': abs_x - monitor['left'],
-            'y': abs_y - monitor['top'],
+            'x': abs_x - ox,
+            'y': abs_y - oy,
         }
 
     def scroll(self, amount: float, wait: float | None = None) -> None:
@@ -482,7 +482,8 @@ class NavSession:
 
     # â”€â”€ OCR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def ocr_roi(self, roi: 'str | tuple[float, float, float, float]' = 'full', *, thorough: bool = False) -> dict:
+    def ocr_roi(self, roi: 'str | tuple[float, float, float, float]' = 'full', *,
+                mode: "Literal['thorough', 'single_line'] | None" = None) -> dict:
         """
         Capture the game screen, crop to *roi*, and run OCR.
 
@@ -492,14 +493,16 @@ class NavSession:
             ROI name, dot-path, numeric tuple ``(x, y, w, h)``, or
             comma-separated string ``'x,y,w,h'`` — same values accepted
             as :meth:`screenshot`.
-        thorough:
-            Use multi-pass OCR (higher recall, ~3Ã— slower).
+        mode:
+            ``None`` (default) — normal multi-line detection.
+            ``'thorough'`` — multi-pass detection (higher recall, ~3× slower).
+            ``'single_line'`` — normal detection, all results merged into one line.
 
         Returns a dict::
 
-            {"roi": "echo-card", "lines": [{"text": "â€¦", "conf": 0.97}, â€¦]}
+            {"roi": "echo-card", "lines": [{"text": "…", "conf": 0.97}, …]}
         """
-        logger.info('ocr-roi roi=%s thorough=%s', roi, thorough)
+        logger.info('ocr-roi roi=%s mode=%s', roi, mode)
         if self.dry_run:
             return {'roi': roi, 'lines': []}
 
@@ -519,14 +522,28 @@ class NavSession:
         if self._ocr_backend is None:
             self._ocr_backend = RapidOcrBackend()
         recognize = (
-            self._ocr_backend.thorough_recognize if thorough
+            self._ocr_backend.thorough_recognize if mode == 'thorough'
             else self._ocr_backend.recognize
         )
+        results = recognize(crop)
+        if mode == 'single_line':
+            if results:
+                results = sorted(results, key=lambda r: r[0][0][0] if r[0] is not None else 0)
+                texts = [t for _, t, _ in results]
+                confs = [float(c) for _, _, c in results]
+                merged_text = ' '.join(texts)
+                merged_conf = sum(confs) / len(confs)
+            else:
+                merged_text, merged_conf = '', 0.0
+            return {
+                'roi': roi,
+                'lines': [{'text': merged_text, 'conf': round(merged_conf, 4)}],
+            }
         return {
             'roi': roi,
             'lines': [
                 {'text': t, 'conf': round(float(c), 4)}
-                for _, t, c in recognize(crop)
+                for _, t, c in results
             ],
         }
 

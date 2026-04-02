@@ -203,6 +203,25 @@ COORDINATES = {
                         Coordinates(431, 919),   # 4 – Show Discarded First
                     ],
                 },
+                "filter":{
+                    "button": Coordinates(227, 978), # position of the "Filter by Sonata" menu button
+                    "sonata": {
+                        "dropdown": Coordinates(1540, 490), # position of the "Filter by Sonata" dropdown in the echo filter panel
+                        "item_positions": [ # positions of the 6 options in the dropdown, in order.  Option 0 = "All Sonatas".
+                             Coordinates(1540, 560), # position 0
+                             Coordinates(1540, 640), # position 1
+                        ],
+                        "item_names": [ # 
+                             Coordinates(1322, 544, 347, 40), # position 0
+                             Coordinates(1322, 620, 347, 40), # position 1
+                             Coordinates(1322, 696, 347, 40), # position 1
+                             Coordinates(1322, 772, 347, 40), # position 1
+                             Coordinates(1322, 848, 347, 40), # position 1
+                        ],
+                        "scroll": Coordinates(y=2.94), # scroll delta to move the filter dropdown by one option (positive = down)
+                    }
+
+                }
             },
             "achievements": {
                 "status": Coordinates(1579, 230, 256, 65),

@@ -112,13 +112,22 @@ class RapidOcrBackend:
             self._fallback_ocr = None
             self._fallback_text_score = None
 
-    def _run_once(self, image: np.ndarray, ocr=None) -> list[OcrResult]:
+    def _run_once(self, image: np.ndarray, ocr=None, **call_kwargs) -> list[OcrResult]:
         if ocr is None:
             ocr = self._ocr
-        raw, _elapsed = ocr(image)
+        raw, _elapsed = ocr(image, **call_kwargs)
         if not raw:
             return []
-        return [(bbox, text, float(conf)) for bbox, text, conf in raw]
+        results = []
+        for item in raw:
+            if len(item) == 2:
+                # use_det=False: RapidOCR returns (text, conf) with no bbox
+                text, conf = item
+                results.append((None, text, float(conf)))
+            else:
+                bbox, text, conf = item
+                results.append((bbox, text, float(conf)))
+        return results
 
     def _padded_results(self, image: np.ndarray) -> list[OcrResult]:
         p = self._pad_px
@@ -135,6 +144,10 @@ class RapidOcrBackend:
         results = self._run_once(image)
         results.sort(key=lambda r: _y_center(r[0]))
         return results
+
+    def recognize_single_line(self, image: np.ndarray) -> list[OcrResult]:
+        """OCR without text detection; treats the whole image as one text region."""
+        return self._run_once(image, use_det=False)
 
     def thorough_recognize(self, image: np.ndarray) -> list[OcrResult]:
         """
