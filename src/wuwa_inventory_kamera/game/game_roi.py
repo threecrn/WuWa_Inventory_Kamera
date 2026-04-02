@@ -30,6 +30,121 @@ class Coordinates:
         return (self.__class__, (self.x, self.y, self.w, self.h))
 
 
+# ---------------------------------------------------------------------------
+# COORDINATES — master UI-element lookup table
+# ---------------------------------------------------------------------------
+#
+# Schema
+# ~~~~~~
+# The dict is keyed in three levels:
+#
+#   COORDINATES[(aspect_w, aspect_h)][(width, height)][region_key]
+#
+# 1. *Aspect ratio* — reduced integer pair, e.g. ``(16, 9)``.
+# 2. *Resolution* — exact pixel dimensions of the game viewport.
+# 3. *Region key* — a string naming the UI area (may nest further).
+#
+# Every leaf value is a ``Coordinates(x, y, w, h)`` instance.
+# The meaning of the four fields depends on context:
+#
+# * **ROI rectangle** (has all four fields):
+#   ``x, y`` = top-left corner in game-viewport pixels.
+#   ``w, h`` = width and height of the region to capture / crop.
+#
+# * **Click target** (only ``x, y`` set; ``w, h`` default to 0):
+#   ``x, y`` = the point to click, relative to the game viewport origin.
+#
+# * **Scroll / offset value** (only one axis set):
+#   ``y`` (or ``x``) = a scalar passed to the scroll or spacing logic.
+#   Negative ``y`` = scroll upward; positive = scroll downward.
+#   For page offsets, ``x`` and ``y`` are the horizontal and vertical
+#   gap between adjacent grid cells.
+#
+# Region keys
+# ~~~~~~~~~~~
+# terminal          ROI   — "Terminal" label in the main menu (used to
+#                           detect whether the game is on the main screen).
+#
+# shell             ROI   — Sonata/shell icon area in the top bar.
+#
+# offsets
+#   page            off   — (x, y) pixel gap between adjacent grid cells
+#                           in any inventory grid.
+#
+# scroll
+#   page            scr   — Mouse-wheel delta to scroll one full page of
+#                           the inventory grid (negative = up).
+#   characters      scr   — Mouse-wheel delta to scroll the character
+#                           sidebar list.
+#   sonata          scr   — Mouse-wheel delta to scroll the echo detail
+#                           panel down to reveal the sonata section.
+#
+# scrapers
+#   weapons         click — Center of the Weapons tab button in the left
+#   echoes          click   sidebar of the inventory screen.
+#   devItems        click
+#   resources       click
+#
+# items
+#   start           ROI   — First grid cell (row 0, col 0) position + size.
+#                           Used together with ``offsets.page`` to compute
+#                           every cell's position.
+#   info            ROI   — Item info panel (name + basic stats).
+#   description     ROI   — Extended item description panel.
+#
+# weapons
+#   page            ROI   — Item-count / page-count text region (e.g. "48/2").
+#   start           ROI   — First grid cell, same role as ``items.start``.
+#   name            ROI   — Weapon name text in the detail panel.
+#   value           ROI   — Weapon base-ATK value text.
+#   level           ROI   — Weapon level text (e.g. "Lv.90/90").
+#   rank            ROI   — Weapon rank (refinement) text.
+#
+# echoes
+#   page            ROI   — Item-count text region.
+#   start           ROI   — First grid cell.
+#   echoCard        ROI   — Echo card header (name + cost + element icon).
+#   sonata          ROI   — Sonata effect region (captured after scrolling).
+#   mouseMovement   click — Position to hover the cursor before scrolling
+#                           the echo detail panel (ensures scroll targets
+#                           the correct pane).
+#   fullStatsName   ROI   — Left column of the stat list (stat labels).
+#   fullStatsValue  ROI   — Right column of the stat list (stat numbers).
+#   sort
+#     button        click — Sort-order dropdown trigger button.
+#     items[]       click — List of click targets for each dropdown option
+#                           (index 0 = topmost = "Sort by Level").
+#
+# achievements
+#   status          ROI   — Achievement completion status text.
+#   searchBar       click — Search input field.
+#   searchButton    click — Search submit button.
+#   achievementsButton click — Button to open achievements panel.
+#   achievementsTab click — Tab selector inside the achievements screen.
+#
+# characters
+#   offsets
+#     leftSide      off   — Vertical spacing between entries in the left
+#                           character sidebar.
+#     rightSide     off   — Vertical spacing between entries on the right
+#                           info panel.
+#     skillPosition off   — Vertical spacing between skill slots.
+#   leftSide        click — First character entry in the left sidebar.
+#   rightSide       click — First entry on the right-side info panel.
+#   resonatorName   ROI   — Character name text.
+#   resonatorLevel  ROI   — Character level text.
+#   weaponName      ROI   — Equipped weapon name.
+#   weaponLevel     ROI   — Equipped weapon level.
+#   weaponRank      ROI   — Equipped weapon rank/refinement.
+#   skillClick      click — Skill tree open button.
+#   skillLevel      ROI   — Skill level text.
+#   skillButton     ROI   — "Skills" tab button.
+#   chainClick      click — Resonance chain open button.
+#   chainButton     ROI   — "Chain" tab button.
+#   skillPositions[]  click — Centers of the 5 skill nodes on the skill tree.
+#   chainPositions[]  click — Centers of the 6 chain nodes on the chain screen.
+# ---------------------------------------------------------------------------
+
 COORDINATES = {
     (16, 9): {
         (1920, 1080): {
@@ -45,7 +160,7 @@ COORDINATES = {
             },
             "scrapers": {
                 "weapons": Coordinates(81.5, 191.5),
-                "echoes": Coordinates(81.5, 326.5),
+                "echoes": Coordinates(81.5, 326.5), 
                 "devItems": Coordinates(81.5, 596.5),
                 "resources": Coordinates(81.5, 731.5),
             },
