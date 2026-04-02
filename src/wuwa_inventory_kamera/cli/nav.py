@@ -42,7 +42,7 @@ Available nav functions
 -----------------------
 focus_window, open_inventory, close_inventory, switch_tab, set_sort,
 goto_page, goto_cell, goto_index, read_count, sonata_down, sonata_up,
-click, move, scroll, key, hotkey, screenshot, state, in_menu, wait,
+click, move, drag, scroll, key, hotkey, screenshot, state, in_menu, wait,
 ocr_roi, snapshot, mouse_pos
 
 Entry point
@@ -141,7 +141,7 @@ _SCRIPT_API: frozenset[str] = frozenset({
     'switch_tab', 'set_sort',
     'goto_page', 'goto_cell', 'goto_index', 'read_count',
     'sonata_down', 'sonata_up',
-    'click', 'move', 'scroll', 'key', 'hotkey',
+    'click', 'move', 'drag', 'scroll', 'key', 'hotkey',
     'screenshot', 'state', 'in_menu', 'wait', 'ocr_roi',
     'snapshot', 'mouse_pos',
 })
@@ -392,6 +392,14 @@ class NavSession:
             'x': abs_x - ox,
             'y': abs_y - oy,
         }
+
+    def drag(self, x1: float, y1: float, x2: float, y2: float,
+             wait: float | None = None) -> None:
+        """Hold left button at (*x1*, *y1*), move to (*x2*, *y2*), release."""
+        logger.info('drag %.1f %.1f -> %.1f %.1f', x1, y1, x2, y2)
+        if not self.dry_run:
+            kw = {} if wait is None else {'wait': wait}
+            self.nav.ctrl.drag(x1, y1, x2, y2, **kw)
 
     def scroll(self, amount: float, wait: float | None = None) -> None:
         """Scroll the mouse wheel.  Positive = down, negative = up."""

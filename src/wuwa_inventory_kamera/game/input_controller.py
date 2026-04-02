@@ -155,6 +155,31 @@ class InputController:
         self._w32.mouse_event(win32con.MOUSEEVENTF_LEFTUP, cx, cy, 0, 0)
         time.sleep(wait)
 
+    def drag(self, x1: Union[int, float], y1: Union[int, float],
+             x2: Union[int, float], y2: Union[int, float],
+             wait: float = 0.1, wait_after: float = 0.1, steps: int = 20) -> None:
+        """Hold left button at (*x1*, *y1*), move to (*x2*, *y2*), release.
+
+        Movement is sent as incremental ``MOUSEEVENTF_MOVE`` events so the
+        game registers the drag rather than a teleport.
+        """
+        import win32con
+        self.move(x1, y1, wait=0.05)
+        cx, cy = self._w32.GetCursorPos()
+        self._w32.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, cx, cy, 0, 0)
+        time.sleep(0.05)
+        dx = int(x2) - int(x1)
+        dy = int(y2) - int(y1)
+        for i in range(1, steps + 1):
+            step_dx = round(dx * i / steps) - round(dx * (i - 1) / steps)
+            step_dy = round(dy * i / steps) - round(dy * (i - 1) / steps)
+            self._w32.mouse_event(win32con.MOUSEEVENTF_MOVE, step_dx, step_dy, 0, 0)
+            time.sleep(0.01)
+        cx, cy = self._w32.GetCursorPos()
+        time.sleep(wait)
+        self._w32.mouse_event(win32con.MOUSEEVENTF_LEFTUP, cx, cy, 0, 0)
+        time.sleep(wait_after)
+
     def scroll(self, amount: Union[int, float], wait: float = 0.1) -> None:
         """
         Scroll the mouse wheel.

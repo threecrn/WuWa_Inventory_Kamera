@@ -206,7 +206,7 @@ COORDINATES = {
                 "filter":{
                     "button": Coordinates(227, 978), # position of the "Filter by Sonata" menu button
                     "sonata": {
-                        "dropdown": Coordinates(1540, 490), # position of the "Filter by Sonata" dropdown in the echo filter panel
+                        "dropdown": Coordinates(1322, 468, 347, 45), # position of the "Filter by Sonata" dropdown in the echo filter panel
                         "item_positions": [ # positions of the 6 options in the dropdown, in order.  Option 0 = "All Sonatas".
                              Coordinates(1540, 560), # position 0
                              Coordinates(1540, 640), # position 1
@@ -218,7 +218,7 @@ COORDINATES = {
                              Coordinates(1322, 772, 347, 40), # position 1
                              Coordinates(1322, 848, 347, 40), # position 1
                         ],
-                        "scroll": Coordinates(y=2.94), # scroll delta to move the filter dropdown by one option (positive = down)
+                        "scroll": Coordinates(y=2.91), # scroll delta to move the filter dropdown by one option (positive = down)
                     }
 
                 }
