@@ -77,8 +77,39 @@ _ROI_ALIASES: dict[str, str] = {
 }
 
 
-def _resolve_roi(layout, roi_name: str):
-    """Resolve *roi_name* to a coordinate object, or ``None`` for ``'full'``."""
+def _resolve_roi(layout, roi_name):
+    """
+    Resolve *roi_name* to a coordinate object, or ``None`` for ``'full'``.
+
+    Accepted forms:
+
+    * ``'full'``                     — full viewport (returns ``None``)
+    * ``'echo-card'``, ``'sonata'``  — named alias (see ``_ROI_ALIASES``)
+    * ``'echoes.echoCard'``          — dot-path into the layout tree
+    * ``(x, y, w, h)``              — numeric tuple / list
+    * ``'x,y,w,h'``                 — comma-separated number string
+    """
+    # Numeric tuple / list
+    if isinstance(roi_name, (tuple, list)):
+        if len(roi_name) != 4:
+            raise NavError(
+                f'Numeric ROI must have exactly 4 values (x, y, w, h), got {len(roi_name)}'
+            )
+        from wuwa_inventory_kamera.game.game_roi import Coordinates
+        x, y, w, h = roi_name
+        return Coordinates(x, y, w, h)
+
+    # Comma-separated string  "x,y,w,h"
+    if isinstance(roi_name, str) and roi_name.count(',') == 3:
+        parts = roi_name.split(',')
+        try:
+            coords = [float(p.strip()) for p in parts]
+        except ValueError:
+            pass  # not a numeric string — fall through to name resolution
+        else:
+            from wuwa_inventory_kamera.game.game_roi import Coordinates
+            return Coordinates(*coords)
+
     if roi_name == 'full':
         return None
     path = _ROI_ALIASES.get(roi_name, roi_name)
@@ -87,7 +118,7 @@ def _resolve_roi(layout, roi_name: str):
         obj = getattr(obj, part, None)
         if obj is None:
             raise NavError(
-                f'ROI {roi_name!r} â†’ layout path {path!r}: '
+                f'ROI {roi_name!r} -> layout path {path!r}: '
                 f'attribute {part!r} not found'
             )
     return obj
@@ -387,15 +418,17 @@ class NavSession:
 
     # â”€â”€ Screenshot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def screenshot(self, roi: str = 'full', out: str | Path | None = None) -> dict:
+    def screenshot(self, roi: 'str | tuple[float, float, float, float]' = 'full', out: str | Path | None = None) -> dict:
         """
         Capture and save a screenshot.
 
         Parameters
         ----------
         roi:
-            ``'full'``, a named ROI (``'echo-card'``, ``'sonata'``, â€¦), or a
-            dot-path into the layout tree (e.g. ``'echoes.echoCard'``).
+            ``'full'``, a named ROI (``'echo-card'``, ``'sonata'``, …), a
+            dot-path into the layout tree (e.g. ``'echoes.echoCard'``),
+            a numeric tuple ``(x, y, w, h)``, or a comma-separated string
+            ``'x,y,w,h'``.
         out:
             Output file path.  Auto-generated under ``screenshot_dir`` if omitted.
 
@@ -449,14 +482,16 @@ class NavSession:
 
     # â”€â”€ OCR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def ocr_roi(self, roi: str = 'full', *, thorough: bool = False) -> dict:
+    def ocr_roi(self, roi: 'str | tuple[float, float, float, float]' = 'full', *, thorough: bool = False) -> dict:
         """
         Capture the game screen, crop to *roi*, and run OCR.
 
         Parameters
         ----------
         roi:
-            ROI name or dot-path â€” same values accepted as :meth:`screenshot`.
+            ROI name, dot-path, numeric tuple ``(x, y, w, h)``, or
+            comma-separated string ``'x,y,w,h'`` — same values accepted
+            as :meth:`screenshot`.
         thorough:
             Use multi-pass OCR (higher recall, ~3Ã— slower).
 

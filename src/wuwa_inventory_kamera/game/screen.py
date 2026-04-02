@@ -324,6 +324,7 @@ def _mss():
 
 # ── PrintWindow backend ──────────────────────────────────────────────────
 
+_PW_CLIENTONLY        = 0x00000001
 _PW_RENDERFULLCONTENT = 0x00000002  # Win10 1903+
 
 _user32 = ctypes.WinDLL('user32', use_last_error=True)
@@ -370,7 +371,7 @@ def _capture_printwindow(hwnd: int, width: int, height: int) -> np.ndarray:
     )
     try:
         old_bmp = _gdi32.SelectObject(hdc_mem, hbmp)
-        result = _user32.PrintWindow(hwnd, hdc_mem, _PW_RENDERFULLCONTENT)
+        result = _user32.PrintWindow(hwnd, hdc_mem, _PW_CLIENTONLY | _PW_RENDERFULLCONTENT)
         _gdi32.SelectObject(hdc_mem, old_bmp)
         if not result:
             raise RuntimeError(
