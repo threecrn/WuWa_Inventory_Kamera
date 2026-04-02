@@ -79,6 +79,8 @@ class SessionOrchestrator:
         save_raw: Path | None = None,
         inventory_key: str = 'b',
         on_progress: ProgressCallback | None = None,
+        *,
+        windowed: bool = False,
     ) -> None:
         self.scrapers = scrapers
         self.ocr_providers = ocr_providers
@@ -88,6 +90,7 @@ class SessionOrchestrator:
         self.save_raw = save_raw
         self.inventory_key = inventory_key
         self.on_progress = on_progress or _noop_progress
+        self.windowed = windowed
 
     def run(self) -> dict[str, Any]:
         """
@@ -104,16 +107,22 @@ class SessionOrchestrator:
         result: dict[str, Any] = {'date': session_id}
 
         # Discover game window
-        gw = GameWindow()
+        gw = GameWindow(windowed=self.windowed)
         if not gw.found:
             logger.error('Game window not found')
             return {'error': 'Game window not found', **result}
+
+        if self.windowed:
+            gw.check_minimum_size()
+            w, h = gw.size
+            logger.info('Windowed mode: client area %dx%d', w, h)
 
         gw.activate()
         time.sleep(0.5)
 
         # Build controller + navigator
-        ctrl = InputController(gw.monitor_index)
+        get_origin = (lambda: gw.client_origin) if self.windowed else None
+        ctrl = InputController(gw.monitor_index, get_origin=get_origin)
         nav = GameNavigator(ctrl, gw, inventory_key=self.inventory_key)
 
         # Check we're in the main menu

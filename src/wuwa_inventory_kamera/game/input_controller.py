@@ -44,6 +44,12 @@ class InputController:
     ----------
     monitor_index:
         1-based mss monitor index.  ``1`` is the primary monitor.
+    get_origin:
+        Optional callable returning ``(left, top)`` in screen pixels.
+        When provided the returned coordinates are used as the origin for
+        mouse input instead of the monitor's top-left corner.  This is
+        used in windowed mode so the origin tracks the game window's
+        client area.
     """
 
     # ── Key scancode tables ──────────────────────────────────────────────
@@ -101,7 +107,11 @@ class InputController:
 
     # ── Construction ─────────────────────────────────────────────────────
 
-    def __init__(self, monitor_index: int = 1) -> None:
+    def __init__(
+        self,
+        monitor_index: int = 1,
+        get_origin: 'Callable[[], tuple[int, int]] | None' = None,
+    ) -> None:
         import win32api as _w32
         from mss import mss
 
@@ -109,6 +119,7 @@ class InputController:
         self._sct = mss()
         self._monitor_index = monitor_index
         self._monitor = self._sct.monitors[monitor_index]
+        self._get_origin = get_origin
 
     @property
     def monitor_index(self) -> int:
@@ -121,10 +132,17 @@ class InputController:
 
     # ── Mouse ────────────────────────────────────────────────────────────
 
+    def _origin(self) -> tuple[int, int]:
+        """Return the current (left, top) origin in screen pixels."""
+        if self._get_origin is not None:
+            return self._get_origin()
+        return (self._monitor['left'], self._monitor['top'])
+
     def move(self, x: Union[int, float], y: Union[int, float], wait: float = 0.1) -> None:
-        """Move the cursor to (*x*, *y*) relative to the game monitor."""
-        abs_x = int(x) + self._monitor['left']
-        abs_y = int(y) + self._monitor['top']
+        """Move the cursor to (*x*, *y*) relative to the game viewport."""
+        ox, oy = self._origin()
+        abs_x = int(x) + ox
+        abs_y = int(y) + oy
         self._w32.SetCursorPos((abs_x, abs_y))
         time.sleep(wait)
 

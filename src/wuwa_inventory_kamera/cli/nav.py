@@ -415,7 +415,7 @@ class NavSession:
         from wuwa_inventory_kamera.game.screen import capture_full
 
         layout  = self.nav.layout
-        full    = capture_full(layout.width, layout.height, layout.monitor)
+        full    = capture_full(layout.width, layout.height, layout.monitor, gw=self.gw)
         roi_obj = _resolve_roi(layout, roi)
         img = (
             full if roi_obj is None
@@ -472,7 +472,7 @@ class NavSession:
         from wuwa_inventory_kamera.scraping.ocr._rapidocr import RapidOcrBackend
 
         layout  = self.nav.layout
-        full    = capture_full(layout.width, layout.height, layout.monitor)
+        full    = capture_full(layout.width, layout.height, layout.monitor, gw=self.gw)
         roi_obj = _resolve_roi(layout, roi)
         crop = (
             full if roi_obj is None
@@ -685,6 +685,10 @@ def main() -> None:
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
         help='Logging verbosity (default: INFO).',
     )
+    parser.add_argument(
+        '--windowed', action='store_true', default=False,
+        help='Enable windowed-mode capture (PrintWindow).',
+    )
 
     args = parser.parse_args()
     _configure_logging(args.log_level)
@@ -698,12 +702,13 @@ def main() -> None:
     from wuwa_inventory_kamera.game.screen import GameWindow
     from wuwa_inventory_kamera.game.state import GameState
 
-    gw = GameWindow()
+    gw = GameWindow(windowed=args.windowed)
     if not gw.found and not args.dry_run:
         print('Error: game window not found.  Is the game running?', file=sys.stderr)
         sys.exit(1)
 
-    ctrl = InputController(gw.monitor_index if gw.found else 1)
+    get_origin = (lambda: gw.client_origin) if args.windowed else None
+    ctrl = InputController(gw.monitor_index if gw.found else 1, get_origin=get_origin)
     nav  = GameNavigator(ctrl, gw, inventory_key=args.inventory_key)
 
     session = NavSession(

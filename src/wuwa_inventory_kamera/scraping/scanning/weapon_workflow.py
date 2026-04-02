@@ -110,7 +110,7 @@ class WeaponWorkflow:
             layout = self.nav.layout
 
             # Full screenshot for this cell
-            full = capture_full(layout.width, layout.height, layout.monitor)
+            full = capture_full(layout.width, layout.height, layout.monitor, gw=self.nav.gw)
 
             # Hash-based dedup: skip if identical to a previously seen cell
             img_hash = hash(full.tobytes())

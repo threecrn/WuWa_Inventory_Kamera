@@ -239,7 +239,7 @@ class GameNavigator:
             logger.warning('Cannot determine page-count ROI — defaulting to 24/1')
             return 24, 1
 
-        full = capture_full(self.layout.width, self.layout.height, self.layout.monitor)
+        full = capture_full(self.layout.width, self.layout.height, self.layout.monitor, gw=self.gw)
         crop = full[
             int(page_roi.y) : int(page_roi.y + page_roi.h),
             int(page_roi.x) : int(page_roi.x + page_roi.w),
@@ -347,7 +347,7 @@ class GameNavigator:
         menu.
         """
         from wuwa_inventory_kamera.scraping.data import definedText
-        full = capture_full(self.layout.width, self.layout.height, self.layout.monitor)
+        full = capture_full(self.layout.width, self.layout.height, self.layout.monitor, gw=self.gw)
         terminal_roi = self.layout.terminal
         crop = full[
             int(terminal_roi.y) : int(terminal_roi.y + terminal_roi.h),

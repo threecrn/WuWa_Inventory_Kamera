@@ -122,6 +122,11 @@ def main() -> None:
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
         help='Logging verbosity (default: INFO).',
     )
+    parser.add_argument(
+        '--windowed', action='store_true', default=False,
+        help='Enable windowed-mode capture (PrintWindow). '
+             'Use when the game is not running fullscreen.',
+    )
 
     args = parser.parse_args()
     _configure_logging(args.log_level)
@@ -151,6 +156,7 @@ def main() -> None:
         save_raw=save_raw,
         inventory_key=args.inventory_key,
         on_progress=on_progress,
+        windowed=args.windowed,
     )
 
     logger.info('Starting scan — scrapers=%s provider=%s', args.scrapers, args.provider)

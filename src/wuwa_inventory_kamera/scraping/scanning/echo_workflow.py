@@ -202,11 +202,11 @@ class EchoWorkflow:
         layout = self.nav.layout
 
         # Full screenshot
-        full = capture_full(layout.width, layout.height, layout.monitor)
+        full = capture_full(layout.width, layout.height, layout.monitor, gw=self.nav.gw)
 
         # Sonata capture
         self.nav.scroll_to_sonata()
-        sonata_full = capture_full(layout.width, layout.height, layout.monitor)
+        sonata_full = capture_full(layout.width, layout.height, layout.monitor, gw=self.nav.gw)
         self.nav.scroll_back_from_sonata()
 
         # Crop regions from the full screenshot
