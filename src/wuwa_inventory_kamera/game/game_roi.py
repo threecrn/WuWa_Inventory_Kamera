@@ -214,9 +214,9 @@ COORDINATES = {
                         "item_names": [ # 
                              Coordinates(1322, 544, 347, 40), # position 0
                              Coordinates(1322, 620, 347, 40), # position 1
-                             Coordinates(1322, 696, 347, 40), # position 1
-                             Coordinates(1322, 772, 347, 40), # position 1
-                             Coordinates(1322, 848, 347, 40), # position 1
+                             Coordinates(1322, 696, 347, 40), # position 2
+                             Coordinates(1322, 772, 347, 40), # position 3
+                             Coordinates(1322, 848, 347, 40), # position 4
                         ],
                         "scroll": Coordinates(y=2.91), # scroll delta to move the filter dropdown by one option (positive = down)
                     }
@@ -267,6 +267,11 @@ COORDINATES = {
         }
     },
     (16, 10): {
+        (1920, 1200): {
+            "echoes": {
+                "sonataIcon": Coordinates(1441, 377, 23, 23) # Sonata icon within the sonata region
+            },
+        },
         (1680, 1050): {
             "terminal": Coordinates(125, 32, 150, 40),
             "shell": Coordinates(1100, 35, 145, 40),

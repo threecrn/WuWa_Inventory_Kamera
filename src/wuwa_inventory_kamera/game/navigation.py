@@ -332,6 +332,140 @@ class GameNavigator:
         # Reverse the scroll we did minus the fine-tune
         self.ctrl.scroll(-(sonata_y - 2), wait=0.2)
 
+    # ── Echo filter: sonata ──────────────────────────────────────────────
+
+    def set_sonata_filter(self, sonata_slug: str | None) -> None:
+        """
+        Apply a sonata filter to the echoes list.
+
+        Parameters
+        ----------
+        sonata_slug:
+            Slug key from ``sonataName.json`` (e.g. ``'chromaticfoam'``),
+            or ``None`` / ``'off'`` to clear the filter ("Filter On/Off").
+
+        The method:
+        1. Opens the filter submenu.
+        2. Reads the current filter via OCR; returns early if already set.
+        3. Opens the dropdown, scrolls to the target entry, verifies with
+           OCR, clicks it, and closes the submenu.
+
+        Raises :class:`ValueError` for unknown slugs and :class:`RuntimeError`
+        when OCR verification fails.
+        """
+        import json as _json
+        import pathlib as _pathlib
+        from difflib import get_close_matches
+
+        # ── Resolve the target dropdown position ────────────────────────
+        sonata_dict = _json.loads(
+            (_pathlib.Path('data') / 'en' / 'sonataName.json')
+            .read_text(encoding='utf-8')
+        )
+
+        want_off = sonata_slug is None or sonata_slug == 'off'
+        if not want_off and sonata_slug not in sonata_dict:
+            valid = ', '.join(sorted(sonata_dict))
+            raise ValueError(
+                f'Unknown sonata slug {sonata_slug!r}.  Valid: {valid}'
+            )
+
+        # Dropdown order: position 0 = "Filter On/Off",
+        # then sonatas sorted by descending ID.
+        sorted_slugs = [
+            slug for slug, _ in
+            sorted(sonata_dict.items(), key=lambda kv: kv[1], reverse=True)
+        ]
+        if want_off:
+            target_pos = 0
+        else:
+            target_pos = 1 + sorted_slugs.index(sonata_slug)
+
+        # ── Layout coords ───────────────────────────────────────────────
+        flt = self.layout.echoes.filter
+        sonata_flt = flt.sonata
+        item_names = sonata_flt.item_names      # list of Coordinates ROIs
+        scroll_delta = sonata_flt.scroll.y       # per-step scroll amount
+        visible = len(item_names)                # typically 5
+
+        def _ocr_roi(roi) -> str:
+            """Capture a single ROI and return lowercased OCR text."""
+            img = capture_region(self.gw, roi)
+            return _nav_ocr(img).strip()
+
+        def _slug_matches(ocr_text: str, slug: str | None) -> bool:
+            """Check whether *ocr_text* matches *slug* (or 'off')."""
+            normalised = ocr_text.lower().replace(' ', '')
+            if slug is None or slug == 'off':
+                # "Filter On/Off" → "filteron/off" or similar
+                return 'filter' in normalised or 'on/off' in normalised
+            return slug in normalised or bool(
+                get_close_matches(normalised, [slug], n=1, cutoff=0.75)
+            )
+
+        # ── 1. Open filter submenu ──────────────────────────────────────
+        self.ctrl.click(flt.button.x, flt.button.y, wait=0.5)
+
+        # ── 2. Read current active filter ───────────────────────────────
+        current_text = _ocr_roi(sonata_flt.dropdown)
+        target_slug = None if want_off else sonata_slug
+        if _slug_matches(current_text, target_slug):
+            logger.info(
+                'Sonata filter already set to %s (OCR: %r)',
+                sonata_slug, current_text,
+            )
+            self.ctrl.press_key('esc', wait=0.3)
+            return
+
+        # ── 3. Open the dropdown ────────────────────────────────────────
+        dd = sonata_flt.dropdown
+        self.ctrl.click(dd.x + dd.w // 2, dd.y + dd.h // 2, wait=0.4)
+
+        # ── 4. Scroll to bring target into view ─────────────────────────
+        # Without scrolling positions 0..(visible-1) are shown.
+        scrolls_needed = max(0, target_pos - (visible - 1))
+        # Move cursor over the dropdown area so scroll events hit it.
+        first_roi = item_names[0]
+        self.ctrl.move(
+            first_roi.x + first_roi.w // 2,
+            first_roi.y + first_roi.h // 2,
+            wait=0.05,
+        )
+        for _ in range(scrolls_needed):
+            self.ctrl.scroll(scroll_delta, wait=0.15)
+        # After scrolling, the visible window starts at ``scrolls_needed``.
+        # The target should be at slot index ``target_pos - scrolls_needed``.
+        expected_slot = target_pos - scrolls_needed
+
+        # ── 5. OCR-verify and click ─────────────────────────────────────
+        # Try the expected slot first, then scan all visible slots.
+        matched_slot = None
+        for attempt_slot in [expected_slot] + [
+            i for i in range(visible) if i != expected_slot
+        ]:
+            if attempt_slot < 0 or attempt_slot >= visible:
+                continue
+            text = _ocr_roi(item_names[attempt_slot])
+            if _slug_matches(text, target_slug):
+                matched_slot = attempt_slot
+                break
+
+        if matched_slot is None:
+            self.ctrl.press_key('esc', wait=0.2)
+            self.ctrl.press_key('esc', wait=0.2)
+            raise RuntimeError(
+                f'Could not find {sonata_slug!r} in visible dropdown slots '
+                f'after {scrolls_needed} scrolls.  '
+                f'Last OCR texts: (expected slot {expected_slot})'
+            )
+
+        roi = item_names[matched_slot]
+        self.ctrl.click(roi.x + roi.w // 2, roi.y + roi.h // 2, wait=0.3)
+        logger.info('Sonata filter set to %s (slot %d)', sonata_slug, matched_slot)
+
+        # ── 6. Close the filter submenu ─────────────────────────────────
+        self.ctrl.press_key('esc', wait=0.3)
+
     # ── Character-specific navigation ────────────────────────────────────
 
     def scroll_character_list(self, amount: float | None = None, wait: float = 0.5) -> None:

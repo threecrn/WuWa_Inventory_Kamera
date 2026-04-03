@@ -54,6 +54,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import sys
 import time
 from datetime import datetime
@@ -115,12 +116,28 @@ def _resolve_roi(layout, roi_name):
     path = _ROI_ALIASES.get(roi_name, roi_name)
     obj = layout
     for part in path.split('.'):
-        obj = getattr(obj, part, None)
+        m = re.fullmatch(r'([^\[]+)((?:\[\d+\])+)?', part)
+        if not m:
+            raise NavError(
+                f'ROI {roi_name!r} -> layout path {path!r}: '
+                f'invalid path segment {part!r}'
+            )
+        attr, indices_str = m.group(1), m.group(2) or ''
+        obj = getattr(obj, attr, None)
         if obj is None:
             raise NavError(
                 f'ROI {roi_name!r} -> layout path {path!r}: '
-                f'attribute {part!r} not found'
+                f'attribute {attr!r} not found'
             )
+        for idx_str in re.findall(r'\[(\d+)\]', indices_str):
+            idx = int(idx_str)
+            try:
+                obj = obj[idx]
+            except (IndexError, TypeError) as exc:
+                raise NavError(
+                    f'ROI {roi_name!r} -> layout path {path!r}: '
+                    f'index [{idx}] on {attr!r} failed: {exc}'
+                ) from exc
     return obj
 
 
@@ -138,7 +155,7 @@ class NavError(Exception):
 
 _SCRIPT_API: frozenset[str] = frozenset({
     'focus_window', 'open_inventory', 'close_inventory',
-    'switch_tab', 'set_sort',
+    'switch_tab', 'set_sort', 'set_sonata_filter',
     'goto_page', 'goto_cell', 'goto_index', 'read_count',
     'sonata_down', 'sonata_up',
     'click', 'move', 'drag', 'scroll', 'key', 'hotkey',
@@ -297,6 +314,12 @@ class NavSession:
             kw = {} if wait is None else {'wait': wait}
             self.nav.set_sort_order(o, **kw)
 
+    def set_sonata_filter(self, sonata: str | None = None) -> None:
+        """Filter the echoes list by sonata.  sonata: slug from sonataName.json, or None/'off' to clear."""
+        logger.info('set-sonata-filter %s', sonata)
+        if not self.dry_run:
+            self.nav.set_sonata_filter(sonata)
+
     def goto_page(self, n: int, wait: float | None = None) -> None:
         """Scroll to page *n* (1-based)."""
         if n < 1:
@@ -453,17 +476,13 @@ class NavSession:
             return {'saved': str(out_path), 'roi': roi, 'dry_run': True}
 
         import cv2
-        from wuwa_inventory_kamera.game.screen import capture_full
+        from wuwa_inventory_kamera.game.screen import capture, capture_region
 
         layout  = self.nav.layout
-        full    = capture_full(layout.width, layout.height, layout.monitor, gw=self.gw)
         roi_obj = _resolve_roi(layout, roi)
         img = (
-            full if roi_obj is None
-            else full[
-                int(roi_obj.y): int(roi_obj.y + roi_obj.h),
-                int(roi_obj.x): int(roi_obj.x + roi_obj.w),
-            ]
+            capture(self.gw) if roi_obj is None
+            else capture_region(self.gw, roi_obj)
         )
         out_path.parent.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(out_path), cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
@@ -514,18 +533,14 @@ class NavSession:
         if self.dry_run:
             return {'roi': roi, 'lines': []}
 
-        from wuwa_inventory_kamera.game.screen import capture_full
+        from wuwa_inventory_kamera.game.screen import capture, capture_region
         from wuwa_inventory_kamera.scraping.ocr._rapidocr import RapidOcrBackend
 
         layout  = self.nav.layout
-        full    = capture_full(layout.width, layout.height, layout.monitor, gw=self.gw)
         roi_obj = _resolve_roi(layout, roi)
         crop = (
-            full if roi_obj is None
-            else full[
-                int(roi_obj.y): int(roi_obj.y + roi_obj.h),
-                int(roi_obj.x): int(roi_obj.x + roi_obj.w),
-            ]
+            capture(self.gw) if roi_obj is None
+            else capture_region(self.gw, roi_obj)
         )
         if self._ocr_backend is None:
             self._ocr_backend = RapidOcrBackend()
