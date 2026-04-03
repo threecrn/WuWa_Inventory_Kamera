@@ -203,10 +203,23 @@ class NavSession:
 
     # â”€â”€ Script execution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def run_script(self, path: Path) -> None:
-        """Execute a Python script with all session methods in scope."""
-        env = self._script_namespace()
-        exec(compile(path.read_text('utf-8'), str(path), 'exec'), env)  # noqa: S102
+    def run_script(self, path: Path, script_args: 'list[str] | None' = None) -> None:
+        """Execute a Python script with all session methods in scope.
+
+        ``script_args`` (the extra arguments that follow the script path on
+        the command line) are made available to the script as ``sys.argv``:
+        ``sys.argv[0]`` is the resolved script path and ``sys.argv[1:]`` are
+        the forwarded arguments.  The original ``sys.argv`` is restored after
+        the script exits.
+        """
+        old_argv = sys.argv
+        try:
+            sys.argv = [str(path.resolve())] + (script_args or [])
+            env = self._script_namespace()
+            env['__file__'] = str(path.resolve())
+            exec(compile(path.read_text('utf-8'), str(path), 'exec'), env)  # noqa: S102
+        finally:
+            sys.argv = old_argv
 
     def repl(self, auto_focus: bool = True) -> None:
         """
@@ -261,12 +274,14 @@ class NavSession:
 
     # â”€â”€ Navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def focus_window(self) -> None:
+    def focus_window(self, wait: float | None = 0.25) -> None:
         """Bring the game window to the foreground."""
         logger.info('focus-window')
         if not self.dry_run:
             if not self.gw.activate():
                 raise NavError('focus_window: game window not found')
+            if wait:
+                time.sleep(wait)
 
     def open_inventory(self, wait: float | None = None) -> None:
         """Press the inventory keybind."""
@@ -314,11 +329,16 @@ class NavSession:
             kw = {} if wait is None else {'wait': wait}
             self.nav.set_sort_order(o, **kw)
 
-    def set_sonata_filter(self, sonata: str | None = None) -> None:
-        """Filter the echoes list by sonata.  sonata: slug from sonataName.json, or None/'off' to clear."""
+    def set_sonata_filter(self, sonata: str | None = None) -> int | None:
+        """Filter the echoes list by sonata.  sonata: slug from sonataName.json, or None/'off' to clear.
+
+        Returns the number of echoes matching the filter as shown in the
+        dropdown, or ``None`` if the count could not be read.
+        """
         logger.info('set-sonata-filter %s', sonata)
         if not self.dry_run:
-            self.nav.set_sonata_filter(sonata)
+            return self.nav.set_sonata_filter(sonata)
+        return None
 
     def goto_page(self, n: int, wait: float | None = None) -> None:
         """Scroll to page *n* (1-based)."""
@@ -449,9 +469,15 @@ class NavSession:
 
     # â”€â”€ Screenshot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def screenshot(self, roi: 'str | tuple[float, float, float, float]' = 'full', out: str | Path | None = None) -> dict:
+    def screenshot(
+        self,
+        roi: 'str | tuple[float, float, float, float]' = 'full',
+        out: 'str | Path | None' = None,
+        *,
+        as_image: bool = False,
+    ) -> 'dict | np.ndarray | None':
         """
-        Capture and save a screenshot.
+        Capture a screenshot.
 
         Parameters
         ----------
@@ -461,10 +487,31 @@ class NavSession:
             a numeric tuple ``(x, y, w, h)``, or a comma-separated string
             ``'x,y,w,h'``.
         out:
-            Output file path.  Auto-generated under ``screenshot_dir`` if omitted.
+            Output file path.  Auto-generated under ``screenshot_dir`` if
+            omitted.  Ignored when *as_image* is ``True``.
+        as_image:
+            When ``True``, skip file I/O and return the captured region as a
+            BGR ``np.ndarray`` (same format as ``cv2.imread``).
 
-        Returns a dict with ``saved``, ``roi``, and ``shape`` keys.
+        Returns a dict with ``saved``, ``roi``, and ``shape`` keys unless
+        *as_image* is ``True``, in which case a BGR ``np.ndarray`` is returned
+        (or ``None`` in dry-run mode).
         """
+        import cv2
+        from wuwa_inventory_kamera.game.screen import capture, capture_region
+
+        if as_image:
+            logger.info('screenshot roi=%s (as_image)', roi)
+            if self.dry_run:
+                return None
+            layout  = self.nav.layout
+            roi_obj = _resolve_roi(layout, roi)
+            img = (
+                capture(self.gw) if roi_obj is None
+                else capture_region(self.gw, roi_obj)
+            )
+            return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
         out_path = Path(out) if out is not None else None
         if out_path is None:
             ts = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
@@ -474,9 +521,6 @@ class NavSession:
         logger.info('screenshot roi=%s out=%s', roi, out_path)
         if self.dry_run:
             return {'saved': str(out_path), 'roi': roi, 'dry_run': True}
-
-        import cv2
-        from wuwa_inventory_kamera.game.screen import capture, capture_region
 
         layout  = self.nav.layout
         roi_obj = _resolve_roi(layout, roi)
@@ -765,7 +809,7 @@ def main() -> None:
         help='Enable windowed-mode capture (PrintWindow).',
     )
 
-    args = parser.parse_args()
+    args, _script_argv = parser.parse_known_args()
     _configure_logging(args.log_level)
 
     if args.script and args.oneliner:
@@ -807,7 +851,7 @@ def main() -> None:
             logger.warning('Could not load state from %s: %s', args.state_in, exc)
 
     if args.script:
-        session.run_script(Path(args.script))
+        session.run_script(Path(args.script), _script_argv)
     elif args.oneliner:
         env = session._script_namespace()
         exec(compile(args.oneliner, '<-c>', 'exec'), env)  # noqa: S102

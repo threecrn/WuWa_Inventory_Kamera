@@ -219,6 +219,14 @@ COORDINATES = {
                              Coordinates(1322, 848, 347, 40), # position 4
                              Coordinates(1322, 924, 347, 40), # position 5
                         ],
+                        "item_amounts": [
+                             Coordinates(1670, 544, 70, 40), # position 0
+                             Coordinates(1670, 620, 70, 40), # position 1
+                             Coordinates(1670, 696, 70, 40), # position 2
+                             Coordinates(1670, 772, 70, 40), # position 3
+                             Coordinates(1670, 848, 70, 40), # position 4
+                             Coordinates(1670, 924, 70, 40), # position 5
+                        ],
                         "bottom_offset_item_names": Coordinates(y=38), # if scrolling to the bottom, how are item name positions affected?
                         "scroll": Coordinates(y=2.91), # scroll delta to move the filter dropdown by one option (positive = down)
                     }

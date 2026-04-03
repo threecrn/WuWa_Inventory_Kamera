@@ -334,7 +334,7 @@ class GameNavigator:
 
     # ── Echo filter: sonata ──────────────────────────────────────────────
 
-    def set_sonata_filter(self, sonata_slug: str | None) -> None:
+    def set_sonata_filter(self, sonata_slug: str | None) -> int | None:
         """
         Apply a sonata filter to the echoes list.
 
@@ -344,11 +344,19 @@ class GameNavigator:
             Slug key from ``sonataName.json`` (e.g. ``'chromaticfoam'``),
             or ``None`` / ``'off'`` to clear the filter ("Filter On/Off").
 
+        Returns
+        -------
+        int | None
+            The number of echoes matching the selected filter as shown in
+            the dropdown, or ``None`` if the count could not be read (e.g.
+            when the filter was already active and we returned early).
+
         The method:
         1. Opens the filter submenu.
         2. Reads the current filter via OCR; returns early if already set.
-        3. Opens the dropdown, scrolls to the target entry, verifies with
-           OCR, clicks it, and closes the submenu.
+        3. Opens the dropdown, scrolls to the target entry, reads the
+           echo count from the adjacent amount ROI, verifies with OCR,
+           clicks it, and closes the submenu.
 
         Raises :class:`ValueError` for unknown slugs and :class:`RuntimeError`
         when OCR verification fails.
@@ -386,6 +394,7 @@ class GameNavigator:
         flt = self.layout.echoes.filter
         sonata_flt = flt.sonata
         item_names = sonata_flt.item_names       # list of Coordinates ROIs
+        item_amounts = sonata_flt.item_amounts   # list of Coordinates ROIs for counts
         scroll_delta = sonata_flt.scroll.y       # per-step scroll amount (negative = down)
         visible = len(item_names)                # typically 5
 
@@ -424,7 +433,7 @@ class GameNavigator:
         if _slug_matches(_ocr_roi(sonata_flt.dropdown), target_slug):
             logger.info('Sonata filter already set to %s', sonata_slug)
             self.ctrl.press_key('esc', wait=0.3)
-            return
+            return None
 
         # ── 3. Open the dropdown ────────────────────────────────────────
         dd = sonata_flt.dropdown
@@ -490,9 +499,12 @@ class GameNavigator:
                     f'(probed offset was {scroll_offset}).'
                 )
 
+            # Read the echo count from the adjacent amount cell before clicking.
+            count = self._ocr_sonata_amount(item_amounts[matched_slot])
+
             roi = item_names[matched_slot]
             self.ctrl.click(roi.x + roi.w // 2, roi.y + roi.h // 2, wait=0.3)
-            logger.info('Sonata filter set to %s (slot %d)', sonata_slug, matched_slot)
+            logger.info('Sonata filter set to %s (slot %d, count=%s)', sonata_slug, matched_slot, count)
         
         # last element in the list: things get rough around here
         else:
@@ -531,16 +543,23 @@ class GameNavigator:
                     f'(probed offset was {scroll_offset}).'
                 )
 
+            # Read the echo count from the shifted amount cell before clicking.
+            count = self._ocr_sonata_amount(_shifted_roi_y(
+                item_amounts[matched_slot],
+                sonata_flt.bottom_offset_item_names.y,
+            ))
+
             roi = _shifted_roi_y(
                 item_names[matched_slot],
                 sonata_flt.bottom_offset_item_names.y,
             )
             
             self.ctrl.click(roi.x + roi.w // 2, roi.y + roi.h // 2, wait=0.3)
-            logger.info(f'Sonata filter set to %s (slot %d) adjust roi {roi=}', sonata_slug, matched_slot)
+            logger.info(f'Sonata filter set to %s (slot %d, count=%s) adjust roi {roi=}', sonata_slug, matched_slot, count)
 
         # ── 7. Close the filter submenu ─────────────────────────────────
         self.ctrl.press_key('esc', wait=0.3)
+        return count
 
     # ── Character-specific navigation ────────────────────────────────────
 
@@ -569,6 +588,15 @@ class GameNavigator:
         return bool(get_close_matches(text, [target]))
 
     # ── Internal helpers ─────────────────────────────────────────────────
+
+    def _ocr_sonata_amount(self, roi) -> int | None:
+        """OCR an ``item_amounts`` cell and return the integer count, or None."""
+        raw = _nav_ocr(capture_region(self.gw, roi), allowed=string.digits).strip()
+        try:
+            return int(raw)
+        except ValueError:
+            logger.warning('Could not parse sonata amount from %r', raw)
+            return None
 
     def _page_count_roi(self):
         """Return the page-count ROI for the current tab, or None."""
