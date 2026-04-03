@@ -358,6 +358,7 @@ class GameNavigator:
         from difflib import get_close_matches
 
         # ── Resolve the target dropdown position ────────────────────────
+        # TODO: load lang-specific sonata dict from the layout instead of hardcoding English here.
         sonata_dict = _json.loads(
             (_pathlib.Path('data') / 'en' / 'sonataName.json')
             .read_text(encoding='utf-8')
@@ -384,36 +385,44 @@ class GameNavigator:
         # ── Layout coords ───────────────────────────────────────────────
         flt = self.layout.echoes.filter
         sonata_flt = flt.sonata
-        item_names = sonata_flt.item_names      # list of Coordinates ROIs
-        scroll_delta = sonata_flt.scroll.y       # per-step scroll amount
+        item_names = sonata_flt.item_names       # list of Coordinates ROIs
+        scroll_delta = sonata_flt.scroll.y       # per-step scroll amount (negative = down)
         visible = len(item_names)                # typically 5
 
         def _ocr_roi(roi) -> str:
-            """Capture a single ROI and return lowercased OCR text."""
-            img = capture_region(self.gw, roi)
-            return _nav_ocr(img).strip()
+            """Capture a single ROI and return stripped OCR text."""
+            return _nav_ocr(capture_region(self.gw, roi)).strip()
 
         def _slug_matches(ocr_text: str, slug: str | None) -> bool:
-            """Check whether *ocr_text* matches *slug* (or 'off')."""
+            """Check whether *ocr_text* matches *slug* (or the Filter On/Off entry)."""
             normalised = ocr_text.lower().replace(' ', '')
             if slug is None or slug == 'off':
-                # "Filter On/Off" → "filteron/off" or similar
                 return 'filter' in normalised or 'on/off' in normalised
             return slug in normalised or bool(
                 get_close_matches(normalised, [slug], n=1, cutoff=0.75)
             )
 
+        def _find_slug_in_text(text: str) -> int | None:
+            """Return index *j* in *sorted_slugs* if *text* matches it, else None."""
+            normalised = text.lower().replace(' ', '')
+            for j, slug in enumerate(sorted_slugs):
+                if slug in normalised or bool(
+                    get_close_matches(normalised, [slug], n=1, cutoff=0.75)
+                ):
+                    return j
+            return None
+
+        def _shifted_roi_y(roi, delta_y: int | float):
+            """Return a new ROI with ``y`` shifted by ``delta_y``."""
+            return roi.__class__(roi.x, roi.y + delta_y, roi.w, roi.h)
+
         # ── 1. Open filter submenu ──────────────────────────────────────
         self.ctrl.click(flt.button.x, flt.button.y, wait=0.5)
 
         # ── 2. Read current active filter ───────────────────────────────
-        current_text = _ocr_roi(sonata_flt.dropdown)
         target_slug = None if want_off else sonata_slug
-        if _slug_matches(current_text, target_slug):
-            logger.info(
-                'Sonata filter already set to %s (OCR: %r)',
-                sonata_slug, current_text,
-            )
+        if _slug_matches(_ocr_roi(sonata_flt.dropdown), target_slug):
+            logger.info('Sonata filter already set to %s', sonata_slug)
             self.ctrl.press_key('esc', wait=0.3)
             return
 
@@ -421,49 +430,116 @@ class GameNavigator:
         dd = sonata_flt.dropdown
         self.ctrl.click(dd.x + dd.w // 2, dd.y + dd.h // 2, wait=0.4)
 
-        # ── 4. Scroll to bring target into view ─────────────────────────
-        # Without scrolling positions 0..(visible-1) are shown.
-        scrolls_needed = max(0, target_pos - (visible - 1))
-        # Move cursor over the dropdown area so scroll events hit it.
-        first_roi = item_names[0]
+        # ── 4. Probe current scroll offset ──────────────────────────────
+        # The dropdown forgets its previous scroll position after the submenu is closed.
+        # We just opened the submenu, so the dropdown should be at the top.
+        # However, first we need to take care of scrolling weirdness where the top position is "overscrolled"
+        # and scrolling down 1 position actually ends up at position 0.5 inbetween positions 0 and 1.
+
+        scroll_offset = 0 # Assume top
+
+        # Hover over position 1
+        probe_roi = item_names[1] #if visible > 1 else item_names[0]
         self.ctrl.move(
-            first_roi.x + first_roi.w // 2,
-            first_roi.y + first_roi.h // 2,
+            probe_roi.x + probe_roi.w // 2,
+            probe_roi.y + probe_roi.h // 2,
             wait=0.05,
         )
-        for _ in range(scrolls_needed):
-            self.ctrl.scroll(scroll_delta, wait=0.15)
-        # After scrolling, the visible window starts at ``scrolls_needed``.
-        # The target should be at slot index ``target_pos - scrolls_needed``.
-        expected_slot = target_pos - scrolls_needed
+        logger.debug(f'moved mouse to probe ROI for position 1: {probe_roi}')
+        self.ctrl.scroll(scroll_delta * -2, wait=0.1) # Scroll down 2 positions ends up perfectly with position 1 in the slot 0
+        logger.debug(f'Scrolled down 2 positions to probe position 1')
+        scroll_offset = 1 #
+        #self.ctrl.scroll(scroll_delta * 1, wait=1.0) # Scroll back up 1 position: now at the real top without the weird overscroll
+        #logger.info(f'Scrolled back up 1 position to correct overscroll')
 
-        # ── 5. OCR-verify and click ─────────────────────────────────────
-        # Try the expected slot first, then scan all visible slots.
-        matched_slot = None
-        for attempt_slot in [expected_slot] + [
-            i for i in range(visible) if i != expected_slot
-        ]:
-            if attempt_slot < 0 or attempt_slot >= visible:
-                continue
-            text = _ocr_roi(item_names[attempt_slot])
-            if _slug_matches(text, target_slug):
-                matched_slot = attempt_slot
-                break
+        # ── 5. Scroll from current offset to target offset ──────────────
+        # Show the target at slot 1 (one step from the top of the visible
+        # window) for a reliable click.  Clamp to the valid scroll range.
+        total_items = 1 + len(sorted_slugs)
+        max_scroll_offset = total_items - visible - 2
 
-        if matched_slot is None:
-            self.ctrl.press_key('esc', wait=0.2)
-            self.ctrl.press_key('esc', wait=0.2)
-            raise RuntimeError(
-                f'Could not find {sonata_slug!r} in visible dropdown slots '
-                f'after {scrolls_needed} scrolls.  '
-                f'Last OCR texts: (expected slot {expected_slot})'
+        # not at the very bottom of the list?
+        if target_pos < total_items - 1:
+            desired_offset = max(0, min(target_pos - 1, max_scroll_offset))
+            steps = desired_offset - scroll_offset
+            logger.debug(f'Target sonata {sonata_slug!r} at position {target_pos}, currently at offset {scroll_offset}, scrolling to offset {desired_offset} ({steps} steps) with {max_scroll_offset=}')
+
+            # scroll all in one go
+            self.ctrl.scroll(scroll_delta * -steps, wait=0.3)
+
+            # ── 6. OCR-verify and click ─────────────────────────────────────
+            # expected_slot is 1 for most targets; 0 for "Filter On/Off";
+            # and up to (visible-1) for entries near the very end of the list.
+            expected_slot = target_pos - desired_offset
+            matched_slot = None
+            for attempt_slot in [expected_slot] + [
+                i for i in range(visible) if i != expected_slot
+            ]:
+                if not 0 <= attempt_slot < visible:
+                    continue
+                if _slug_matches(_ocr_roi(item_names[attempt_slot]), target_slug):
+                    matched_slot = attempt_slot
+                    break
+
+            if matched_slot is None:
+                self.ctrl.press_key('esc', wait=0.2)
+                self.ctrl.press_key('esc', wait=0.2)
+                raise RuntimeError(
+                    f'Could not find {sonata_slug!r} in visible dropdown slots '
+                    f'after scrolling to offset {desired_offset} '
+                    f'(probed offset was {scroll_offset}).'
+                )
+
+            roi = item_names[matched_slot]
+            self.ctrl.click(roi.x + roi.w // 2, roi.y + roi.h // 2, wait=0.3)
+            logger.info('Sonata filter set to %s (slot %d)', sonata_slug, matched_slot)
+        
+        # last element in the list: things get rough around here
+        else:
+            logger.debug(f'Target sonata {sonata_slug!r} at position {target_pos} is outside the visible dropdown range (max visible index {visible-1})')
+            desired_offset = max(0, min(target_pos - 1, max_scroll_offset+3))
+            steps = desired_offset - scroll_offset
+            logger.debug(f'Target sonata {sonata_slug!r} at position {target_pos}, currently at offset {scroll_offset}, scrolling to offset {desired_offset} ({steps} steps) with {max_scroll_offset=}')
+
+            # scroll all in one go
+            self.ctrl.scroll(scroll_delta * -steps, wait=0.5) # wait a bit more for the dropdown to stabilize when scrolling near the end of the list
+
+            # ── 6. OCR-verify and click ─────────────────────────────────────
+            # expected_slot is 1 for most targets; 0 for "Filter On/Off";
+            # and up to (visible-1) for entries near the very end of the list.
+            expected_slot = len(item_names) - 1 
+            matched_slot = None
+            attempt_slot = expected_slot
+
+            # Near the end of the list the item name positions shift down by a few pixels.
+            adjusted_roi = _shifted_roi_y(
+                item_names[attempt_slot],
+                sonata_flt.bottom_offset_item_names.y,
             )
 
-        roi = item_names[matched_slot]
-        self.ctrl.click(roi.x + roi.w // 2, roi.y + roi.h // 2, wait=0.3)
-        logger.info('Sonata filter set to %s (slot %d)', sonata_slug, matched_slot)
+            logging.info(f'Adjusted ROI for OCR verification: {adjusted_roi=}')
+            if _slug_matches(_ocr_roi(adjusted_roi), target_slug):
+                matched_slot = attempt_slot
+                logging.debug(f'Matched target sonata {sonata_slug!r} at adjusted slot {attempt_slot} (expected {expected_slot})')
 
-        # ── 6. Close the filter submenu ─────────────────────────────────
+            if matched_slot is None:
+                self.ctrl.press_key('esc', wait=0.2)
+                self.ctrl.press_key('esc', wait=0.2)
+                raise RuntimeError(
+                    f'Could not find {sonata_slug!r} in visible dropdown slots '
+                    f'after scrolling to offset {desired_offset} '
+                    f'(probed offset was {scroll_offset}).'
+                )
+
+            roi = _shifted_roi_y(
+                item_names[matched_slot],
+                sonata_flt.bottom_offset_item_names.y,
+            )
+            
+            self.ctrl.click(roi.x + roi.w // 2, roi.y + roi.h // 2, wait=0.3)
+            logger.info(f'Sonata filter set to %s (slot %d) adjust roi {roi=}', sonata_slug, matched_slot)
+
+        # ── 7. Close the filter submenu ─────────────────────────────────
         self.ctrl.press_key('esc', wait=0.3)
 
     # ── Character-specific navigation ────────────────────────────────────
