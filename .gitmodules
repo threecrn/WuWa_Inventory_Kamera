@@ -1,0 +1,3 @@
+[submodule "tools/cli/dimbreath_wuthering_data/WutheringData"]
+	path = tools/cli/dimbreath_wuthering_data/WutheringData
+	url = https://github.com/Dimbreath/WutheringData.git

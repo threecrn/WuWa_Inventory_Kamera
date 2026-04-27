@@ -193,7 +193,9 @@ class NavSession:
         screenshot_dir: Path | None = None,
         dry_run: bool = False,
     ) -> None:
-        self.nav = nav
+        from wuwa_inventory_kamera.game.navigation import GameNavigator
+
+        self.nav: GameNavigator = nav
         self.gw  = gw
         self.screenshot_dir = screenshot_dir or Path('screenshots')
         self.dry_run = dry_run
@@ -827,8 +829,8 @@ def main() -> None:
         sys.exit(1)
 
     get_origin = (lambda: gw.client_origin) if args.windowed else None
-    ctrl = InputController(gw.monitor_index if gw.found else 1, get_origin=get_origin)
-    nav  = GameNavigator(ctrl, gw, inventory_key=args.inventory_key)
+    ctrl: InputController = InputController(gw.monitor_index if gw.found else 1, get_origin=get_origin)
+    nav: GameNavigator = GameNavigator(ctrl, gw, inventory_key=args.inventory_key)
 
     session = NavSession(
         nav=nav,

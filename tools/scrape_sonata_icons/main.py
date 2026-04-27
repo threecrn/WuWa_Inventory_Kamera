@@ -58,8 +58,16 @@ log = logging.getLogger(__name__)
 
 
 def normalize(name: str) -> str:
-    """Lowercase and remove underscores, spaces, and apostrophes."""
-    return re.sub(r"[_\s']", "", name).lower()
+    """Lowercase and remove underscores, spaces, hyphens, and apostrophes."""
+    return re.sub(r"[_\s\-']", "", name).lower()
+
+
+# Wiki filenames that don't normalize to the same key as the game data.
+# Maps normalize(wiki_stem) → sonata key.
+_WIKI_NAME_OVERRIDES: dict[str, str] = {
+    # Wiki: "Sun-sinking Eclipse"  ↔  Game: "Havoc Eclipse"
+    "sunsinkingeclipse": "havoceclipse",
+}
 
 
 def load_sonata_keys(data_dir: Path) -> set[str]:
@@ -133,6 +141,8 @@ def build_mapping(sonata_keys: set[str]) -> dict[str, str]:
         stem = Path(stem).stem  # remove extension
 
         key = normalize(stem)
+        if key in _WIKI_NAME_OVERRIDES:
+            key = _WIKI_NAME_OVERRIDES[key]
         if key in sonata_keys:
             mapping[key] = entry["url"]
 
