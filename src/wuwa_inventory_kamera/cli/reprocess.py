@@ -203,12 +203,17 @@ def _run_service(
                 si.fullStatsValue.y: si.fullStatsValue.y + si.fullStatsValue.h,
                 si.fullStatsValue.x: si.fullStatsValue.x + si.fullStatsValue.w,
             ]
-            sonata = scan.sonata_screenshot
+            # Crop the small circular sonata icon from the un-scrolled full screenshot.
+            icon_roi = si.sonataIcon
+            sonata_icon = scan.full_screenshot[
+                int(icon_roi.y) : int(icon_roi.y + icon_roi.h),
+                int(icon_roi.x) : int(icon_roi.x + icon_roi.w),
+            ]
 
             cap = EchoCapture(
                 echo_index=scan.index,
                 card=card,
-                sonata=sonata,
+                sonata_icon=sonata_icon,
                 stats_name=s_name,
                 stats_value=s_val,
                 full_screenshot=scan.full_screenshot if write_debug else None,

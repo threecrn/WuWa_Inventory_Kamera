@@ -323,7 +323,7 @@ COORDINATES = {
                 "start": Coordinates(180, 104, 130, 162),
                 "echoCard": Coordinates(1136, 152, 486, 152),
                 "sonata": Coordinates(1135, 400, 486, 408),
-                #"sonataIcon": Coordinates(1422, 316, 24, 24), # needs to be scaled and repositioned for 1680x1050; not measured yet.
+                "sonataIcon": Coordinates(1261, 330, 20, 20), # Scaled from 1920x1200 (×0.875)
                 "mouseMovement": Coordinates(1576.5, 665.5),
                 "fullStatsName": Coordinates(1200, 420, 320, 380),
                 "fullStatsValue": Coordinates(1510, 420, 100, 380),

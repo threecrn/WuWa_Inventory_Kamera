@@ -35,10 +35,10 @@ class _Stop:
 class EchoCapture:
     """All image crops needed to process one echo card."""
     echo_index:      int
-    card:            np.ndarray   # name + level + rarity region (RGB)
-    sonata:          np.ndarray   # set name region (RGB)
-    stats_name:      np.ndarray   # stat name column (RGB)
-    stats_value:     np.ndarray   # stat value column (RGB)
+    card:            np.ndarray        # name + level + rarity region (RGB)
+    stats_name:      np.ndarray        # stat name column (RGB)
+    stats_value:     np.ndarray        # stat value column (RGB)
+    sonata_icon:     np.ndarray | None = None  # small circular sonata icon crop (BGR)
     full_screenshot: np.ndarray | None = None  # full frame, debug mode only
     # Set by OcrService.submit(); callers must not touch this field.
     _uid: int = field(default=-1, init=False, repr=False, compare=False)

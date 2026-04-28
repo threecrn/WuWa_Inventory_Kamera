@@ -5,12 +5,16 @@ wuwa_inventory_kamera.scraping.service.assemblers.echo_assembler
 Parses pre-computed OCR token lists for one echo card into a structured
 echo dict.
 
-The assembler is intentionally image-free: it receives lists of
+The assembler receives lists of
 :data:`~wuwa_inventory_kamera.scraping.ocr._types.OcrResult` tokens
 (already produced by
 :class:`~wuwa_inventory_kamera.scraping.ocr.batch.BatchOcr`) and applies
 all fuzzy-matching, stat alignment, and validation logic that was
 previously embedded in ``echoesProcessor._processRawScan``.
+
+Sonata detection uses icon template matching
+(:class:`~...matching.sonata_icon.SonataIconMatcher`) against the small
+circular icon on the echo card, instead of OCR text matching.
 
 The expensive data imports (``echoesID``, ``echoStats``, ``sonataName``,
 validators) are still pulled from the existing ``scraping`` package; this
@@ -19,8 +23,9 @@ module contains only the assembly logic.
 Public API
 ----------
 EchoAssembler
-    Call :meth:`~EchoAssembler.assemble` with the four token lists for a
-    single echo to get an :class:`~...captures.EchoResult`.
+    Call :meth:`~EchoAssembler.assemble` with the card, stats_name, and
+    stats_value token lists for a single echo to get an
+    :class:`~...captures.EchoResult`.
 """
 from __future__ import annotations
 
@@ -33,7 +38,8 @@ import cv2
 import numpy as np
 
 from wuwa_inventory_kamera.scraping.ocr._types import OcrResult
-from wuwa_inventory_kamera.scraping.ocr import tokens_to_lines, tokens_to_string
+from wuwa_inventory_kamera.scraping.ocr import tokens_to_lines
+from wuwa_inventory_kamera.scraping.matching.sonata_icon import SonataIconMatcher
 from wuwa_inventory_kamera.scraping.service.captures import EchoCapture, EchoResult
 
 logger = logging.getLogger(__name__)
@@ -163,6 +169,7 @@ class EchoAssembler:
     def __init__(self, min_rarity: int = 1, min_level: int = 0) -> None:
         self._min_rarity = min_rarity
         self._min_level  = min_level
+        self._sonata_matcher = SonataIconMatcher()
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -172,7 +179,6 @@ class EchoAssembler:
         self,
         capture: EchoCapture,
         card_tokens:    list[OcrResult],
-        sonata_tokens:  list[OcrResult],
         name_tokens:    list[OcrResult],
         value_tokens:   list[OcrResult],
     ) -> EchoResult:
@@ -182,12 +188,11 @@ class EchoAssembler:
         Parameters
         ----------
         capture:
-            The originating :class:`EchoCapture`.  Used for the echo index
-            and (if ``full_screenshot`` is set) for debug purposes.
+            The originating :class:`EchoCapture`.  Used for the echo index,
+            the sonata icon crop (for icon matching), and (if
+            ``full_screenshot`` is set) for debug purposes.
         card_tokens:
             OCR tokens from the echo card region (name + level + rarity).
-        sonata_tokens:
-            OCR tokens from the sonata/set-name region.
         name_tokens:
             OCR tokens from the stat-name column.
         value_tokens:
@@ -248,15 +253,16 @@ class EchoAssembler:
             logger.debug('Echo %d — level %d < min %d, rejecting.', idx, level, self._min_level)
             return EchoResult(echo_index=idx, data=None, warnings=warnings, retried=False)
 
-        # ── Sonata parsing ────────────────────────────────────────────────
-        sonata_text = tokens_to_string(sonata_tokens, divisor='', bannedChars=' ').lower()
-        sonata = sonata_text  # default: raw text if nothing matches
-        for known_name in sonataName:
-            if known_name in sonata_text:
-                sonata = known_name
-                break
+        # ── Sonata detection (icon matching) ──────────────────────────────
+        if capture.sonata_icon is not None:
+            sonata = self._sonata_matcher.match_to_sonata_key(
+                capture.sonata_icon, sonataName,
+            )
+            if sonata is None:
+                logger.warning('Echo %d — sonata icon not matched, rejecting.', idx)
+                return EchoResult(echo_index=idx, data=None, warnings=warnings, retried=False)
         else:
-            logger.warning('Echo %d — sonata not recognised in %r, rejecting.', idx, sonata_text[:80])
+            logger.warning('Echo %d — no sonata icon crop available, rejecting.', idx)
             return EchoResult(echo_index=idx, data=None, warnings=warnings, retried=False)
 
         logger.debug('Echo %d — sonata: %r', idx, sonata)

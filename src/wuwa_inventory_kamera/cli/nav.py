@@ -75,6 +75,7 @@ _ROI_ALIASES: dict[str, str] = {
     'echo-stats-name':  'echoes.fullStatsName',
     'echo-stats-value': 'echoes.fullStatsValue',
     'sonata':           'echoes.sonata',
+    'sonata-icon':      'echoes.sonataIcon',
     'weapon-name':      'weapons.name',
     'weapon-level':     'weapons.level',
 }

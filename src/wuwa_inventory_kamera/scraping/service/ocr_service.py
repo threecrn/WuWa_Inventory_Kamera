@@ -266,15 +266,17 @@ class OcrService:
         """
         Run batched OCR for a group of :class:`EchoCapture` objects.
 
-        Four separate ``ocr_images`` calls are made — one per crop type
-        (card, sonata, stats_name, stats_value) — so that all images
-        passed to a single detection forward pass share the same spatial
-        dimensions (no wasted padding).
+        Three separate ``ocr_images`` calls are made — one per crop type
+        (card, stats_name, stats_value) — so that all images passed to a
+        single detection forward pass share the same spatial dimensions
+        (no wasted padding).
+
+        Sonata detection is handled by the :class:`EchoAssembler` via
+        icon template matching on ``capture.sonata_icon``, bypassing OCR.
         """
         captures = [it.capture for it in group]
 
         card_results   = self._batch_ocr.ocr_images([c.card        for c in captures])
-        sonata_results = self._batch_ocr.ocr_images([c.sonata       for c in captures])
         name_results   = self._batch_ocr.ocr_images([c.stats_name   for c in captures])
         value_results  = self._batch_ocr.ocr_images([c.stats_value  for c in captures])
 
@@ -287,7 +289,6 @@ class OcrService:
             ]
 
         card_tok   = to_tokens(card_results)
-        sonata_tok = to_tokens(sonata_results)
         name_tok   = to_tokens(name_results)
         value_tok  = to_tokens(value_results)
 
@@ -296,7 +297,6 @@ class OcrService:
                 result = self._echo_asm.assemble(
                     item.capture,
                     card_tok[i],
-                    sonata_tok[i],
                     name_tok[i],
                     value_tok[i],
                 )

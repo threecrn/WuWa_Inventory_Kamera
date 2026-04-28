@@ -11,6 +11,9 @@ game inventory, with support for:
 * **Lookahead decoupling** — screenshots are taken at input-device speed
   (~200 ms/echo) while OCR runs asynchronously on the GPU.  Futures are
   collected after the full grid sweep.
+* **Icon-based sonata detection** — the sonata set is identified by
+  matching the small circular icon on the echo card against reference
+  PNGs, eliminating the need to scroll the detail panel.
 * **Rescan** — after the forward pass, futures that reported missing
   substats (or sonata scroll failures) are re-navigated and re-scanned.
   The OCR assembler flags these automatically.
@@ -193,21 +196,16 @@ class EchoWorkflow:
 
         Steps:
           1. Full-screen capture (stats panel visible).
-          2. Scroll to sonata, capture sonata region, scroll back.
-          3. Crop the four OCR regions from the full screenshot.
-          4. Submit an :class:`EchoCapture` to the OcrService.
+          2. Crop the sonata icon, card, and stats from the screenshot.
+          3. Submit an :class:`EchoCapture` to the OcrService.
 
         Returns the Future[EchoResult].
         """
         layout = self.nav.layout
 
-        # Full screenshot
+        # Full screenshot (no scrolling needed — the sonata icon is visible
+        # on the un-scrolled echo detail panel).
         full = capture_full(layout.width, layout.height, layout.monitor, gw=self.nav.gw)
-
-        # Sonata capture
-        self.nav.scroll_to_sonata()
-        sonata_full = capture_full(layout.width, layout.height, layout.monitor, gw=self.nav.gw)
-        self.nav.scroll_back_from_sonata()
 
         # Crop regions from the full screenshot
         ei = layout.echoes
@@ -223,20 +221,21 @@ class EchoWorkflow:
             int(ei.fullStatsValue.y) : int(ei.fullStatsValue.y + ei.fullStatsValue.h),
             int(ei.fullStatsValue.x) : int(ei.fullStatsValue.x + ei.fullStatsValue.w),
         ]
-        # Sonata region from the scrolled screenshot
-        sonata = sonata_full[
-            int(ei.sonata.y) : int(ei.sonata.y + ei.sonata.h),
-            int(ei.sonata.x) : int(ei.sonata.x + ei.sonata.w),
+        # Small circular sonata icon from the echo card area
+        si = ei.sonataIcon
+        sonata_icon = full[
+            int(si.y) : int(si.y + si.h),
+            int(si.x) : int(si.x + si.w),
         ]
 
         # Optionally save raw images
         if self.save_raw:
-            self._save_raw(pos, full, sonata)
+            self._save_raw(pos, full)
 
         capture = EchoCapture(
             echo_index=pos.scan_index,
             card=card,
-            sonata=sonata,
+            sonata_icon=sonata_icon,
             stats_name=stats_name,
             stats_value=stats_value,
             full_screenshot=full if self.save_raw else None,
@@ -345,7 +344,6 @@ class EchoWorkflow:
         self,
         pos: GridPosition,
         full: np.ndarray,
-        sonata: np.ndarray,
     ) -> None:
         """Save raw screenshots to disk for offline reprocessing."""
         import json
@@ -356,7 +354,6 @@ class EchoWorkflow:
         echo_dir.mkdir(parents=True, exist_ok=True)
 
         cv2.imwrite(str(echo_dir / 'full.png'), full)
-        cv2.imwrite(str(echo_dir / 'sonata.png'), sonata)
 
         meta = {
             'session_id': self.session.session_id,
