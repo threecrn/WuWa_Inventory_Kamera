@@ -1,0 +1,284 @@
+"""
+wuwa_inventory_kamera.scraping.scanning.character_workflow
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Scanning workflow for the resonator (character) screen.
+
+Unlike the inventory scrapers (echoes, weapons) the character screen is
+not a grid — it is a sidebar list of resonators.  The scanner:
+
+1. Opens the resonator menu via the configured keybind.
+2. Iterates through all characters in the right-side panel row-by-row,
+   scrolling when 7 slots are exhausted.
+3. For each resonator, captures and submits five sections:
+
+   * **Section 0** — resonator overview (name + level)
+   * **Section 1** — weapon panel (weapon name, level, rank)
+   * **Section 2** — echoes (skipped; handled by echo scraper)
+   * **Section 3** — skills panel (active skill levels)
+   * **Section 4** — resonance chain (button activation per node)
+
+4. After section 0 the ``already_seen`` flag from the assembler is
+   checked.  When ``True`` the scraper has wrapped around the list
+   (all characters have been processed) and stops.
+
+Navigation note
+---------------
+The right-side panel shows 7 resonator slots at a time
+(``rightSide`` + ``offsets.rightSide.y * index``).  After cycling
+through 7 slots the list is scrolled by one page (``scroll.characters``).
+The same character can appear in multiple slots after a scroll, hence
+the ``already_seen`` sentinel in the assembler.
+"""
+from __future__ import annotations
+
+import logging
+import threading
+from collections import defaultdict
+from typing import Callable
+
+import numpy as np
+
+from ...game.navigation import GameNavigator
+from ...game.screen import capture_full, capture_region
+from ..service.captures import CharCapture, CharResult
+from ..service.ocr_service import OcrService
+from .scan_state import ScanSession
+
+logger = logging.getLogger(__name__)
+
+# Number of resonator slots visible in the right panel at once
+_SLOTS_PER_PAGE = 7
+
+# Sections handled (2 is skipped — echoes)
+_SECTIONS = (0, 1, 3, 4)
+
+SKILL_KEYS  = ['skill_0', 'skill_1', 'skill_2', 'skill_3', 'skill_4']
+CHAIN_KEYS  = ['chain_0', 'chain_1', 'chain_2', 'chain_3', 'chain_4', 'chain_5']
+
+
+class CharacterWorkflow:
+    """
+    Scanning workflow for the resonator panel.
+
+    Parameters
+    ----------
+    nav:
+        Game navigator.
+    ocr_service:
+        OCR service for assembling character data.
+    session:
+        Scan session for tracking progress (total_items is updated from
+        the game).
+    resonator_key:
+        Keybind that opens the resonator panel (default: ``'c'``).
+    stop_event:
+        Optional :class:`~threading.Event`; scanning stops when set.
+    """
+
+    def __init__(
+        self,
+        nav: GameNavigator,
+        ocr_service: OcrService,
+        session: ScanSession,
+        resonator_key: str = 'c',
+        stop_event: threading.Event | None = None,
+    ) -> None:
+        self.nav = nav
+        self.ocr = ocr_service
+        self.session = session
+        self._resonator_key = resonator_key
+        self._stop_event = stop_event
+
+    # ------------------------------------------------------------------
+    # Public
+    # ------------------------------------------------------------------
+
+    def run(self, on_progress: Callable | None = None) -> dict:
+        """
+        Execute the resonator scan.
+
+        Returns
+        -------
+        dict
+            ``{char_id: char_dict}`` mapping.
+        """
+        layout = self.nav.layout
+        ctrl   = self.nav.ctrl
+
+        # Open resonator panel
+        ctrl.press_key(self._resonator_key, wait=2.0)
+
+        results: dict = {}
+        char_index = 0
+
+        ch   = layout.characters   # shorthand for character coordinate block
+        done = False
+
+        while not done:
+            for slot in range(_SLOTS_PER_PAGE):
+                if self._stop_event and self._stop_event.is_set():
+                    done = True
+                    break
+
+                # Click the resonator slot in the right panel
+                rx = ch.rightSide.x
+                ry = ch.rightSide.y + ch.offsets.rightSide.y * slot
+                ctrl.click(rx, ry, wait=0.7)
+
+                # --- Section 0: overview (name + level) ---
+                full = capture_full(layout.width, layout.height, layout.monitor, gw=self.nav.gw)
+                name_crop = full[
+                    int(ch.resonatorName.y) : int(ch.resonatorName.y + ch.resonatorName.h),
+                    int(ch.resonatorName.x) : int(ch.resonatorName.x + ch.resonatorName.w),
+                ]
+                level_crop = full[
+                    int(ch.resonatorLevel.y) : int(ch.resonatorLevel.y + ch.resonatorLevel.h),
+                    int(ch.resonatorLevel.x) : int(ch.resonatorLevel.x + ch.resonatorLevel.w),
+                ]
+
+                sec0_cap = CharCapture(
+                    char_index=char_index,
+                    section=0,
+                    crops={'name': name_crop, 'level': level_crop},
+                )
+                sec0_result: CharResult = self.ocr.submit(sec0_cap).result(timeout=30)
+
+                if sec0_result.fields.get('already_seen'):
+                    logger.info('Character loop complete — %d characters scanned', len(results))
+                    done = True
+                    break
+
+                # Navigate to weapon tab (left sidebar section 1)
+                lx = ch.leftSide.x
+                ly = ch.leftSide.y + ch.offsets.leftSide.y * 1
+                ctrl.click(lx, ly, wait=0.8)
+
+                # --- Section 1: weapon ---
+                full = capture_full(layout.width, layout.height, layout.monitor, gw=self.nav.gw)
+                wname_crop = full[
+                    int(ch.weaponName.y) : int(ch.weaponName.y + ch.weaponName.h),
+                    int(ch.weaponName.x) : int(ch.weaponName.x + ch.weaponName.w),
+                ]
+                wlevel_crop = full[
+                    int(ch.weaponLevel.y) : int(ch.weaponLevel.y + ch.weaponLevel.h),
+                    int(ch.weaponLevel.x) : int(ch.weaponLevel.x + ch.weaponLevel.w),
+                ]
+                wrank_crop = full[
+                    int(ch.weaponRank.y) : int(ch.weaponRank.y + ch.weaponRank.h),
+                    int(ch.weaponRank.x) : int(ch.weaponRank.x + ch.weaponRank.w),
+                ]
+                sec1_cap = CharCapture(
+                    char_index=char_index,
+                    section=1,
+                    crops={
+                        'weaponName':  wname_crop,
+                        'weaponLevel': wlevel_crop,
+                        'weaponRank':  wrank_crop,
+                    },
+                )
+                self.ocr.submit(sec1_cap).result(timeout=30)
+
+                # --- Section 3: skills ---
+                # Click the skill navigation button to open the skill panel
+                ctrl.click(ch.skillClick.x, ch.skillClick.y, wait=0.5)
+                skill_crops: dict[str, np.ndarray] = {}
+                for idx, pos in enumerate(ch.skillPositions):
+                    ctrl.click(pos.x, pos.y, wait=0.3)
+                    level_shot = capture_region(self.nav.gw, ch.skillLevel)
+                    skill_crops[SKILL_KEYS[idx]] = level_shot
+                ctrl.press_key('esc', wait=0.3)
+
+                sec3_cap = CharCapture(
+                    char_index=char_index,
+                    section=3,
+                    crops=skill_crops,
+                )
+                self.ocr.submit(sec3_cap).result(timeout=30)
+
+                # --- Section 4: resonance chain ---
+                ctrl.click(ch.chainClick.x, ch.chainClick.y, wait=0.7)
+                chain_crops: dict[str, np.ndarray] = {}
+                for idx, pos in enumerate(ch.chainPositions):
+                    ctrl.click(pos.x, pos.y, wait=0.2)
+                    btn_shot = capture_region(self.nav.gw, ch.chainButton)
+                    chain_crops[CHAIN_KEYS[idx]] = btn_shot
+                ctrl.press_key('esc', wait=0.3)
+
+                sec4_cap = CharCapture(
+                    char_index=char_index,
+                    section=4,
+                    crops=chain_crops,
+                )
+                sec4_result: CharResult = self.ocr.submit(sec4_cap).result(timeout=30)
+
+                # Collect the fully merged result (section 4 contains all fields)
+                fields = sec4_result.fields
+                char_id = fields.get('char_id') or fields.get('name', str(char_index))
+
+                results[char_id] = self._build_output(fields)
+                logger.info(
+                    'Character %r (%s) scanned — index=%d',
+                    char_id, fields.get('name'), char_index,
+                )
+
+                if on_progress:
+                    on_progress(len(results), len(results))
+
+                char_index += 1
+
+            if not done:
+                # Scroll the character list to reveal next batch
+                self.nav.scroll_character_list(wait=0.5)
+
+        ctrl.press_key('esc', wait=0.3)
+        return results
+
+    # ------------------------------------------------------------------
+    # Internal
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_output(fields: dict) -> dict:
+        """
+        Convert the merged assembler fields into the final export format,
+        matching the structure produced by the legacy ``resonatorScraper``.
+        """
+        ASCENSION_LEVELS = [20, 40, 50, 60, 70, 80, 90]
+
+        level = fields.get('level', 0)
+        weapon_max = fields.get('weaponMaxLevel', 0)
+
+        try:
+            weapon_ascension = ASCENSION_LEVELS.index(weapon_max)
+        except ValueError:
+            weapon_ascension = 0
+
+        # Skill levels from section 3
+        raw_skills = fields.get('skills', {})
+        skills_out: dict = defaultdict(int, {
+            'normal':      raw_skills.get('skill_0', 1),
+            'resonance':   raw_skills.get('skill_1', 1),
+            'forte':       raw_skills.get('skill_2', 1),
+            'liberation':  raw_skills.get('skill_3', 1),
+            'intro':       raw_skills.get('skill_4', 1),
+            'stats0': 0, 'stats1': 0, 'inherent': 0, 'stats3': 0, 'stats4': 0,
+        })
+
+        # Chain count from section 4
+        raw_chain = fields.get('chain', {})
+        chain_count = sum(1 for v in raw_chain.values() if v)
+
+        return {
+            'level': level,
+            'ascension': 0,   # ascension derived from level externally if needed
+            'weapon': {
+                'id':        fields.get('weaponId', fields.get('weaponName', '')),
+                'level':     fields.get('weaponLevel', 1),
+                'ascension': weapon_ascension,
+                'rank':      fields.get('weaponRank', 1),
+            },
+            'echoes': {},
+            'skills': dict(skills_out),
+            'chain':  chain_count,
+        }

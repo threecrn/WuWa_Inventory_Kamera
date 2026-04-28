@@ -138,7 +138,28 @@ class CharResult:
 
 
 # ---------------------------------------------------------------------------
+# Achievements
+# ---------------------------------------------------------------------------
+
+@dataclass
+class AchievementCapture:
+    """Image crop for one achievement status check."""
+    achievement_name: str         # name used to search
+    achievement_id:   int         # from achievementsID
+    status:           np.ndarray  # status button crop (RGB)
+    _uid: int = field(default=-1, init=False, repr=False, compare=False)
+
+
+@dataclass
+class AchievementResult:
+    """Result for one achievement."""
+    achievement_name: str
+    achievement_id:   int
+    completed:        bool
+
+
+# ---------------------------------------------------------------------------
 # Tagged union helper
 # ---------------------------------------------------------------------------
 
-CaptureType = EchoCapture | WeaponCapture | ItemCapture | CharCapture
+CaptureType = EchoCapture | WeaponCapture | ItemCapture | CharCapture | AchievementCapture

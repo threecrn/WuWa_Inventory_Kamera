@@ -32,3 +32,6 @@ __pycache__/
 *.log
 *.env
 .DS_Store
+
+# Ignore restored files and directories
+*.restored
