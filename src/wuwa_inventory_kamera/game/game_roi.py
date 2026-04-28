@@ -182,7 +182,11 @@ COORDINATES = {
                 "page": Coordinates(200, 50, 130, 40),
                 "start": Coordinates(205, 122, 151, 181),
                 "echoCard": Coordinates(1296, 114, 558, 170),
-                "sonataIcon": Coordinates(1441, 317, 23, 23), #(1422, 316, 24, 24),  # Sonata icon within the sonata region.
+                "sonataIcon": Coordinates(1441, 317, 23, 24), # Sonata icon within the sonata region.
+                "sonataIconCircle": {
+                    "circle": Coordinates(12.55, 12.65), # Circle parameters for the sonata icon (for matching).
+                    "radius": 11.5,                      # Circle radius of the sonata icon (for matching).
+                },
                 "sonata": Coordinates(1298, 397, 554, 467),
                 "mouseMovement": Coordinates(1576.5, 665.5),
                 "fullStatsName": Coordinates(1380, 430, 360, 380),
