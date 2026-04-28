@@ -1,11 +1,7 @@
-import sys
-from PySide6.QtWidgets import QApplication
-from ui.loadingUI import LoadingScreen
+"""
+app.py — legacy entry point.
 
-def start():
-    app = QApplication(sys.argv)
-    
-    loading_screen = LoadingScreen()
-    loading_screen.show()
-    
-    app.exec()
+Delegates to the canonical V2 implementation in
+``wuwa_inventory_kamera.app``.
+"""
+from wuwa_inventory_kamera.app import start  # noqa: F401

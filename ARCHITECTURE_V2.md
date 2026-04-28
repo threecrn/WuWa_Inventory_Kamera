@@ -1,14 +1,17 @@
 # Inventory Scanner v2 — Architecture
 
 > **Status:** Implemented. The game manipulation layer, scanning workflows
-> (echoes + weapons), OcrService, assemblers, and CLI tools are all live.
+> (echoes + weapons), OcrService, assemblers, CLI tools, and the Qt UI
+> layer are all live under `src/wuwa_inventory_kamera/`.
 > Sonata detection uses icon template matching (no OCR / no scrolling).
 > The legacy module migration (Phases 1–4) is largely complete: all superseded
 > `game/`, `scraping/ocr/`, and V1 scraper modules have been deleted; shared
 > processing and utility modules are now canonical under `src/` with thin
 > re-export shims kept for backward compatibility. Character, achievement, and
-> shell scrapers were removed without a V2 port (not yet implemented). The Qt
-> UI layer and `updater/assetsUpdater.py` remain to be ported.
+> shell scrapers were removed without a V2 port (not yet implemented).
+> The Qt UI layer, Qt config (`ui.config`), `config/app_config`, and
+> `updater/assets` have been ported to `src/`; legacy top-level modules
+> are now thin re-export shims.
 
 ---
 
@@ -480,6 +483,19 @@ src/wuwa_inventory_kamera/
   updater/
     __init__.py
     database.py             (BaseDataUpdater — data JSON update logic)
+    assets.py               (BaseAssetsUpdater — icon download, no Qt)
+  ui/
+    __init__.py
+    config.py               (Qt QConfig layer: Config, cfg singleton, validators, constants)
+    main_window.py          (WuWaInventoryKamera — MSFluentWindow main window)
+    home.py                 (HomeInterface, LControlPanel, TControlPanel, ScanThread)
+    inventory.py            (InventoryInterface, ItemCard — JSON inventory viewer)
+    settings.py             (SettingInterface — theme, export, keybinds, about)
+    loading.py              (LoadingScreen, DataUpdaterThread, AssetsUpdaterThread)
+    custom_widgets/
+      __init__.py
+      widget.py             (FieldSettingCard, MultiplePushSettingCard, CustomSpinBox, etc.)
+  app.py                    (Application bootstrap: configure_logging, start, main)
 ```
 
 ### Remaining legacy top-level modules
@@ -510,20 +526,21 @@ game/                       [DELETED — superseded by src/.../game/]
 
 properties/
   app_config.py             (shim → src/.../config/app_config.py)
-  config.py                 (QConfig-based UI config, Qt-dependent — not yet ported)
+  config.py                 (shim → src/.../ui/config.py)
 
-ui/                         (Qt / PySide6-Fluent UI — not yet ported to V2)
-  homeUI.py
-  inventoryUI.py
-  loadingUI.py
-  mainUI.py
-  settingsUI.py
+ui/                         (re-export shims — canonical code is in src/.../ui/)
+  homeUI.py                 (shim → src/.../ui/home.py)
+  inventoryUI.py            (shim → src/.../ui/inventory.py)
+  loadingUI.py              (shim → src/.../ui/loading.py)
+  mainUI.py                 (shim → src/.../ui/main_window.py)
+  settingsUI.py             (shim → src/.../ui/settings.py)
   custom_widgets/
-    widget.py
+    __init__.py             (shim → src/.../ui/custom_widgets/)
+    widget.py               (legacy — superseded by src/.../ui/custom_widgets/widget.py)
 
 updater/
-  assetsUpdater.py          (asset download logic — not yet migrated to src/)
-  databaseUpdater.py        (shim → src/.../updater/database.py)
+  assetsUpdater.py          (shim → src/.../updater/assets.py; AssetsUpdater Qt subclass stays)
+  databaseUpdater.py        (shim → src/.../updater/database.py; DataUpdater Qt subclass stays)
 
 cli/                        (legacy CLI scripts — NOT under src/)
   debug_ocr.py              (updated to use src/ imports; candidate for nav-script or removal)
@@ -545,8 +562,8 @@ tools/                      (development / one-off tools — keep)
   cli/dimbreath_wuthering_data/  (vendored game data, large)
   [DELETED] match_sonata_icon/  (integrated into src/.../scraping/matching/)
 
-app.py                      (Qt application bootstrap — not yet ported)
-main.py                     (entry point with log setup — not yet ported)
+app.py                      (shim → src/.../app.py — delegates to wuwa_inventory_kamera.app.start)
+main.py                     (shim → src/.../app.py — delegates to wuwa_inventory_kamera.app.main)
 [DELETED] batch_ocr.py      (superseded by src/.../scraping/ocr/batch.py)
 [DELETED] setup.py          (superseded by pyproject.toml)
 conftest.py                 (root — adds project root to sys.path; keep until no legacy imports remain)
@@ -860,10 +877,10 @@ Every module still outside `src/wuwa_inventory_kamera/` needs to be moved in,
 replaced by a V2 equivalent, or explicitly deleted.  The table below groups
 modules by disposition and priority.
 
-> **Migration status (2026-04-28):** Phases 1–3 are complete. Phase 4 items
-> (top-level `cli/` scripts, root `conftest.py`) remain as candidates for
-> future cleanup. The Qt UI layer and `updater/assetsUpdater.py` are the only
-> substantial pieces not yet ported to `src/`.
+> **Migration status (2026-04-28):** Phases 1–3 are complete. The Qt UI layer,
+> Qt config, `config/app_config`, and `updater/assets` have all been ported
+> to `src/`. Phase 4 items (top-level `cli/` scripts, root `conftest.py`)
+> remain as candidates for future cleanup.
 
 ### Phase 1 — Delete (no remaining callers or superseded) ✓ Done
 
@@ -899,13 +916,14 @@ shims that forward all public names to their canonical `src/` counterparts.
 | `scraping/utils/common.py` | `src/.../scraping/utils/common.py` | **Moved** — re-export shim kept |
 | `properties/app_config.py` | `src/.../config/app_config.py` | **Moved** — re-export shim kept |
 | `updater/databaseUpdater.py` | `src/.../updater/database.py` | **Moved** — re-export shim kept |
-| `updater/assetsUpdater.py` | `src/.../updater/assets.py` | **Pending** — not yet migrated |
+| `updater/assetsUpdater.py` | `src/.../updater/assets.py` | **Moved** — re-export shim kept; Qt subclass stays in legacy |
 
-### Phase 3 — Port or Remove (V1 scrapers + UI) — Partial
+### Phase 3 — Port or Remove (V1 scrapers + UI) ✓ Done
 
 V1 scrapers have been removed. Character, achievement, and shell scrapers
 were deleted without a V2 port (to be implemented when needed). The Qt UI
-layer is not yet ported.
+layer has been ported to `src/wuwa_inventory_kamera/ui/` with the scan path
+rewritten to use `SessionOrchestrator` on a `QThread`.
 
 | Module | Plan | Status |
 |---|---|---|
@@ -917,9 +935,9 @@ layer is not yet ported.
 | `scraping/shellScraper.py` | Port to `src/.../scraping/scanning/shell_workflow.py` | **Deleted** — V2 port not yet implemented |
 | `scraping/scraperManager.py` | Remove — replaced by `SessionOrchestrator` | **Deleted** |
 | `scraping/scraperExectuter.py` | Remove — replaced by `wuwa-scan` CLI | **Deleted** |
-| `ui/` (all) | Port — rewrite against V2 `SessionOrchestrator` | **Pending** — imports updated; full rewrite outstanding |
-| `properties/config.py` | Port with UI — Qt-dependent | **Pending** |
-| `app.py` + `main.py` | Port with UI — entry points for Qt application | **Pending** |
+| `ui/` (all) | Port — rewrite against V2 `SessionOrchestrator` | **Done** — shims re-export from `src/.../ui/` |
+| `properties/config.py` | Port with UI — Qt-dependent | **Done** — shim re-exports from `src/.../ui/config.py` |
+| `app.py` + `main.py` | Port with UI — entry points for Qt application | **Done** — shims delegate to `src/.../app.py` |
 
 ### Phase 4 — Cleanup — Partial
 
@@ -936,13 +954,14 @@ layer is not yet ported.
 
 ```
 Phase 1 (delete dead code)               ✓ Complete
-  └─► Phase 2 (move shared modules into src/)   ✓ Complete (assetsUpdater.py pending)
-        └─► Phase 3 (port remaining scrapers + UI)     Partial — UI pending; scrapers removed
+  └─► Phase 2 (move shared modules into src/)   ✓ Complete
+        └─► Phase 3 (port remaining scrapers + UI)     ✓ Complete
               └─► Phase 4 (cleanup root conftest, top-level cli/, etc.)  Partial
 ```
 
-Phase 1 can proceed immediately — nothing depends on the deleted modules
-except the UI, which itself needs porting (Phase 3).  Phase 2 is
-prerequisite to Phase 3 because the ported scrapers / UI will import from
-`src/`.  Phase 4 is a final sweep once all functional code lives under
-`src/`.
+Phase 1 removed dead legacy modules. Phase 2 moved all shared modules
+into `src/` with backward-compat shims. Phase 3 ported the Qt UI layer and
+entry points to `src/`, rewired the scan button to use `SessionOrchestrator`
+on a `QThread`, and extracted base classes for the updaters.  Phase 4 is a
+final sweep once the remaining legacy `cli/` scripts and root `conftest.py`
+are no longer needed.
