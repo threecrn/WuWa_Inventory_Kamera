@@ -56,12 +56,16 @@ from ..ocr.batch import BatchOcr
 from .captures import (
     _Stop,
     CaptureType,
+    AchievementCapture,
+    AchievementResult,
     CharCapture,
     CharResult,
     EchoCapture,
     EchoResult,
     ItemCapture,
     ItemResult,
+    ShellCapture,
+    ShellResult,
     WeaponCapture,
     WeaponResult,
 )
@@ -69,6 +73,8 @@ from .assemblers.echo_assembler import EchoAssembler
 from .assemblers.weapon_assembler import WeaponAssembler
 from .assemblers.item_assembler import ItemAssembler
 from .assemblers.character_assembler import CharAssembler
+from .assemblers.achievement_assembler import AchievementAssembler
+from .assemblers.shell_assembler import ShellAssembler
 
 if TYPE_CHECKING:
     pass
@@ -140,10 +146,12 @@ class OcrService:
         self._max_batch_size = max_batch_size
 
         # Assemblers
-        self._echo_asm  = EchoAssembler(min_rarity=min_rarity, min_level=min_level)
-        self._weapon_asm = WeaponAssembler(min_rarity=min_rarity, min_level=min_level)
-        self._item_asm  = ItemAssembler()
-        self._char_asm  = CharAssembler()
+        self._echo_asm        = EchoAssembler(min_rarity=min_rarity, min_level=min_level)
+        self._weapon_asm      = WeaponAssembler(min_rarity=min_rarity, min_level=min_level)
+        self._item_asm        = ItemAssembler()
+        self._char_asm        = CharAssembler()
+        self._achievement_asm = AchievementAssembler()
+        self._shell_asm        = ShellAssembler()
 
         self._thread = threading.Thread(
             target=self._run, daemon=True, name='OcrService',
@@ -248,6 +256,10 @@ class OcrService:
                     self._process_items(group)
                 elif cls is CharCapture:
                     self._process_chars(group)
+                elif cls is AchievementCapture:
+                    self._process_achievements(group)
+                elif cls is ShellCapture:
+                    self._process_shell(group)
                 else:
                     logger.warning('OcrService — unknown capture type %s', cls)
                     for item in group:
@@ -407,4 +419,45 @@ class OcrService:
                     'OcrService — char %d section %d assembly error',
                     cap.char_index, cap.section,
                 )
+                item.future.set_exception(exc)
+
+    def _process_achievements(self, group: list[_QueueItem]) -> None:
+        """Run batched OCR and assembly for a group of :class:`AchievementCapture` objects."""
+        captures = [it.capture for it in group]
+        status_results = self._batch_ocr.ocr_images([c.status for c in captures])
+
+        def to_tokens(image_results):
+            return [(box.tolist(), text, conf) for text, conf, box in image_results]
+
+        for i, item in enumerate(group):
+            try:
+                result = self._achievement_asm.assemble(
+                    item.capture,
+                    to_tokens(status_results[i]),
+                )
+                item.future.set_result(result)
+            except Exception as exc:
+                logger.exception(
+                    'OcrService — achievement %r assembly error',
+                    item.capture.achievement_name,
+                )
+                item.future.set_exception(exc)
+
+    def _process_shell(self, group: list[_QueueItem]) -> None:
+        """Run batched OCR and assembly for a group of :class:`ShellCapture` objects."""
+        captures = [it.capture for it in group]
+        amount_results = self._batch_ocr.ocr_images([c.amount for c in captures])
+
+        def to_tokens(image_results):
+            return [(box.tolist(), text, conf) for text, conf, box in image_results]
+
+        for i, item in enumerate(group):
+            try:
+                result = self._shell_asm.assemble(
+                    item.capture,
+                    to_tokens(amount_results[i]),
+                )
+                item.future.set_result(result)
+            except Exception as exc:
+                logger.exception('OcrService — shell assembly error')
                 item.future.set_exception(exc)

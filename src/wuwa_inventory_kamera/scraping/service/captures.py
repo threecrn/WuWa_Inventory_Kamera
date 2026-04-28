@@ -138,7 +138,45 @@ class CharResult:
 
 
 # ---------------------------------------------------------------------------
+# Achievements
+# ---------------------------------------------------------------------------
+
+@dataclass
+class AchievementCapture:
+    """Image crop for one achievement status check."""
+    achievement_name: str         # name used to search
+    achievement_id:   int         # from achievementsID
+    status:           np.ndarray  # status button crop (RGB)
+    _uid: int = field(default=-1, init=False, repr=False, compare=False)
+
+
+@dataclass
+class AchievementResult:
+    """Result for one achievement."""
+    achievement_name: str
+    achievement_id:   int
+    completed:        bool
+
+
+# ---------------------------------------------------------------------------
+# Shell currency
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ShellCapture:
+    """Image crop of the shell-currency HUD region."""
+    amount: np.ndarray  # shell count text region (RGB)
+    _uid: int = field(default=-1, init=False, repr=False, compare=False)
+
+
+@dataclass
+class ShellResult:
+    """Assembled result for the shell-currency amount."""
+    amount: int   # 0 when OCR failed
+
+
+# ---------------------------------------------------------------------------
 # Tagged union helper
 # ---------------------------------------------------------------------------
 
-CaptureType = EchoCapture | WeaponCapture | ItemCapture | CharCapture
+CaptureType = EchoCapture | WeaponCapture | ItemCapture | CharCapture | AchievementCapture

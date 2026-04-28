@@ -1,17 +1,15 @@
 # Inventory Scanner v2 — Architecture
 
 > **Status:** Implemented. The game manipulation layer, scanning workflows
-> (echoes + weapons), OcrService, assemblers, CLI tools, and the Qt UI
-> layer are all live under `src/wuwa_inventory_kamera/`.
+> (echoes, weapons, characters, achievements, shell), OcrService, assemblers, CLI
+> tools, and the Qt UI layer are all live under `src/wuwa_inventory_kamera/`.
 > Sonata detection uses icon template matching (no OCR / no scrolling).
 > The legacy module migration (Phases 1–4) is largely complete: all superseded
 > `game/`, `scraping/ocr/`, and V1 scraper modules have been deleted; shared
 > processing and utility modules are now canonical under `src/` with thin
-> re-export shims kept for backward compatibility. Character, achievement, and
-> shell scrapers were removed without a V2 port (not yet implemented).
-> The Qt UI layer, Qt config (`ui.config`), `config/app_config`, and
-> `updater/assets` have been ported to `src/`; legacy top-level modules
-> are now thin re-export shims.
+> re-export shims kept for backward compatibility. The Qt UI layer, Qt config
+> (`ui.config`), `config/app_config`, and `updater/assets` have been ported to
+> `src/`; legacy top-level modules are now thin re-export shims.
 
 ---
 
@@ -147,6 +145,9 @@ scraping/scanning/
   grid_navigator.py        — Forward scan + random-access cell navigation (CellVisitor protocol)
   echo_workflow.py         — Full echo scan with lookahead + rescan support
   weapon_workflow.py       — Weapon/item scan (synchronous per cell, hash dedup)
+  character_workflow.py    — Resonator panel scan (sidebar list, 5 sections per character)
+  achievement_workflow.py  — Achievements panel scan (search-per-achievement)
+  shell_workflow.py        — Shell currency HUD counter (single-shot OCR)
   session_orchestrator.py  — Top-level runner for multi-scraper sessions
 ```
 
@@ -233,6 +234,79 @@ wf = WeaponWorkflow(
 results = wf.run(on_progress=callback)  # → list[dict]
 ```
 
+### Character workflow
+
+`CharacterWorkflow` scans the resonator panel sidebar. The character list
+is not a grid — it is a sidebar with 7 slots visible at a time, scrolled via
+`scroll_character_list()`.
+
+```python
+wf = CharacterWorkflow(
+    nav=nav, ocr_service=svc, session=session,
+    resonator_key='c', stop_event=stop.event,
+)
+results = wf.run(on_progress=callback)  # → {char_id: char_dict}
+```
+
+For each resonator the workflow submits four `CharCapture` sections:
+
+| Section | Crops submitted | OCR reads |
+|---|---|---|
+| 0 — overview | `name`, `level` | Resonator name (fuzzy match) + level |
+| 1 — weapon | `weaponName`, `weaponLevel`, `weaponRank` | Weapon name (fuzzy) + level/ascension + rank |
+| 2 — echoes | *(skipped)* | Handled by the echo scraper |
+| 3 — skills | `skill_0` … `skill_4` | One level-digit per skill node |
+| 4 — chain | `chain_0` … `chain_5` | Activate/inactive text per chain node |
+
+After section 0 the `already_seen` flag from `CharAssembler` is checked.
+When `True` the sidebar has wrapped around and all characters have been seen.
+
+Output format (per character ID key):
+```python
+{
+    'level': int, 'ascension': int,
+    'weapon': {'id': str, 'level': int, 'ascension': int, 'rank': int},
+    'echoes': {},
+    'skills': {'normal': int, 'resonance': int, 'forte': int,
+               'liberation': int, 'intro': int, ...},
+    'chain': int,   # count of activated nodes
+}
+```
+
+### Achievement workflow
+
+`AchievementWorkflow` iterates every entry in `achievementsID`, types the
+name into the achievements search box, and OCR-reads the status button crop.
+
+```python
+wf = AchievementWorkflow(
+    nav=nav, ocr_service=svc, session=session, stop_event=stop.event,
+)
+completed_ids = wf.run(on_progress=callback)  # → list[str]
+```
+
+Completion is flagged when the status text:
+- matches the localised "claim" text (`PrefabTextItem_128820487_Text`), or
+- contains `'/'` (numeric progress, e.g. `"3/3"`).
+
+`ctrl.paste(achievement_name)` uses the controller's clipboard + Ctrl+V path
+to handle non-ASCII names safely across keyboard layouts.
+
+### Shell workflow
+
+`ShellWorkflow` reads the shell-currency HUD counter — a number permanently
+displayed in the top bar of the main screen.
+
+```python
+wf = ShellWorkflow(nav=nav, ocr_service=svc, session=session)
+result = wf.run()   # → {'2': <amount>}
+```
+
+No navigation is needed beyond pressing Esc to close any open panel. A single
+`ShellCapture` is submitted to OcrService and the resulting `ShellResult.amount`
+is returned as `{'2': amount}` (the key `'2'` matches the V1 shell item-data
+convention).
+
 ### Session orchestrator
 
 `SessionOrchestrator` replaces the V1 `scraperManager.scrapers()`:
@@ -256,15 +330,14 @@ Run sequence:
 1. Find game window, activate, build `InputController` + `GameNavigator`
 2. Start `StopSignal` (Enter-key watcher)
 3. Open `OcrService` as context manager
-4. For each scraper: Esc → dispatch to `_run_echoes` or `_run_weapons`
+4. For each scraper: Esc → dispatch to the appropriate workflow
 5. Check `StopSignal` between scrapers; set `cancelled: True` if pressed
 6. Return structured result dict
 
 **Implemented scrapers:** `echoes`, `weapons`, `devItems`, `resources` (the
-latter two reuse `WeaponWorkflow` with different `InventoryTab` values).
-
-**Not yet implemented:** characters, achievements, shell (logged as warning,
-return `{'error': '... not yet implemented'}`).
+latter two reuse `WeaponWorkflow` with different `InventoryTab` values),
+`characters` (`CharacterWorkflow`), `achievements` (`AchievementWorkflow`),
+`shell` (`ShellWorkflow`).
 
 ---
 
@@ -291,7 +364,7 @@ wuwa-scan --scrapers echoes weapons devItems resources \
           --min-rarity 4 --min-level 10 --provider dml
 ```
 
-Arguments: `--scrapers` (echoes, weapons, devItems, resources),
+Arguments: `--scrapers` (echoes, weapons, devItems, resources, characters, achievements, shell),
 `--provider` (cpu | dml), `--min-rarity` 1–5, `--min-level` 0–25,
 `--sort-order`, `--save-raw`, `--output-dir`, `--inventory-key`,
 `--log-level`.
@@ -350,9 +423,9 @@ invoked via `python -m`):
 | **Weapons** | grid (24/page, N pages) | name, level `x/y`, rank digit | **Implemented** — `WeaponWorkflow` |
 | **Dev Items** | grid (24/page, N pages) | name, quantity | **Implemented** — `WeaponWorkflow` (tab=DEV_ITEMS) |
 | **Resources** | grid (24/page, N pages) | name, quantity | **Implemented** — `WeaponWorkflow` (tab=RESOURCES) |
-| **Characters** | list of 7 per screen | name, level, weapon, skills, chain | Not yet ported (V1 only) |
-| **Achievements** | search-per-item | status button text | Not yet ported (V1 only) |
-| **Shell** | single crop | currency amount | Not yet ported (V1 only) |
+| **Characters** | list of 7 per screen | name, level, weapon, skills, chain | **Implemented** — `CharacterWorkflow` |
+| **Achievements** | search-per-item | status button text | **Implemented** — `AchievementWorkflow` |
+| **Shell** | single crop | currency amount | **Implemented** — `ShellWorkflow` |
 
 ---
 
@@ -456,7 +529,8 @@ src/wuwa_inventory_kamera/
     service/
       __init__.py
       captures.py           (EchoCapture/Result, WeaponCapture/Result, ItemCapture/Result,
-                             CharCapture/Result, CaptureType union, _Stop sentinel)
+                             CharCapture/Result, AchievementCapture/Result,
+                             ShellCapture/Result, CaptureType union, _Stop sentinel)
       ocr_service.py        (OcrService — queue + single DML thread + context manager)
       assemblers/
         __init__.py
@@ -464,12 +538,17 @@ src/wuwa_inventory_kamera/
         weapon_assembler.py (WeaponAssembler — name lookup, level/rank parse)
         item_assembler.py   (ItemAssembler — name + count parse)
         character_assembler.py (CharAssembler — multi-section accumulator)
+        achievement_assembler.py (AchievementAssembler — status text / progress check)
+        shell_assembler.py  (ShellAssembler — digit extraction from HUD crop)
     scanning/
       __init__.py
       scan_state.py         (ScanSession, ScanItem, ScanItemStatus, GridPosition)
       grid_navigator.py     (GridNavigator, CellVisitor protocol)
       echo_workflow.py      (EchoWorkflow — lookahead + rescan, no sonata scrolling)
       weapon_workflow.py    (WeaponWorkflow — sync per cell, hash dedup)
+      character_workflow.py (CharacterWorkflow — sidebar list, 4 sections per resonator)
+      achievement_workflow.py (AchievementWorkflow — search-per-achievement, clipboard paste)
+      shell_workflow.py     (ShellWorkflow — single-shot HUD counter read)
       session_orchestrator.py (SessionOrchestrator — top-level multi-scraper runner)
     processing/
       __init__.py
@@ -483,19 +562,6 @@ src/wuwa_inventory_kamera/
   updater/
     __init__.py
     database.py             (BaseDataUpdater — data JSON update logic)
-    assets.py               (BaseAssetsUpdater — icon download, no Qt)
-  ui/
-    __init__.py
-    config.py               (Qt QConfig layer: Config, cfg singleton, validators, constants)
-    main_window.py          (WuWaInventoryKamera — MSFluentWindow main window)
-    home.py                 (HomeInterface, LControlPanel, TControlPanel, ScanThread)
-    inventory.py            (InventoryInterface, ItemCard — JSON inventory viewer)
-    settings.py             (SettingInterface — theme, export, keybinds, about)
-    loading.py              (LoadingScreen, DataUpdaterThread, AssetsUpdaterThread)
-    custom_widgets/
-      __init__.py
-      widget.py             (FieldSettingCard, MultiplePushSettingCard, CustomSpinBox, etc.)
-  app.py                    (Application bootstrap: configure_logging, start, main)
 ```
 
 ### Remaining legacy top-level modules
@@ -526,21 +592,20 @@ game/                       [DELETED — superseded by src/.../game/]
 
 properties/
   app_config.py             (shim → src/.../config/app_config.py)
-  config.py                 (shim → src/.../ui/config.py)
+  config.py                 (QConfig-based UI config, Qt-dependent — not yet ported)
 
-ui/                         (re-export shims — canonical code is in src/.../ui/)
-  homeUI.py                 (shim → src/.../ui/home.py)
-  inventoryUI.py            (shim → src/.../ui/inventory.py)
-  loadingUI.py              (shim → src/.../ui/loading.py)
-  mainUI.py                 (shim → src/.../ui/main_window.py)
-  settingsUI.py             (shim → src/.../ui/settings.py)
+ui/                         (Qt / PySide6-Fluent UI — ported to V2 under src/)
+  homeUI.py
+  inventoryUI.py
+  loadingUI.py
+  mainUI.py
+  settingsUI.py
   custom_widgets/
-    __init__.py             (shim → src/.../ui/custom_widgets/)
-    widget.py               (legacy — superseded by src/.../ui/custom_widgets/widget.py)
+    widget.py
 
 updater/
-  assetsUpdater.py          (shim → src/.../updater/assets.py; AssetsUpdater Qt subclass stays)
-  databaseUpdater.py        (shim → src/.../updater/database.py; DataUpdater Qt subclass stays)
+  assetsUpdater.py          (asset download logic — not yet migrated to src/)
+  databaseUpdater.py        (shim → src/.../updater/database.py)
 
 cli/                        (legacy CLI scripts — NOT under src/)
   debug_ocr.py              (updated to use src/ imports; candidate for nav-script or removal)
@@ -562,8 +627,8 @@ tools/                      (development / one-off tools — keep)
   cli/dimbreath_wuthering_data/  (vendored game data, large)
   [DELETED] match_sonata_icon/  (integrated into src/.../scraping/matching/)
 
-app.py                      (shim → src/.../app.py — delegates to wuwa_inventory_kamera.app.start)
-main.py                     (shim → src/.../app.py — delegates to wuwa_inventory_kamera.app.main)
+app.py                      (Qt application bootstrap — not yet ported)
+main.py                     (entry point with log setup — not yet ported)
 [DELETED] batch_ocr.py      (superseded by src/.../scraping/ocr/batch.py)
 [DELETED] setup.py          (superseded by pyproject.toml)
 conftest.py                 (root — adds project root to sys.path; keep until no legacy imports remain)
@@ -629,7 +694,19 @@ class CharResult:
     section:    int
     fields:     dict                    # parsed values for this section
 
-CaptureType = EchoCapture | WeaponCapture | ItemCapture | CharCapture
+@dataclass
+class AchievementCapture:
+    achievement_name: str               # name pasted into search box
+    achievement_id:   int               # from achievementsID
+    status:           np.ndarray        # status button crop (RGB)
+
+@dataclass
+class AchievementResult:
+    achievement_name: str
+    achievement_id:   int
+    completed:        bool
+
+CaptureType = EchoCapture | WeaponCapture | ItemCapture | CharCapture | AchievementCapture
 ```
 
 Each capture also carries a `_uid: int` field (set by `OcrService.submit()`,
@@ -652,10 +729,11 @@ class OcrService:
     ):
         self._backend   = RapidOcrBackend(onnx_providers=providers, **backend_kwargs)
         self._batch_ocr = BatchOcr(self._backend)
-        self._echo_asm  = EchoAssembler(min_rarity=min_rarity, min_level=min_level)
-        self._weapon_asm = WeaponAssembler(min_rarity=min_rarity, min_level=min_level)
-        self._item_asm  = ItemAssembler()
-        self._char_asm  = CharAssembler()
+        self._echo_asm        = EchoAssembler(min_rarity=min_rarity, min_level=min_level)
+        self._weapon_asm      = WeaponAssembler(min_rarity=min_rarity, min_level=min_level)
+        self._item_asm        = ItemAssembler()
+        self._char_asm        = CharAssembler()
+        self._achievement_asm = AchievementAssembler()
         # Single daemon thread drains queue
         self._thread = threading.Thread(target=self._run, daemon=True, name='OcrService')
         self._thread.start()
@@ -722,10 +800,17 @@ On error, the future receives the exception via `set_exception()`.
 | `WeaponAssembler` | name, level string, rank digit | Low — two integer parses + lookup | No |
 | `ItemAssembler` | info block (2–3 lines) | Low — line split, regex digit strip | No |
 | `CharAssembler` | name, level, weapon fields, skill levels, chain buttons | Medium — multi-section, each simple read | No |
+| `AchievementAssembler` | status button text | Low — claim-text match or `/` check | No |
 
----
+### `AchievementAssembler`
 
-## OCR backend
+- Stateless — one `assemble(capture, status_tokens)` call per achievement
+- Checks OCR text of the `status` crop against the localised
+  `PrefabTextItem_128820487_Text` key ("claim") from `definedText`
+- Also flags completion when status contains `'/'` (numeric progress)
+- Returns `AchievementResult(achievement_name, achievement_id, completed: bool)`
+
+
 
 ```
 scraping/ocr/
@@ -759,8 +844,9 @@ scraping/ocr/
 - `scraping/processing/echoesProcessor.py` / `statsExtractor.py` — canonical
   copies moved to `src/.../scraping/processing/`; legacy paths are re-export shims.
 - `wuwa-reprocess` still supports the legacy `echoesProcessor` path via `--extractor`.
-- Legacy scrapers (characters, achievements, shell) were **removed** without a V2
-  port. `SessionOrchestrator` logs a warning if these are requested.
+- Character and achievement scrapers have V2 ports (`CharacterWorkflow`,
+  `AchievementWorkflow`). Shell scraper was **deleted** without a V2 port.
+  `SessionOrchestrator` logs a warning if shell is requested.
 - Disk saving is opt-in debug mode (`--save-raw`) rather than the default.
 
 ---
@@ -777,9 +863,9 @@ forward pass is low enough that calling `.result()` immediately (blocking the
 scanner thread) is acceptable. If inventory scanning speed becomes a
 bottleneck, the same lookahead pattern used for echoes can be applied.
 
-**Characters:** Not yet ported to V2. The character scraper is
-navigation-bound (~0.8s per section due to UI transitions). When ported,
-submitting and immediately resolving per section is fine.
+**Characters:** Implemented as `CharacterWorkflow`. Navigation-bound (~0.8s per
+section due to UI transitions). Each section is submitted and resolved
+immediately — no lookahead needed.
 
 **Retry:** Echo thorough retry runs single-image on the DML thread (not
 re-batched), which is acceptable since it's uncommon.
@@ -877,10 +963,10 @@ Every module still outside `src/wuwa_inventory_kamera/` needs to be moved in,
 replaced by a V2 equivalent, or explicitly deleted.  The table below groups
 modules by disposition and priority.
 
-> **Migration status (2026-04-28):** Phases 1–3 are complete. The Qt UI layer,
-> Qt config, `config/app_config`, and `updater/assets` have all been ported
-> to `src/`. Phase 4 items (top-level `cli/` scripts, root `conftest.py`)
-> remain as candidates for future cleanup.
+> **Migration status (2026-04-28):** Phases 1–3 are complete. Phase 4 items
+> (top-level `cli/` scripts, root `conftest.py`) remain as candidates for
+> future cleanup. The Qt UI layer and `updater/assetsUpdater.py` are the only
+> substantial pieces not yet ported to `src/`.
 
 ### Phase 1 — Delete (no remaining callers or superseded) ✓ Done
 
@@ -920,18 +1006,19 @@ shims that forward all public names to their canonical `src/` counterparts.
 
 ### Phase 3 — Port or Remove (V1 scrapers + UI) ✓ Done
 
-V1 scrapers have been removed. Character, achievement, and shell scrapers
-were deleted without a V2 port (to be implemented when needed). The Qt UI
-layer has been ported to `src/wuwa_inventory_kamera/ui/` with the scan path
-rewritten to use `SessionOrchestrator` on a `QThread`.
+V1 scrapers have been removed. Character and achievement scrapers have V2
+ports (`CharacterWorkflow`, `AchievementWorkflow`); shell scraper was deleted
+without a V2 port. The Qt UI layer has been ported to
+`src/wuwa_inventory_kamera/ui/` with the scan path rewritten to use
+`SessionOrchestrator` on a `QThread`.
 
 | Module | Plan | Status |
 |---|---|---|
 | `scraping/echoesScraper.py` | Remove — superseded by `EchoWorkflow` | **Deleted** |
 | `scraping/weaponsScraper.py` | Remove — superseded by `WeaponWorkflow` | **Deleted** |
 | `scraping/itemsScraper.py` | Remove — superseded by `WeaponWorkflow` (tab=RESOURCES) | **Deleted** |
-| `scraping/charactersScraper.py` | Port to `src/.../scraping/scanning/character_workflow.py` | **Deleted** — V2 port not yet implemented |
-| `scraping/achievementsScraper.py` | Port to `src/.../scraping/scanning/achievement_workflow.py` | **Deleted** — V2 port not yet implemented |
+| `scraping/charactersScraper.py` | Port to `src/.../scraping/scanning/character_workflow.py` | **Done** — `CharacterWorkflow` implemented |
+| `scraping/achievementsScraper.py` | Port to `src/.../scraping/scanning/achievement_workflow.py` | **Done** — `AchievementWorkflow` implemented |
 | `scraping/shellScraper.py` | Port to `src/.../scraping/scanning/shell_workflow.py` | **Deleted** — V2 port not yet implemented |
 | `scraping/scraperManager.py` | Remove — replaced by `SessionOrchestrator` | **Deleted** |
 | `scraping/scraperExectuter.py` | Remove — replaced by `wuwa-scan` CLI | **Deleted** |
@@ -962,6 +1049,6 @@ Phase 1 (delete dead code)               ✓ Complete
 Phase 1 removed dead legacy modules. Phase 2 moved all shared modules
 into `src/` with backward-compat shims. Phase 3 ported the Qt UI layer and
 entry points to `src/`, rewired the scan button to use `SessionOrchestrator`
-on a `QThread`, and extracted base classes for the updaters.  Phase 4 is a
-final sweep once the remaining legacy `cli/` scripts and root `conftest.py`
-are no longer needed.
+on a `QThread`, extracted base classes for the updaters, and added
+`CharacterWorkflow` and `AchievementWorkflow`. Phase 4 is a final sweep once
+all functional code lives under `src/`.

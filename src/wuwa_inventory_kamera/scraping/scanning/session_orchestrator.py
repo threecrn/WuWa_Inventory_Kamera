@@ -187,6 +187,12 @@ class SessionOrchestrator:
         elif name in ('devItems', 'resources'):
             tab = InventoryTab.DEV_ITEMS if name == 'devItems' else InventoryTab.RESOURCES
             return self._run_weapons(nav, ocr_service, session_id, tab, stop_event)
+        elif name == 'characters':
+            return self._run_characters(nav, ocr_service, session_id, stop_event)
+        elif name == 'achievements':
+            return self._run_achievements(nav, ocr_service, session_id, stop_event)
+        elif name == 'shell':
+            return self._run_shell(nav, ocr_service, session_id)
         else:
             logger.warning('Scraper %r not yet implemented in v2', name)
             return {'error': f'{name} not yet implemented'}
@@ -248,3 +254,76 @@ class SessionOrchestrator:
             self.on_progress(tab.value, scanned, total)
 
         return wf.run(on_progress=_on_progress)
+
+    def _run_characters(
+        self,
+        nav: GameNavigator,
+        ocr_service: OcrService,
+        session_id: str,
+        stop_event: threading.Event,
+    ) -> dict:
+        from .character_workflow import CharacterWorkflow
+
+        session = ScanSession(
+            total_items=0,
+            sort_order=self.sort_order or SortOrder.TIME_ADDED,
+            session_id=session_id,
+        )
+
+        wf = CharacterWorkflow(
+            nav=nav,
+            ocr_service=ocr_service,
+            session=session,
+            stop_event=stop_event,
+        )
+
+        def _on_progress(scanned: int, total: int) -> None:
+            self.on_progress('characters', scanned, total)
+
+        return wf.run(on_progress=_on_progress)
+
+    def _run_achievements(
+        self,
+        nav: GameNavigator,
+        ocr_service: OcrService,
+        session_id: str,
+        stop_event: threading.Event,
+    ) -> list[str]:
+        from .achievement_workflow import AchievementWorkflow
+
+        session = ScanSession(
+            total_items=0,
+            sort_order=self.sort_order or SortOrder.TIME_ADDED,
+            session_id=session_id,
+        )
+
+        wf = AchievementWorkflow(
+            nav=nav,
+            ocr_service=ocr_service,
+            session=session,
+            stop_event=stop_event,
+        )
+
+        def _on_progress(scanned: int, total: int) -> None:
+            self.on_progress('achievements', scanned, total)
+
+        return wf.run(on_progress=_on_progress)
+
+    def _run_shell(
+        self,
+        nav: GameNavigator,
+        ocr_service: OcrService,
+        session_id: str,
+    ) -> dict[str, int]:
+        from .shell_workflow import ShellWorkflow
+
+        session = ScanSession(
+            total_items=1,
+            sort_order=self.sort_order or SortOrder.TIME_ADDED,
+            session_id=session_id,
+        )
+
+        wf = ShellWorkflow(nav=nav, ocr_service=ocr_service, session=session)
+        result = wf.run()
+        self.on_progress('shell', 1, 1)
+        return result

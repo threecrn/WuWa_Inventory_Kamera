@@ -14,6 +14,10 @@ echo_workflow
     :class:`EchoWorkflow` — echo scanning with rescan support.
 weapon_workflow
     :class:`WeaponWorkflow` — weapon/item scanning.
+character_workflow
+    :class:`CharacterWorkflow` — resonator panel scanning.
+achievement_workflow
+    :class:`AchievementWorkflow` — achievements panel scanning.
 session_orchestrator
     :class:`SessionOrchestrator` — top-level multi-scraper runner.
 """
