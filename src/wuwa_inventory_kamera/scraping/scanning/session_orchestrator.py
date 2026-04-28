@@ -191,6 +191,8 @@ class SessionOrchestrator:
             return self._run_characters(nav, ocr_service, session_id, stop_event)
         elif name == 'achievements':
             return self._run_achievements(nav, ocr_service, session_id, stop_event)
+        elif name == 'shell':
+            return self._run_shell(nav, ocr_service, session_id)
         else:
             logger.warning('Scraper %r not yet implemented in v2', name)
             return {'error': f'{name} not yet implemented'}
@@ -306,3 +308,22 @@ class SessionOrchestrator:
             self.on_progress('achievements', scanned, total)
 
         return wf.run(on_progress=_on_progress)
+
+    def _run_shell(
+        self,
+        nav: GameNavigator,
+        ocr_service: OcrService,
+        session_id: str,
+    ) -> dict[str, int]:
+        from .shell_workflow import ShellWorkflow
+
+        session = ScanSession(
+            total_items=1,
+            sort_order=self.sort_order or SortOrder.TIME_ADDED,
+            session_id=session_id,
+        )
+
+        wf = ShellWorkflow(nav=nav, ocr_service=ocr_service, session=session)
+        result = wf.run()
+        self.on_progress('shell', 1, 1)
+        return result

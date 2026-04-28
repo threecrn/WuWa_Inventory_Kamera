@@ -1,14 +1,13 @@
 # Inventory Scanner v2 — Architecture
 
 > **Status:** Implemented. The game manipulation layer, scanning workflows
-> (echoes, weapons, characters, achievements), OcrService, assemblers, and CLI
+> (echoes, weapons, characters, achievements, shell), OcrService, assemblers, and CLI
 > tools are all live. Sonata detection uses icon template matching (no OCR / no
 > scrolling). The legacy module migration (Phases 1–4) is largely complete: all
 > superseded `game/`, `scraping/ocr/`, and V1 scraper modules have been deleted;
 > shared processing and utility modules are now canonical under `src/` with thin
-> re-export shims kept for backward compatibility. Shell scraper removed without
-> a V2 port (not yet implemented). The Qt UI layer and `updater/assetsUpdater.py`
-> remain to be ported.
+> re-export shims kept for backward compatibility. The Qt UI layer and
+> `updater/assetsUpdater.py` remain to be ported.
 
 ---
 
@@ -146,6 +145,7 @@ scraping/scanning/
   weapon_workflow.py       — Weapon/item scan (synchronous per cell, hash dedup)
   character_workflow.py    — Resonator panel scan (sidebar list, 5 sections per character)
   achievement_workflow.py  — Achievements panel scan (search-per-achievement)
+  shell_workflow.py        — Shell currency HUD counter (single-shot OCR)
   session_orchestrator.py  — Top-level runner for multi-scraper sessions
 ```
 
@@ -290,6 +290,21 @@ Completion is flagged when the status text:
 `ctrl.paste(achievement_name)` uses the controller's clipboard + Ctrl+V path
 to handle non-ASCII names safely across keyboard layouts.
 
+### Shell workflow
+
+`ShellWorkflow` reads the shell-currency HUD counter — a number permanently
+displayed in the top bar of the main screen.
+
+```python
+wf = ShellWorkflow(nav=nav, ocr_service=svc, session=session)
+result = wf.run()   # → {'2': <amount>}
+```
+
+No navigation is needed beyond pressing Esc to close any open panel. A single
+`ShellCapture` is submitted to OcrService and the resulting `ShellResult.amount`
+is returned as `{'2': amount}` (the key `'2'` matches the V1 shell item-data
+convention).
+
 ### Session orchestrator
 
 `SessionOrchestrator` replaces the V1 `scraperManager.scrapers()`:
@@ -319,10 +334,8 @@ Run sequence:
 
 **Implemented scrapers:** `echoes`, `weapons`, `devItems`, `resources` (the
 latter two reuse `WeaponWorkflow` with different `InventoryTab` values),
-`characters` (`CharacterWorkflow`), `achievements` (`AchievementWorkflow`).
-
-**Not yet implemented:** shell (logged as warning, returns
-`{'error': '... not yet implemented'}`).
+`characters` (`CharacterWorkflow`), `achievements` (`AchievementWorkflow`),
+`shell` (`ShellWorkflow`).
 
 ---
 
@@ -349,7 +362,7 @@ wuwa-scan --scrapers echoes weapons devItems resources \
           --min-rarity 4 --min-level 10 --provider dml
 ```
 
-Arguments: `--scrapers` (echoes, weapons, devItems, resources, characters, achievements),
+Arguments: `--scrapers` (echoes, weapons, devItems, resources, characters, achievements, shell),
 `--provider` (cpu | dml), `--min-rarity` 1–5, `--min-level` 0–25,
 `--sort-order`, `--save-raw`, `--output-dir`, `--inventory-key`,
 `--log-level`.
@@ -410,7 +423,7 @@ invoked via `python -m`):
 | **Resources** | grid (24/page, N pages) | name, quantity | **Implemented** — `WeaponWorkflow` (tab=RESOURCES) |
 | **Characters** | list of 7 per screen | name, level, weapon, skills, chain | **Implemented** — `CharacterWorkflow` |
 | **Achievements** | search-per-item | status button text | **Implemented** — `AchievementWorkflow` |
-| **Shell** | single crop | currency amount | Not yet ported (V1 only) |
+| **Shell** | single crop | currency amount | **Implemented** — `ShellWorkflow` |
 
 ---
 
@@ -515,7 +528,7 @@ src/wuwa_inventory_kamera/
       __init__.py
       captures.py           (EchoCapture/Result, WeaponCapture/Result, ItemCapture/Result,
                              CharCapture/Result, AchievementCapture/Result,
-                             CaptureType union, _Stop sentinel)
+                             ShellCapture/Result, CaptureType union, _Stop sentinel)
       ocr_service.py        (OcrService — queue + single DML thread + context manager)
       assemblers/
         __init__.py
@@ -524,6 +537,7 @@ src/wuwa_inventory_kamera/
         item_assembler.py   (ItemAssembler — name + count parse)
         character_assembler.py (CharAssembler — multi-section accumulator)
         achievement_assembler.py (AchievementAssembler — status text / progress check)
+        shell_assembler.py  (ShellAssembler — digit extraction from HUD crop)
     scanning/
       __init__.py
       scan_state.py         (ScanSession, ScanItem, ScanItemStatus, GridPosition)
@@ -532,6 +546,7 @@ src/wuwa_inventory_kamera/
       weapon_workflow.py    (WeaponWorkflow — sync per cell, hash dedup)
       character_workflow.py (CharacterWorkflow — sidebar list, 4 sections per resonator)
       achievement_workflow.py (AchievementWorkflow — search-per-achievement, clipboard paste)
+      shell_workflow.py     (ShellWorkflow — single-shot HUD counter read)
       session_orchestrator.py (SessionOrchestrator — top-level multi-scraper runner)
     processing/
       __init__.py

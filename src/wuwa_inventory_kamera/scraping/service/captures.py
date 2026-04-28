@@ -159,6 +159,23 @@ class AchievementResult:
 
 
 # ---------------------------------------------------------------------------
+# Shell currency
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ShellCapture:
+    """Image crop of the shell-currency HUD region."""
+    amount: np.ndarray  # shell count text region (RGB)
+    _uid: int = field(default=-1, init=False, repr=False, compare=False)
+
+
+@dataclass
+class ShellResult:
+    """Assembled result for the shell-currency amount."""
+    amount: int   # 0 when OCR failed
+
+
+# ---------------------------------------------------------------------------
 # Tagged union helper
 # ---------------------------------------------------------------------------
 
