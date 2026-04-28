@@ -70,7 +70,7 @@ from typing import Any
 import cv2
 import numpy as np
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _REFS_DIR = _PROJECT_ROOT / "assets" / "IconS"
 _CONFIG_FILE = _PROJECT_ROOT / "config" / "sonata_icon_resolutions.json"
 
