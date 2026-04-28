@@ -26,8 +26,8 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from scraping.processing.echoesValidator import expected_sub_count, infer_cost, validate_echo_stats
-from scraping.processing.statsExtractor import (
+from wuwa_inventory_kamera.scraping.processing.echoesValidator import expected_sub_count, infer_cost, validate_echo_stats
+from wuwa_inventory_kamera.scraping.processing.stats_extractor import (
     RapidOcrCoordStatsExtractor,
     RapidOcrStatsExtractor,
     TesserOcrCoordStatsExtractor,

@@ -3,9 +3,12 @@
 > **Status:** Implemented. The game manipulation layer, scanning workflows
 > (echoes + weapons), OcrService, assemblers, and CLI tools are all live.
 > Sonata detection uses icon template matching (no OCR / no scrolling).
-> Character, achievement, and shell scrapers remain on V1 / not yet ported.
-> A concrete plan to consolidate or remove every legacy top-level module
-> lives at the end of this document.
+> The legacy module migration (Phases 1–4) is largely complete: all superseded
+> `game/`, `scraping/ocr/`, and V1 scraper modules have been deleted; shared
+> processing and utility modules are now canonical under `src/` with thin
+> re-export shims kept for backward compatibility. Character, achievement, and
+> shell scrapers were removed without a V2 port (not yet implemented). The Qt
+> UI layer and `updater/assetsUpdater.py` remain to be ported.
 
 ---
 
@@ -430,12 +433,18 @@ src/wuwa_inventory_kamera/
     nav.py                  (wuwa-nav REPL / script runner)
     reprocess.py            (wuwa-reprocess — offline re-OCR)
     detect_sonata_icon.py   (sonata template build + detect)
+  config/
+    __init__.py
+    app_config.py           (basePATH, PROCESS_NAME, WINDOW_NAME, INVENTORY — plain config singleton)
   scraping/
     __init__.py
     data.py                 (loadData — echoesID, weaponsID, echoStats, sonataName, etc.)
     matching/
       __init__.py
       sonata_icon.py        (SonataIconMatcher — NCC + colour-distance template matching)
+    models/
+      __init__.py
+      raw_scan.py           (RawEchoScan — disk serialisation for debug/reprocess)
     ocr/
       __init__.py           (OCR backend registry, imageToString, tokens_to_lines)
       _types.py             (OcrBackend protocol, OcrResult type)
@@ -463,64 +472,65 @@ src/wuwa_inventory_kamera/
       __init__.py
       echoesValidator.py    (validate_echo_stats, expected_sub_count — shared by V1 + V2)
       echo_stats_valid_values.yaml
+      echoes_processor.py   (EchoesProcessor — offline Phase-2 processing; used by wuwa-reprocess --extractor)
+      stats_extractor.py    (legacy stat extractors: rapid, rapid_coord, tesser, tesser_coord)
+    utils/
+      __init__.py
+      common.py             (isUserAdmin, itemsID, savingScraped)
+  updater/
+    __init__.py
+    database.py             (BaseDataUpdater — data JSON update logic)
 ```
 
-### Legacy top-level modules (not yet migrated)
+### Remaining legacy top-level modules
+
+Most legacy modules have been deleted or replaced with thin re-export shims.
+What follows is the post-migration state.
 
 ```
-scraping/                   (legacy V1 — kept for backward compat / reprocess path)
-  scanning/
-    echoesScanner.py        (Phase 1 raw capture)
-    echo.py
+scraping/                   (re-export shims — canonical code is in src/)
   processing/
-    echoesProcessor.py      (Phase 2 offline processing)
-    echoesValidator.py      (stat validation — also used by V2 assembler)
-    statsExtractor.py       (legacy extractors — used by reprocess --extractor path)
+    echoesProcessor.py      (shim → src/.../scraping/processing/echoes_processor.py)
+    echoesValidator.py      (shim → src/.../scraping/processing/echoesValidator.py)
+    statsExtractor.py       (shim → src/.../scraping/processing/stats_extractor.py)
+    echo_stats_valid_values.yaml
   models/
-    rawScan.py              (RawEchoScan — disk serialisation)
-  ocr/
-    __init__.py             (legacy OCR wrappers)
-    _rapidocr.py
-    _tesserocr.py
-    _types.py
+    rawScan.py              (shim → src/.../scraping/models/raw_scan.py)
   utils/
-    common.py               (isUserAdmin, itemsID, savingScraped)
-    mouse_keyboard.py
-  data.py                   (shared data loading — loadData, echoesID, weaponsID, etc.)
-  achievementsScraper.py, charactersScraper.py, echoesScraper.py,
-  itemsScraper.py, weaponsScraper.py, shellScraper.py
-  scraperExectuter.py, scraperManager.py
+    common.py               (shim → src/.../scraping/utils/common.py)
+  data.py                   (shim → src/.../scraping/data.py)
+  [DELETED] scanning/echoesScanner.py, echo.py
+  [DELETED] ocr/ (all 4 files)
+  [DELETED] achievementsScraper.py, charactersScraper.py, echoesScraper.py,
+            itemsScraper.py, weaponsScraper.py, shellScraper.py
+  [DELETED] scraperExectuter.py, scraperManager.py
 
-game/                       (legacy game layer)
-  foreground.py             (WindowManager — find/activate game window)
-  gameROI.py                (legacy coordinate definitions by resolution)
-  menu.py                   (menu detection helpers)
-  screenInfo.py             (resolution-aware ROI accessor)
-  stopKey.py                (legacy stop-key handler)
+game/                       [DELETED — superseded by src/.../game/]
+  [DELETED] foreground.py, gameROI.py, menu.py, screenInfo.py, stopKey.py
 
-properties/                 (configuration)
-  app_config.py             (plain Python config singleton)
-  config.py                 (QConfig-based UI config, Qt-dependent)
+properties/
+  app_config.py             (shim → src/.../config/app_config.py)
+  config.py                 (QConfig-based UI config, Qt-dependent — not yet ported)
 
-ui/                         (Qt / PySide6-Fluent UI)
-  homeUI.py                 (scan launch, reprocess, export)
-  inventoryUI.py            (inventory display)
-  loadingUI.py              (splash screen)
-  mainUI.py                 (main window shell)
-  settingsUI.py             (settings panel)
+ui/                         (Qt / PySide6-Fluent UI — not yet ported to V2)
+  homeUI.py
+  inventoryUI.py
+  loadingUI.py
+  mainUI.py
+  settingsUI.py
   custom_widgets/
     widget.py
 
 updater/
-  assetsUpdater.py          (download updated assets)
-  databaseUpdater.py        (data JSON updates)
+  assetsUpdater.py          (asset download logic — not yet migrated to src/)
+  databaseUpdater.py        (shim → src/.../updater/database.py)
 
 cli/                        (legacy CLI scripts — NOT under src/)
-  debug_ocr.py
-  reprocess.py              (legacy reprocess entry point)
-  update_data.py
+  debug_ocr.py              (updated to use src/ imports; candidate for nav-script or removal)
+  update_data.py            (updated to use src/ imports; candidate for src/ or removal)
+  [DELETED] reprocess.py   (superseded by wuwa-reprocess)
 
-nav-scripts/                (wuwa-nav session scripts)
+nav-scripts/                (wuwa-nav session scripts — keep as-is)
   build-sonata-templates.py
   build-sonata-templates-from-filter.py
   scan-echoes.py
@@ -528,18 +538,18 @@ nav-scripts/                (wuwa-nav session scripts)
   session.py
   set-sort.py
 
-tools/                      (development / one-off tools)
+tools/                      (development / one-off tools — keep)
   check_printwindow/
-  match_sonata_icon/        (prototype sonata matcher — now integrated into src/)
   scrape_sonata_icons/
   update_sonata_templates/
   cli/dimbreath_wuthering_data/  (vendored game data, large)
+  [DELETED] match_sonata_icon/  (integrated into src/.../scraping/matching/)
 
-app.py                      (Qt application bootstrap)
-main.py                     (entry point with log setup)
-batch_ocr.py                (standalone batch OCR runner)
-setup.py                    (legacy setuptools config)
-conftest.py                 (root — adds project root to sys.path)
+app.py                      (Qt application bootstrap — not yet ported)
+main.py                     (entry point with log setup — not yet ported)
+[DELETED] batch_ocr.py      (superseded by src/.../scraping/ocr/batch.py)
+[DELETED] setup.py          (superseded by pyproject.toml)
+conftest.py                 (root — adds project root to sys.path; keep until no legacy imports remain)
 ```
 
 ---
@@ -723,15 +733,18 @@ scraping/ocr/
 
 ## What is reused from V1
 
-- `echoesValidator.py` — `validate_echo_stats`, `expected_sub_count` (copied
-  into `src/.../scraping/processing/` and still in legacy `scraping/processing/`)
+- `echoesValidator.py` — `validate_echo_stats`, `expected_sub_count` — canonical
+  copy is now `src/.../scraping/processing/echoesValidator.py`; legacy path is a
+  re-export shim.
 - `scraping/data.py` — `loadData`, `echoesID`, `weaponsID`, `echoStats`,
-  `sonataName` (duplicated into `src/.../scraping/data.py`)
-- `databaseUpdater.py`, `scraperManager.py` — untouched, still legacy
-- `wuwa-reprocess` (under `src/`) still supports the legacy `echoesProcessor`
-  path via `--extractor`
-- Legacy scrapers (characters, achievements, shell) remain in top-level `scraping/`
-- Disk saving is opt-in debug mode (`--save-raw`) rather than the default
+  `sonataName` — canonical copy is `src/.../scraping/data.py`; legacy path is a
+  re-export shim.
+- `scraping/processing/echoesProcessor.py` / `statsExtractor.py` — canonical
+  copies moved to `src/.../scraping/processing/`; legacy paths are re-export shims.
+- `wuwa-reprocess` still supports the legacy `echoesProcessor` path via `--extractor`.
+- Legacy scrapers (characters, achievements, shell) were **removed** without a V2
+  port. `SessionOrchestrator` logs a warning if these are requested.
+- Disk saving is opt-in debug mode (`--save-raw`) rather than the default.
 
 ---
 
@@ -790,6 +803,8 @@ key = matcher.match_to_sonata_key(icon_bgr, sonata_names, cx=cx, cy=cy, r=r)
 
 Accuracy on a 964-echo reference session: 963/964 (99.9%).
 
+The one failure was actually a mislabelled ground truth. The labelling had been done via scroll + OCR text match, but the sonata area had still shown the previous echo. The matcher identified the correct sonata by the icon, but the ground truth was wrong due to the scroll step's fragility.
+
 ### ROI coordinates
 
 `game_roi.py` defines `sonataIcon` (the small icon crop) and
@@ -845,79 +860,85 @@ Every module still outside `src/wuwa_inventory_kamera/` needs to be moved in,
 replaced by a V2 equivalent, or explicitly deleted.  The table below groups
 modules by disposition and priority.
 
-### Phase 1 — Delete (no remaining callers or superseded)
+> **Migration status (2026-04-28):** Phases 1–3 are complete. Phase 4 items
+> (top-level `cli/` scripts, root `conftest.py`) remain as candidates for
+> future cleanup. The Qt UI layer and `updater/assetsUpdater.py` are the only
+> substantial pieces not yet ported to `src/`.
 
-These modules have V2 replacements inside `src/` and are not imported by any
-V2 code path.  They can be deleted outright once the UI is ported or dropped.
+### Phase 1 — Delete (no remaining callers or superseded) ✓ Done
 
-| Module | Superseded by | Notes |
+All Phase 1 modules have been deleted.
+
+| Module | Superseded by | Status |
 |---|---|---|
-| `game/foreground.py` | `src/.../game/screen.py` (`GameWindow`) | Legacy `WindowManager` |
-| `game/gameROI.py` | `src/.../game/game_roi.py` | ROI definitions migrated |
-| `game/screenInfo.py` | `src/.../game/screen_info.py` | Resolution accessor migrated |
-| `game/menu.py` | `src/.../game/navigation.py` | Menu detection is in `GameNavigator` |
-| `game/stopKey.py` | `src/.../game/stop_signal.py` | Stop-key handler migrated |
-| `scraping/scanning/echoesScanner.py` | `src/.../scraping/scanning/echo_workflow.py` | Phase 1 capture |
-| `scraping/scanning/echo.py` | `src/.../scraping/scanning/echo_workflow.py` | Echo capture helpers |
-| `scraping/models/rawScan.py` | In-memory `EchoCapture` | Disk-based scan model |
-| `scraping/utils/mouse_keyboard.py` | `src/.../game/input_controller.py` | Input abstraction migrated |
-| `scraping/ocr/` (all 4 files) | `src/.../scraping/ocr/` | OCR backend migrated |
-| `batch_ocr.py` | `src/.../scraping/ocr/batch.py` | Standalone batch runner |
-| `setup.py` | `pyproject.toml` (hatchling) | Legacy setuptools |
-| `tools/match_sonata_icon/` | `src/.../scraping/matching/sonata_icon.py` | Prototype integrated |
+| `game/foreground.py` | `src/.../game/screen.py` (`GameWindow`) | **Deleted** |
+| `game/gameROI.py` | `src/.../game/game_roi.py` | **Deleted** |
+| `game/screenInfo.py` | `src/.../game/screen_info.py` | **Deleted** |
+| `game/menu.py` | `src/.../game/navigation.py` | **Deleted** |
+| `game/stopKey.py` | `src/.../game/stop_signal.py` | **Deleted** |
+| `scraping/scanning/echoesScanner.py` | `src/.../scraping/scanning/echo_workflow.py` | **Deleted** |
+| `scraping/scanning/echo.py` | `src/.../scraping/scanning/echo_workflow.py` | **Deleted** |
+| `scraping/models/rawScan.py` | In-memory `EchoCapture` | **Moved** — re-export shim kept; canonical at `src/.../scraping/models/raw_scan.py` |
+| `scraping/utils/mouse_keyboard.py` | `src/.../game/input_controller.py` | **Deleted** |
+| `scraping/ocr/` (all 4 files) | `src/.../scraping/ocr/` | **Deleted** |
+| `batch_ocr.py` | `src/.../scraping/ocr/batch.py` | **Deleted** |
+| `setup.py` | `pyproject.toml` (hatchling) | **Deleted** |
+| `tools/match_sonata_icon/` | `src/.../scraping/matching/sonata_icon.py` | **Deleted** |
 
-### Phase 2 — Move into `src/` (still needed, no V2 equivalent yet)
+### Phase 2 — Move into `src/` (still needed, no V2 equivalent yet) ✓ Done
 
-These modules provide functionality that V2 needs but doesn't yet have.
-Move them under `src/wuwa_inventory_kamera/` with updated imports.
+All Phase 2 modules have been migrated. Legacy copies are now thin re-export
+shims that forward all public names to their canonical `src/` counterparts.
 
-| Module | Target location | Action |
+| Module | Target location | Status |
 |---|---|---|
-| `scraping/data.py` | Already duplicated in `src/.../scraping/data.py` | Delete legacy copy; update legacy callers to import from `src/` or inline |
-| `scraping/processing/echoesValidator.py` | Already duplicated in `src/.../scraping/processing/` | Delete legacy copy; point legacy imports at `src/` |
-| `scraping/processing/statsExtractor.py` | `src/.../scraping/processing/stats_extractor.py` | Move; used by `wuwa-reprocess --extractor` and session tests |
-| `scraping/processing/echoesProcessor.py` | `src/.../scraping/processing/echoes_processor.py` | Move; used by `wuwa-reprocess --extractor` path + UI reprocess |
-| `scraping/utils/common.py` | `src/.../scraping/utils/` or inline | `isUserAdmin` → `src/.../utils/`, `itemsID` / `savingScraped` → `src/.../scraping/export.py` |
-| `properties/app_config.py` | `src/.../config/app_config.py` | Plain config singleton, no Qt dependency |
-| `updater/databaseUpdater.py` | `src/.../updater/database.py` | Data JSON update logic |
-| `updater/assetsUpdater.py` | `src/.../updater/assets.py` | Asset download logic |
+| `scraping/data.py` | `src/.../scraping/data.py` | **Shim** — imports forwarded to `src/` |
+| `scraping/processing/echoesValidator.py` | `src/.../scraping/processing/echoesValidator.py` | **Shim** — imports forwarded to `src/` |
+| `scraping/processing/statsExtractor.py` | `src/.../scraping/processing/stats_extractor.py` | **Moved** — re-export shim kept |
+| `scraping/processing/echoesProcessor.py` | `src/.../scraping/processing/echoes_processor.py` | **Moved** — re-export shim kept |
+| `scraping/utils/common.py` | `src/.../scraping/utils/common.py` | **Moved** — re-export shim kept |
+| `properties/app_config.py` | `src/.../config/app_config.py` | **Moved** — re-export shim kept |
+| `updater/databaseUpdater.py` | `src/.../updater/database.py` | **Moved** — re-export shim kept |
+| `updater/assetsUpdater.py` | `src/.../updater/assets.py` | **Pending** — not yet migrated |
 
-### Phase 3 — Port or Remove (V1 scrapers + UI)
+### Phase 3 — Port or Remove (V1 scrapers + UI) — Partial
 
-These are the V1 scrapers and the Qt UI layer.  Each scraper either gets
-ported to a V2 workflow or is dropped if the feature is deprecated.
+V1 scrapers have been removed. Character, achievement, and shell scrapers
+were deleted without a V2 port (to be implemented when needed). The Qt UI
+layer is not yet ported.
 
-| Module | Plan |
-|---|---|
-| `scraping/echoesScraper.py` | **Remove** — fully superseded by `EchoWorkflow` |
-| `scraping/weaponsScraper.py` | **Remove** — fully superseded by `WeaponWorkflow` |
-| `scraping/itemsScraper.py` | **Remove** — fully superseded by `WeaponWorkflow` (tab=RESOURCES) |
-| `scraping/charactersScraper.py` | **Port** to `src/.../scraping/scanning/character_workflow.py` |
-| `scraping/achievementsScraper.py` | **Port** to `src/.../scraping/scanning/achievement_workflow.py` |
-| `scraping/shellScraper.py` | **Port** to `src/.../scraping/scanning/shell_workflow.py` |
-| `scraping/scraperManager.py` | **Remove** — replaced by `SessionOrchestrator` |
-| `scraping/scraperExectuter.py` | **Remove** — replaced by `wuwa-scan` CLI |
-| `ui/` (all) | **Port** — update imports from legacy `scraping/` / `game/` to `src/` package, or rewrite against V2 `SessionOrchestrator` |
-| `properties/config.py` | **Port with UI** — Qt-dependent, moves when UI moves |
-| `app.py` + `main.py` | **Port with UI** — entry points for the Qt application |
+| Module | Plan | Status |
+|---|---|---|
+| `scraping/echoesScraper.py` | Remove — superseded by `EchoWorkflow` | **Deleted** |
+| `scraping/weaponsScraper.py` | Remove — superseded by `WeaponWorkflow` | **Deleted** |
+| `scraping/itemsScraper.py` | Remove — superseded by `WeaponWorkflow` (tab=RESOURCES) | **Deleted** |
+| `scraping/charactersScraper.py` | Port to `src/.../scraping/scanning/character_workflow.py` | **Deleted** — V2 port not yet implemented |
+| `scraping/achievementsScraper.py` | Port to `src/.../scraping/scanning/achievement_workflow.py` | **Deleted** — V2 port not yet implemented |
+| `scraping/shellScraper.py` | Port to `src/.../scraping/scanning/shell_workflow.py` | **Deleted** — V2 port not yet implemented |
+| `scraping/scraperManager.py` | Remove — replaced by `SessionOrchestrator` | **Deleted** |
+| `scraping/scraperExectuter.py` | Remove — replaced by `wuwa-scan` CLI | **Deleted** |
+| `ui/` (all) | Port — rewrite against V2 `SessionOrchestrator` | **Pending** — imports updated; full rewrite outstanding |
+| `properties/config.py` | Port with UI — Qt-dependent | **Pending** |
+| `app.py` + `main.py` | Port with UI — entry points for Qt application | **Pending** |
 
-### Phase 4 — Cleanup
+### Phase 4 — Cleanup — Partial
 
-| Item | Action |
-|---|---|
-| `cli/` (top-level) | `debug_ocr.py` → nav-script or remove; `reprocess.py` → remove (superseded by `wuwa-reprocess`); `update_data.py` → `src/.../cli/` or remove |
-| `conftest.py` (root) | Remove once no test imports legacy modules via bare `from scraping...` |
-| `nav-scripts/` | Keep as-is (run via `wuwa-nav session.py`) |
-| `tools/` (minus `match_sonata_icon/`) | Keep as development tools; not part of the distributed package |
-| `scratchpad/` | Keep; not part of the package |
+| Item | Action | Status |
+|---|---|---|
+| `cli/reprocess.py` | Remove — superseded by `wuwa-reprocess` | **Deleted** |
+| `cli/debug_ocr.py` | Move to nav-script or remove | **Pending** — updated to use `src/` imports |
+| `cli/update_data.py` | Move to `src/.../cli/` or remove | **Pending** — updated to use `src/` imports |
+| `conftest.py` (root) | Remove once no test imports legacy modules | **Pending** |
+| `nav-scripts/` | Keep as-is (run via `wuwa-nav session.py`) | **Done** |
+| `tools/` (minus `match_sonata_icon/`) | Keep as development tools | **Done** |
 
 ### Dependency on migration order
 
 ```
-Phase 1 (delete dead code)
-  └─► Phase 2 (move shared modules into src/)
-        └─► Phase 3 (port remaining scrapers + UI)
-              └─► Phase 4 (cleanup root conftest, top-level cli/, etc.)
+Phase 1 (delete dead code)               ✓ Complete
+  └─► Phase 2 (move shared modules into src/)   ✓ Complete (assetsUpdater.py pending)
+        └─► Phase 3 (port remaining scrapers + UI)     Partial — UI pending; scrapers removed
+              └─► Phase 4 (cleanup root conftest, top-level cli/, etc.)  Partial
 ```
 
 Phase 1 can proceed immediately — nothing depends on the deleted modules

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from scraping.processing.echoesValidator import infer_cost, validate_echo_stats
+from wuwa_inventory_kamera.scraping.processing.echoesValidator import infer_cost, validate_echo_stats
 
 
 # ---------------------------------------------------------------------------
@@ -431,7 +431,7 @@ class TestInferCost:
             assert result is None, f"Expected None for {stat}, got {result}"
 
     def test_empty_spec_returns_none(self, monkeypatch):
-        import scraping.processing.echoesValidator as v
+        import wuwa_inventory_kamera.scraping.processing.echoesValidator as v
         monkeypatch.setattr(v, '_SPEC', {})
         assert infer_cost(_stats({'cr%': 22.0, 'atk': 150}, {})) is None
 
@@ -470,7 +470,7 @@ class TestPreconditions:
 
     def test_missing_spec_gives_warning(self, monkeypatch):
         """When the YAML spec is not loaded, validate_echo_stats warns and returns."""
-        import scraping.processing.echoesValidator as v
+        import wuwa_inventory_kamera.scraping.processing.echoesValidator as v
         monkeypatch.setattr(v, '_SPEC', {})
         r = validate_echo_stats(4, 25, 5, VALID_COST4_LV25)
         assert r.valid   # no spec → no errors, just a warning

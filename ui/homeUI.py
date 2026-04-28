@@ -17,7 +17,11 @@ from qfluentwidgets import (
 )
 
 from properties.config import cfg, FAILED, INVENTORY
-from scraping.scraperExectuter import startScraper
+
+def startScraper():
+	"""Stub — V1 scraper removed. Use wuwa-scan CLI or SessionOrchestrator."""
+	return 'V1 scraper has been removed. Use the wuwa-scan CLI instead.'
+
 from scraping.utils import itemsID, savingScraped
 
 logger = logging.getLogger('HomeInterface')
@@ -324,8 +328,8 @@ class LControlPanel(QFrame):
 
 	def runReprocessSession(self):
 		"""Re-run OCR processing on a previously captured raw scan session."""
-		from scraping.processing.echoesProcessor import reprocessSession
-		from scraping.utils import savingScraped
+		from wuwa_inventory_kamera.scraping.processing.echoes_processor import reprocessSession
+		from wuwa_inventory_kamera.scraping.utils.common import savingScraped
 
 		folder = QFileDialog.getExistingDirectory(
 			self,

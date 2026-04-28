@@ -272,7 +272,7 @@ def main() -> None:
 
     if any(k.startswith('rapid') for k in args.extractor):
         try:
-            from scraping.ocr._rapidocr import RapidOcrBackend
+            from wuwa_inventory_kamera.scraping.ocr._rapidocr import RapidOcrBackend
             rapid_backend = RapidOcrBackend(
                 pad_px=args.pad_px,
                 fallback_text_score=fallback_score,
@@ -281,12 +281,12 @@ def main() -> None:
             print(f'WARNING: could not load RapidOCR backend: {exc}')
 
     if 'rapid' in args.extractor and rapid_backend:
-        from scraping.processing.statsExtractor import RapidOcrStatsExtractor
+        from wuwa_inventory_kamera.scraping.processing.stats_extractor import RapidOcrStatsExtractor
         extractors['rapid'] = RapidOcrStatsExtractor()
         extractors['rapid']._backend = rapid_backend  # type: ignore[attr-defined]
 
     if 'rapid_coord' in args.extractor and rapid_backend:
-        from scraping.processing.statsExtractor import RapidOcrCoordStatsExtractor
+        from wuwa_inventory_kamera.scraping.processing.stats_extractor import RapidOcrCoordStatsExtractor
         extractors['rapid_coord'] = RapidOcrCoordStatsExtractor(
             pad_px=args.pad_px,
             fallback_text_score=fallback_score,
@@ -294,14 +294,14 @@ def main() -> None:
 
     if 'tesser' in args.extractor:
         try:
-            from scraping.processing.statsExtractor import TesserOcrStatsExtractor
+            from wuwa_inventory_kamera.scraping.processing.stats_extractor import TesserOcrStatsExtractor
             extractors['tesser'] = TesserOcrStatsExtractor()
         except Exception as exc:
             print(f'WARNING: skipping tesser — {exc}')
 
     if 'tesser_coord' in args.extractor:
         try:
-            from scraping.processing.statsExtractor import TesserOcrCoordStatsExtractor
+            from wuwa_inventory_kamera.scraping.processing.stats_extractor import TesserOcrCoordStatsExtractor
             extractors['tesser_coord'] = TesserOcrCoordStatsExtractor()
         except Exception as exc:
             print(f'WARNING: skipping tesser_coord — {exc}')

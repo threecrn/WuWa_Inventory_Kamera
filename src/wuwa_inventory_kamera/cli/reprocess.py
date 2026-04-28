@@ -243,7 +243,7 @@ def _run_service(
 def _build_legacy_extractor(args, extractor_params: dict):
     """Build a StatsExtractor for the legacy echoProcessor path."""
     # These imports come from the existing (non-src) scraping package.
-    from scraping.processing.statsExtractor import (
+    from wuwa_inventory_kamera.scraping.processing.stats_extractor import (
         RapidOcrStatsExtractor,
         RapidOcrCoordStatsExtractor,
         TesserOcrStatsExtractor,
@@ -403,7 +403,7 @@ def main() -> None:
     # This is intentionally kept as a lazy import so that the module can be
     # imported in test environments without a config file present.
     try:
-        from properties.app_config import app_config
+        from wuwa_inventory_kamera.config.app_config import app_config
         export_folder: str = app_config.exportFolder
     except Exception:
         app_config = None  # type: ignore[assignment]
@@ -444,8 +444,8 @@ def main() -> None:
     logger.info('Min level : %d', min_level)
 
     # ── Load raw scans ─────────────────────────────────────────────────────
-    from scraping.utils.common import loadRawScans
-    from scraping.models.rawScan import RawEchoScan
+    from wuwa_inventory_kamera.scraping.utils.common import loadRawScans
+    from wuwa_inventory_kamera.scraping.models.raw_scan import RawEchoScan
 
     scans: list[RawEchoScan] = loadRawScans(raw_dir)
     if not scans:
@@ -523,7 +523,7 @@ def main() -> None:
         workers: int = args.workers if args.workers is not None else (os.cpu_count() or 4)
         logger.info('Mode      : legacy extractor  workers=%d', workers)
 
-        from scraping.processing.echoesProcessor import echoProcessor
+        from wuwa_inventory_kamera.scraping.processing.echoes_processor import echoProcessor
         echoes = echoProcessor(
             scans, session_id, raw_dir,
             workers=workers,

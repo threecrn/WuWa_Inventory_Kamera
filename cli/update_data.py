@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 # Add the parent directory to sys.path to import the updater module
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from updater.databaseUpdater import BaseDataUpdater
+from wuwa_inventory_kamera.updater.database import BaseDataUpdater
 
 def main():
     """Main entry point"""
