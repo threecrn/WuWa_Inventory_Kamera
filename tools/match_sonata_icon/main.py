@@ -44,12 +44,12 @@ Usage
 -----
 ::
 
-    uv run python -m wuwa_inventory_kamera.cli.match_sonata_icon \\
+    uv run python -m tools.match_sonata_icon.main \\
         --resolution 1920x1080 \\
         --icon captures/echo_0000/sonata.png
 
     # Detect circle and save it to the config for future runs:
-    uv run python -m wuwa_inventory_kamera.cli.match_sonata_icon \\
+    uv run python -m tools.match_sonata_icon.main \\
         --resolution 2560x1440 \\
         --icon captures/echo_0000/sonata.png \\
         --save-circle
@@ -70,9 +70,9 @@ from typing import Any
 import cv2
 import numpy as np
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _REFS_DIR = _PROJECT_ROOT / "assets" / "IconS"
-_CONFIG_FILE = _PROJECT_ROOT / "config" / "sonata_icon_resolutions.json"
+_CONFIG_FILE = Path(__file__).parent / "sonata_icon_resolutions.json"
 
 logger = logging.getLogger("wuwa.match_sonata_icon")
 
@@ -470,7 +470,8 @@ def main() -> None:
         required=True,
         type=_parse_resolution,
         metavar="WxH",
-        help="Screen resolution when the icon was captured (e.g. 1920x1080).",
+        default="1920x1080",
+        help="Screen resolution when the icon was captured (default: 1920x1080).",
     )
     parser.add_argument(
         "--icon",
