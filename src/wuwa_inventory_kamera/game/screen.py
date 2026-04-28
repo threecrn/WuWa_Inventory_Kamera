@@ -32,7 +32,7 @@ backend in windowed mode, producing occlusion-immune screenshots.
 
 Usage::
 
-    from wuwa_inventory_kamera.game.screen import GameWindow, capture, capture_region
+    from .screen import GameWindow, capture, capture_region
 
     gw = GameWindow()
     layout = gw.layout            # ScreenLayout for the game's resolution
@@ -83,7 +83,7 @@ class ScreenLayout:
     """
 
     def __init__(self, width: int, height: int, monitor: int = 1) -> None:
-        from wuwa_inventory_kamera.game.screen_info import ScreenInfo
+        from .screen_info import ScreenInfo
         self._si = ScreenInfo(width, height, monitor)
         self.width = width
         self.height = height
@@ -130,7 +130,7 @@ class GameWindow:
         *,
         windowed: bool = False,
     ) -> None:
-        from wuwa_inventory_kamera.game.constants import PROCESS_NAME, WINDOW_NAME
+        from .constants import PROCESS_NAME, WINDOW_NAME
         self._window_name = window_name or WINDOW_NAME
         self._process_name = process_name or PROCESS_NAME
         self._window = self._find_window()

@@ -23,13 +23,13 @@ from __future__ import annotations
 import logging
 from typing import Callable, Protocol
 
-from wuwa_inventory_kamera.game.navigation import (
+from ...game.navigation import (
     GameNavigator,
     GRID_ROWS,
     GRID_COLS,
     CELLS_PER_PAGE,
 )
-from wuwa_inventory_kamera.scraping.scanning.scan_state import GridPosition
+from .scan_state import GridPosition
 
 logger = logging.getLogger(__name__)
 

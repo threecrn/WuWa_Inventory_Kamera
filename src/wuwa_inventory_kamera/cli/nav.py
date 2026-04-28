@@ -99,7 +99,7 @@ def _resolve_roi(layout, roi_name):
             raise NavError(
                 f'Numeric ROI must have exactly 4 values (x, y, w, h), got {len(roi_name)}'
             )
-        from wuwa_inventory_kamera.game.game_roi import Coordinates
+        from ..game.game_roi import Coordinates
         x, y, w, h = roi_name
         return Coordinates(x, y, w, h)
 
@@ -111,7 +111,7 @@ def _resolve_roi(layout, roi_name):
         except ValueError:
             pass  # not a numeric string — fall through to name resolution
         else:
-            from wuwa_inventory_kamera.game.game_roi import Coordinates
+            from ..game.game_roi import Coordinates
             return Coordinates(*coords)
 
     if roi_name == 'full':
@@ -196,7 +196,7 @@ class NavSession:
         screenshot_dir: Path | None = None,
         dry_run: bool = False,
     ) -> None:
-        from wuwa_inventory_kamera.game.navigation import GameNavigator
+        from ..game.navigation import GameNavigator
 
         self.nav: GameNavigator = nav
         self.gw  = gw
@@ -270,7 +270,7 @@ class NavSession:
 
     def snapshot(self):
         """Return a :class:`~...game.state.GameState` reflecting current state."""
-        from wuwa_inventory_kamera.game.state import CellRef, GameState
+        from ..game.state import CellRef, GameState
         s = GameState.from_navigator(self.nav, self.gw)
         s.page = self._page_0 + 1
         if self._cell is not None:
@@ -310,7 +310,7 @@ class NavSession:
         """Switch to an inventory tab.  tab: echoes | weapons | devItems | resources"""
         logger.info('switch-tab %s', tab)
         if not self.dry_run:
-            from wuwa_inventory_kamera.game.navigation import InventoryTab
+            from ..game.navigation import InventoryTab
             try:
                 t = InventoryTab(tab)
             except ValueError:
@@ -325,7 +325,7 @@ class NavSession:
         """Set inventory sort order.  order: level | rarity | time_added | tuning_status | discarded_first"""
         logger.info('set-sort %s', order)
         if not self.dry_run:
-            from wuwa_inventory_kamera.game.navigation import SortOrder
+            from ..game.navigation import SortOrder
             try:
                 o = SortOrder[order.upper()]
             except KeyError:
@@ -370,8 +370,8 @@ class NavSession:
         if n < 0:
             raise NavError('goto_index: index must be >= 0')
         logger.info('goto-index %d', n)
-        from wuwa_inventory_kamera.game.navigation import GRID_COLS
-        from wuwa_inventory_kamera.scraping.scanning.scan_state import GridPosition
+        from ..game.navigation import GRID_COLS
+        from ..scraping.scanning.scan_state import GridPosition
         pos = GridPosition.from_index(n, GRID_COLS)
         if not self.dry_run:
             scroll_kw = {} if scroll_wait is None else {'wait': scroll_wait}
@@ -503,7 +503,7 @@ class NavSession:
         (or ``None`` in dry-run mode).
         """
         import cv2
-        from wuwa_inventory_kamera.game.screen import capture, capture_region
+        from ..game.screen import capture, capture_region
 
         if as_image:
             logger.info('screenshot roi=%s (as_image)', roi)
@@ -582,8 +582,8 @@ class NavSession:
         if self.dry_run:
             return {'roi': roi, 'lines': []}
 
-        from wuwa_inventory_kamera.game.screen import capture, capture_region
-        from wuwa_inventory_kamera.scraping.ocr._rapidocr import RapidOcrBackend
+        from ..game.screen import capture, capture_region
+        from ..scraping.ocr._rapidocr import RapidOcrBackend
 
         layout  = self.nav.layout
         roi_obj = _resolve_roi(layout, roi)
@@ -821,10 +821,10 @@ def main() -> None:
         parser.error('Specify at most one of: script, -c.')
 
     # Delayed imports so --help is fast
-    from wuwa_inventory_kamera.game.input_controller import InputController
-    from wuwa_inventory_kamera.game.navigation import GameNavigator
-    from wuwa_inventory_kamera.game.screen import GameWindow
-    from wuwa_inventory_kamera.game.state import GameState
+    from ..game.input_controller import InputController
+    from ..game.navigation import GameNavigator
+    from ..game.screen import GameWindow
+    from ..game.state import GameState
 
     gw = GameWindow(windowed=args.windowed)
     if not gw.found and not args.dry_run:

@@ -16,9 +16,9 @@ from __future__ import annotations
 import logging
 import re
 
-from wuwa_inventory_kamera.scraping.ocr._types import OcrResult
-from wuwa_inventory_kamera.scraping.ocr import tokens_to_lines
-from wuwa_inventory_kamera.scraping.service.captures import ItemCapture, ItemResult
+from ...ocr._types import OcrResult
+from ...ocr import tokens_to_lines
+from ..captures import ItemCapture, ItemResult
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ _DIGITS_RE = re.compile(r'\d[\d,]*')
 
 
 def _get_data():
-    from wuwa_inventory_kamera.scraping.data import itemsID
+    from ...data import itemsID
     return itemsID
 
 

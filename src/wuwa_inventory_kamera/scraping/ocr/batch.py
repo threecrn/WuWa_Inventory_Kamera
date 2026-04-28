@@ -19,8 +19,8 @@ batched forward passes:
 
 Usage::
 
-    from wuwa_inventory_kamera.scraping.ocr._rapidocr import RapidOcrBackend
-    from wuwa_inventory_kamera.scraping.ocr.batch import BatchOcr
+    from ._rapidocr import RapidOcrBackend
+    from .batch import BatchOcr
 
     backend = RapidOcrBackend(
         onnx_providers=['DmlExecutionProvider', 'CPUExecutionProvider']

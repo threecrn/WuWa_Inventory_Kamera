@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from wuwa_inventory_kamera.game.navigation import SortOrder
+from ...game.navigation import SortOrder
 
 logger = logging.getLogger(__name__)
 

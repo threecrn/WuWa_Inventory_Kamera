@@ -39,9 +39,9 @@ from collections import defaultdict
 
 import numpy as np
 
-from wuwa_inventory_kamera.scraping.data import echoStats
-from wuwa_inventory_kamera.scraping.utils.common import convertToBlackWhite, darken_background_preserve_edges_ndarray
-from wuwa_inventory_kamera.scraping.ocr import imageToString
+from ..data import echoStats
+from ..utils.common import convertToBlackWhite, darken_background_preserve_edges_ndarray
+from ..ocr import imageToString
 
 logger = logging.getLogger(__name__)
 
@@ -305,7 +305,7 @@ class RapidOcrStatsExtractor(StatsExtractor):
 
     def __init__(self, use_bw: bool = False, **kwargs):
         super().__init__(use_bw=use_bw)
-        from wuwa_inventory_kamera.scraping.ocr._rapidocr import RapidOcrBackend
+        from ..ocr._rapidocr import RapidOcrBackend
         self._backend = RapidOcrBackend(**kwargs)
 
     def _ocr_and_pair(
@@ -345,7 +345,7 @@ class TesserOcrStatsExtractor(StatsExtractor):
 
     def __init__(self, use_bw: bool = True, **kwargs):
         super().__init__(use_bw=use_bw)
-        from wuwa_inventory_kamera.scraping.ocr._tesserocr import TesserOcrBackend
+        from ..ocr._tesserocr import TesserOcrBackend
         self._backend = TesserOcrBackend(**kwargs)
 
     def _ocr_and_pair(
@@ -395,7 +395,7 @@ class TesserOcrCoordStatsExtractor(StatsExtractor):
 
     def __init__(self, row_tolerance: int = 10, use_bw: bool = True, **kwargs):
         super().__init__(use_bw=use_bw)
-        from wuwa_inventory_kamera.scraping.ocr._tesserocr import TesserOcrBackend
+        from ..ocr._tesserocr import TesserOcrBackend
         self._backend = TesserOcrBackend(**kwargs)
         self._row_tolerance = row_tolerance
 
@@ -493,7 +493,7 @@ class RapidOcrCoordStatsExtractor(StatsExtractor):
 
     def __init__(self, row_tolerance: int = 10, use_bw: bool = False, **kwargs):
         super().__init__(use_bw=use_bw)
-        from wuwa_inventory_kamera.scraping.ocr._rapidocr import RapidOcrBackend
+        from ..ocr._rapidocr import RapidOcrBackend
         self._backend = RapidOcrBackend(**kwargs)
         self._row_tolerance = row_tolerance
 

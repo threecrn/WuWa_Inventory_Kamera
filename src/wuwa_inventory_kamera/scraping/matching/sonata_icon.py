@@ -23,7 +23,7 @@ The matching algorithm is adapted from
 
 Usage inside the pipeline::
 
-    from wuwa_inventory_kamera.scraping.matching.sonata_icon import (
+    from .sonata_icon import (
         SonataIconMatcher,
     )
 

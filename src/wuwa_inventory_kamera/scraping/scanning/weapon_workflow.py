@@ -21,19 +21,19 @@ import logging
 import threading
 from typing import Callable
 
-from wuwa_inventory_kamera.game.navigation import (
+from ...game.navigation import (
     GameNavigator,
     InventoryTab,
     SortOrder,
 )
-from wuwa_inventory_kamera.game.screen import capture_full
-from wuwa_inventory_kamera.scraping.scanning.grid_navigator import GridNavigator
-from wuwa_inventory_kamera.scraping.scanning.scan_state import (
+from ...game.screen import capture_full
+from .grid_navigator import GridNavigator
+from .scan_state import (
     GridPosition,
     ScanSession,
 )
-from wuwa_inventory_kamera.scraping.service.captures import WeaponCapture, WeaponResult
-from wuwa_inventory_kamera.scraping.service.ocr_service import OcrService
+from ..service.captures import WeaponCapture, WeaponResult
+from ..service.ocr_service import OcrService
 
 logger = logging.getLogger(__name__)
 

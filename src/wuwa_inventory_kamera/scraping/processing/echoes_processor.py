@@ -43,23 +43,23 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from wuwa_inventory_kamera.game.screen_info import ScreenInfo
-from wuwa_inventory_kamera.config.app_config import app_config
-from wuwa_inventory_kamera.scraping.models.raw_scan import RawEchoScan
-from wuwa_inventory_kamera.scraping.processing.echoesValidator import infer_cost, expected_sub_count, validate_echo_stats
-from wuwa_inventory_kamera.scraping.processing.stats_extractor import (
+from ...game.screen_info import ScreenInfo
+from ...config.app_config import app_config
+from ..models.raw_scan import RawEchoScan
+from .echoesValidator import infer_cost, expected_sub_count, validate_echo_stats
+from .stats_extractor import (
     RapidOcrStatsExtractor,
     StatsExtractor,
     TesserOcrCoordStatsExtractor,
     TesserOcrStatsExtractor,
 )
-from wuwa_inventory_kamera.scraping.data import echoesID, echoStats, sonataName
-from wuwa_inventory_kamera.scraping.utils.common import (
+from ..data import echoesID, echoStats, sonataName
+from ..utils.common import (
     convertToBlackWhite,
     darken_background_preserve_edges_ndarray,
     loadRawScans,
 )
-from wuwa_inventory_kamera.scraping.ocr import imageToString
+from ..ocr import imageToString
 
 logger = logging.getLogger(__name__)
 

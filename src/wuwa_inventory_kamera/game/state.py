@@ -22,7 +22,7 @@ It is shared between:
 
 Usage::
 
-    from wuwa_inventory_kamera.game.state import GameState
+    from .state import GameState
 
     # Snapshot from a live navigator
     state = GameState.from_navigator(nav, gw)
@@ -203,7 +203,7 @@ class GameState:
         snapshot — for example, when a ``--state-in`` JSON file is passed
         so the session can resume without redundant clicks.
         """
-        from wuwa_inventory_kamera.game.navigation import InventoryTab, SortOrder
+        from .navigation import InventoryTab, SortOrder
 
         if self.tab:
             try:

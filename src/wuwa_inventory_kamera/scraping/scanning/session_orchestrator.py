@@ -30,12 +30,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from wuwa_inventory_kamera.game.input_controller import InputController
-from wuwa_inventory_kamera.game.navigation import GameNavigator, InventoryTab, SortOrder
-from wuwa_inventory_kamera.game.screen import GameWindow
-from wuwa_inventory_kamera.game.stop_signal import StopSignal
-from wuwa_inventory_kamera.scraping.scanning.scan_state import ScanSession
-from wuwa_inventory_kamera.scraping.service.ocr_service import OcrService
+from ...game.input_controller import InputController
+from ...game.navigation import GameNavigator, InventoryTab, SortOrder
+from ...game.screen import GameWindow
+from ...game.stop_signal import StopSignal
+from .scan_state import ScanSession
+from ..service.ocr_service import OcrService
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +178,7 @@ class SessionOrchestrator:
         stop_event: threading.Event,
     ) -> Any:
         """Dispatch to the appropriate workflow."""
-        from wuwa_inventory_kamera.game.navigation import InventoryTab
+        from ...game.navigation import InventoryTab
 
         if name == 'echoes':
             return self._run_echoes(nav, ocr_service, session_id, stop_event)
@@ -195,7 +195,7 @@ class SessionOrchestrator:
         self, nav: GameNavigator, ocr_service: OcrService, session_id: str,
         stop_event: threading.Event,
     ) -> list[dict]:
-        from wuwa_inventory_kamera.scraping.scanning.echo_workflow import EchoWorkflow
+        from .echo_workflow import EchoWorkflow
 
         session = ScanSession(
             total_items=0,  # placeholder; workflow reads from game
@@ -227,7 +227,7 @@ class SessionOrchestrator:
         tab: 'InventoryTab',
         stop_event: threading.Event,
     ) -> list[dict]:
-        from wuwa_inventory_kamera.scraping.scanning.weapon_workflow import WeaponWorkflow
+        from .weapon_workflow import WeaponWorkflow
 
         session = ScanSession(
             total_items=0,

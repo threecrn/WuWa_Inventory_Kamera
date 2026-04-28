@@ -26,9 +26,9 @@ import logging
 import re
 from difflib import get_close_matches
 
-from wuwa_inventory_kamera.scraping.ocr._types import OcrResult
-from wuwa_inventory_kamera.scraping.ocr import tokens_to_string, tokens_to_lines
-from wuwa_inventory_kamera.scraping.service.captures import CharCapture, CharResult
+from ...ocr._types import OcrResult
+from ...ocr import tokens_to_string, tokens_to_lines
+from ..captures import CharCapture, CharResult
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ _LEVEL_RE = re.compile(r'(\d+)')
 
 
 def _get_data():
-    from wuwa_inventory_kamera.scraping.data import charactersID, weaponsID, definedText
+    from ...data import charactersID, weaponsID, definedText
     return charactersID, weaponsID, definedText
 
 

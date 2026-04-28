@@ -15,7 +15,7 @@ module.
 
 Usage::
 
-    from wuwa_inventory_kamera.game.input_controller import InputController
+    from .input_controller import InputController
 
     ctrl = InputController(monitor_index=1)
     ctrl.click(500, 300)

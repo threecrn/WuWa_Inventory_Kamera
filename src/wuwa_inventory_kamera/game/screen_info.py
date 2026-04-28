@@ -10,7 +10,7 @@ original is the import path for :data:`~.game_roi.COORDINATES`.
 
 Usage::
 
-    from wuwa_inventory_kamera.game.screen_info import ScreenInfo
+    from .screen_info import ScreenInfo
 
     si = ScreenInfo(1920, 1080)
     print(si.echoes.echoCard.x)   # → 1296
@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import math
 
-from wuwa_inventory_kamera.game.game_roi import Coordinates, COORDINATES
+from .game_roi import Coordinates, COORDINATES
 
 PRECOMPUTED_RATIOS = [(w / h, (w, h)) for w, h in list(COORDINATES)]
 

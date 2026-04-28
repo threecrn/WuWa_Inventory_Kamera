@@ -5,8 +5,8 @@ import logging
 import numpy as np
 from pathlib import Path
 
-from wuwa_inventory_kamera.config.app_config import app_config, INVENTORY
-from wuwa_inventory_kamera.scraping.data import (
+from ...config.app_config import app_config, INVENTORY
+from ..data import (
     itemsID, charactersID, weaponsID,
     echoesID, achievementsID, echoStats,
     definedText, sonataName,
@@ -192,7 +192,7 @@ def loadRawScans(base_path: Path) -> list:
     list[RawEchoScan]
         Scans in ascending index order.
     """
-    from wuwa_inventory_kamera.scraping.models.raw_scan import RawEchoScan  # local import — avoids circular deps
+    from ..models.raw_scan import RawEchoScan  # local import — avoids circular deps
 
     base_path = Path(base_path)
     scans: list = []

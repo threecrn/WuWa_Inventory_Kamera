@@ -24,7 +24,7 @@ game inventory, with support for:
 
 Usage::
 
-    from wuwa_inventory_kamera.scraping.scanning.echo_workflow import EchoWorkflow
+    from .echo_workflow import EchoWorkflow
 
     wf = EchoWorkflow(nav, ocr_service, session)
     results = wf.run()
@@ -39,20 +39,20 @@ from typing import Callable
 
 import numpy as np
 
-from wuwa_inventory_kamera.game.navigation import (
+from ...game.navigation import (
     GameNavigator,
     InventoryTab,
     SortOrder,
 )
-from wuwa_inventory_kamera.game.screen import capture_full
-from wuwa_inventory_kamera.scraping.scanning.grid_navigator import GridNavigator
-from wuwa_inventory_kamera.scraping.scanning.scan_state import (
+from ...game.screen import capture_full
+from .grid_navigator import GridNavigator
+from .scan_state import (
     GridPosition,
     ScanItemStatus,
     ScanSession,
 )
-from wuwa_inventory_kamera.scraping.service.captures import EchoCapture, EchoResult
-from wuwa_inventory_kamera.scraping.service.ocr_service import OcrService
+from ..service.captures import EchoCapture, EchoResult
+from ..service.ocr_service import OcrService
 
 logger = logging.getLogger(__name__)
 

@@ -31,7 +31,7 @@ The key design constraints are:
 
 Usage::
 
-    from wuwa_inventory_kamera.scraping.service import OcrService
+    from . import OcrService
 
     with OcrService() as svc:
         future = svc.submit(EchoCapture(...))
@@ -51,9 +51,9 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from wuwa_inventory_kamera.scraping.ocr._rapidocr import RapidOcrBackend
-from wuwa_inventory_kamera.scraping.ocr.batch import BatchOcr
-from wuwa_inventory_kamera.scraping.service.captures import (
+from ..ocr._rapidocr import RapidOcrBackend
+from ..ocr.batch import BatchOcr
+from .captures import (
     _Stop,
     CaptureType,
     CharCapture,
@@ -65,10 +65,10 @@ from wuwa_inventory_kamera.scraping.service.captures import (
     WeaponCapture,
     WeaponResult,
 )
-from wuwa_inventory_kamera.scraping.service.assemblers.echo_assembler import EchoAssembler
-from wuwa_inventory_kamera.scraping.service.assemblers.weapon_assembler import WeaponAssembler
-from wuwa_inventory_kamera.scraping.service.assemblers.item_assembler import ItemAssembler
-from wuwa_inventory_kamera.scraping.service.assemblers.character_assembler import CharAssembler
+from .assemblers.echo_assembler import EchoAssembler
+from .assemblers.weapon_assembler import WeaponAssembler
+from .assemblers.item_assembler import ItemAssembler
+from .assemblers.character_assembler import CharAssembler
 
 if TYPE_CHECKING:
     pass

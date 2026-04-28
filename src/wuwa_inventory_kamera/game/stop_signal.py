@@ -11,7 +11,7 @@ focused — the user can press Enter in-game to stop a running scan.
 
 Usage::
 
-    from wuwa_inventory_kamera.game.stop_signal import StopSignal
+    from .stop_signal import StopSignal
 
     signal = StopSignal()          # starts polling thread immediately
     # ... do work ...

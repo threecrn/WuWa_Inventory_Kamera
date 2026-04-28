@@ -132,8 +132,8 @@ def main() -> None:
     _configure_logging(args.log_level)
 
     # Delayed imports so --help is fast
-    from wuwa_inventory_kamera.game.navigation import SortOrder
-    from wuwa_inventory_kamera.scraping.scanning.session_orchestrator import (
+    from ..game.navigation import SortOrder
+    from ..scraping.scanning.session_orchestrator import (
         SessionOrchestrator,
     )
 

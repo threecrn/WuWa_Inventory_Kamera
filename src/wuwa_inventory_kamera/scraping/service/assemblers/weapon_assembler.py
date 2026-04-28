@@ -19,9 +19,9 @@ from __future__ import annotations
 import logging
 import re
 
-from wuwa_inventory_kamera.scraping.ocr._types import OcrResult
-from wuwa_inventory_kamera.scraping.ocr import tokens_to_string
-from wuwa_inventory_kamera.scraping.service.captures import WeaponCapture, WeaponResult
+from ...ocr._types import OcrResult
+from ...ocr import tokens_to_string
+from ..captures import WeaponCapture, WeaponResult
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ _RANK_RE  = re.compile(r'\d')
 
 
 def _get_data():
-    from wuwa_inventory_kamera.scraping.data import weaponsID, itemsID
+    from ...data import weaponsID, itemsID
     return weaponsID, itemsID
 
 

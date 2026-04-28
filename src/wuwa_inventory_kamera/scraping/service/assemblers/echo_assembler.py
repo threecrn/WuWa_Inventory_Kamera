@@ -37,10 +37,10 @@ from difflib import get_close_matches
 import cv2
 import numpy as np
 
-from wuwa_inventory_kamera.scraping.ocr._types import OcrResult
-from wuwa_inventory_kamera.scraping.ocr import tokens_to_lines
-from wuwa_inventory_kamera.scraping.matching.sonata_icon import SonataIconMatcher
-from wuwa_inventory_kamera.scraping.service.captures import EchoCapture, EchoResult
+from ...ocr._types import OcrResult
+from ...ocr import tokens_to_lines
+from ...matching.sonata_icon import SonataIconMatcher
+from ..captures import EchoCapture, EchoResult
 
 logger = logging.getLogger(__name__)
 
@@ -50,12 +50,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _get_data():
-    from wuwa_inventory_kamera.scraping.data import echoesID, echoStats, sonataName
+    from ...data import echoesID, echoStats, sonataName
     return echoesID, echoStats, sonataName
 
 
 def _get_validators():
-    from wuwa_inventory_kamera.scraping.processing.echoesValidator import (
+    from ...processing.echoesValidator import (
         infer_cost,
         expected_sub_count,
         validate_echo_stats,

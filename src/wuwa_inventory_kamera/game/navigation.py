@@ -21,9 +21,9 @@ The key design goals are:
 
 Usage::
 
-    from wuwa_inventory_kamera.game.input_controller import InputController
-    from wuwa_inventory_kamera.game.screen import GameWindow
-    from wuwa_inventory_kamera.game.navigation import GameNavigator
+    from .input_controller import InputController
+    from .screen import GameWindow
+    from .navigation import GameNavigator
 
     gw   = GameWindow()
     ctrl = InputController(gw.monitor_index)
@@ -42,8 +42,8 @@ import time
 
 import numpy as np
 
-from wuwa_inventory_kamera.game.input_controller import InputController
-from wuwa_inventory_kamera.game.screen import (
+from .input_controller import InputController
+from .screen import (
     GameWindow,
     ScreenLayout,
     capture_full,
@@ -96,7 +96,7 @@ def _nav_ocr(image: np.ndarray, allowed: str | None = None) -> str:
     This does NOT use the batched OcrService — it's a lightweight single
     call via the OCR registry default backend.
     """
-    from wuwa_inventory_kamera.scraping.ocr import imageToString
+    from ..scraping.ocr import imageToString
     return imageToString(image, allowedChars=allowed)
 
 
@@ -575,7 +575,7 @@ class GameNavigator:
         Quick OCR check to see if the game is showing the main terminal
         menu.
         """
-        from wuwa_inventory_kamera.scraping.data import definedText
+        from ..scraping.data import definedText
         full = capture_full(self.layout.width, self.layout.height, self.layout.monitor, gw=self.gw)
         terminal_roi = self.layout.terminal
         crop = full[
