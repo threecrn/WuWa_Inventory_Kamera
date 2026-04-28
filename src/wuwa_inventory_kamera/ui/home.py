@@ -25,6 +25,7 @@ from qfluentwidgets import (
     BodyLabel, LineEdit, SpinBox,
     InfoBar, InfoBarPosition,
     ListWidget, PixmapLabel,
+    ProgressBar,
 )
 
 from .config import cfg, INVENTORY, FAILED
@@ -276,6 +277,16 @@ class LControlPanel(QFrame):
 
         self.closeLabel = BodyLabel("Press 'ENTER' to cancel the scan.")
 
+        self.scanProgressLabel = BodyLabel('Scan: —', self)
+        self.scanProgressBar = ProgressBar(self)
+        self.scanProgressBar.setRange(0, 100)
+        self.scanProgressBar.setValue(0)
+
+        self.processProgressLabel = BodyLabel('Processing: —', self)
+        self.processProgressBar = ProgressBar(self)
+        self.processProgressBar.setRange(0, 100)
+        self.processProgressBar.setValue(0)
+
         self.openExportFolder = PushButton('Export Folder', icon=FIF.FOLDER, parent=self)
         self.openExportFolder.clicked.connect(self.openFolder)
 
@@ -304,6 +315,10 @@ class LControlPanel(QFrame):
 
         self.panelLayout.addStretch()
         self.panelLayout.addWidget(self.closeLabel)
+        self.panelLayout.addWidget(self.scanProgressLabel)
+        self.panelLayout.addWidget(self.scanProgressBar)
+        self.panelLayout.addWidget(self.processProgressLabel)
+        self.panelLayout.addWidget(self.processProgressBar)
         self.panelLayout.addWidget(self.openExportFolder)
         self.panelLayout.addWidget(self.reprocessSessionBtn)
         self.panelLayout.addWidget(self.startScanning)
@@ -422,10 +437,21 @@ class LControlPanel(QFrame):
 
     def _onScanProgress(self, step: str, scanned: int, total: int):
         logger.debug("Scan progress: %s %d/%d", step, scanned, total)
+        pct = int(scanned * 100 / total) if total > 0 else 0
+        if step == 'echoes':
+            self.scanProgressLabel.setText(f'Scan: {scanned}/{total}')
+            self.scanProgressBar.setValue(pct)
+        elif step == 'echoes:processing':
+            self.processProgressLabel.setText(f'Processing: {scanned}/{total}')
+            self.processProgressBar.setValue(pct)
 
     def _onScanFinished(self, result: dict):
         self.startScanning.setEnabled(True)
         self._scan_thread = None
+        self.scanProgressLabel.setText('Scan: —')
+        self.scanProgressBar.setValue(0)
+        self.processProgressLabel.setText('Processing: —')
+        self.processProgressBar.setValue(0)
 
         if 'error' in result:
             self.signalNotifier.emit('error', 'Scan Error', result['error'])
@@ -460,6 +486,10 @@ class LControlPanel(QFrame):
     def _onScanError(self, message: str):
         self.startScanning.setEnabled(True)
         self._scan_thread = None
+        self.scanProgressLabel.setText('Scan: —')
+        self.scanProgressBar.setValue(0)
+        self.processProgressLabel.setText('Processing: —')
+        self.processProgressBar.setValue(0)
         self.signalNotifier.emit('error', 'Scan Failed', message)
 
     # ------------------------------------------------------------------

@@ -223,7 +223,10 @@ class SessionOrchestrator:
         def _on_progress(scanned: int, total: int) -> None:
             self.on_progress('echoes', scanned, total)
 
-        return wf.run(on_progress=_on_progress)
+        def _on_process_progress(processed: int, total: int) -> None:
+            self.on_progress('echoes:processing', processed, total)
+
+        return wf.run(on_progress=_on_progress, on_process_progress=_on_process_progress)
 
     def _run_weapons(
         self,

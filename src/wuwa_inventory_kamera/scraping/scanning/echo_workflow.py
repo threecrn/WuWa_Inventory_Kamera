@@ -99,7 +99,11 @@ class EchoWorkflow:
 
     # ── Public entry point ───────────────────────────────────────────────
 
-    def run(self, on_progress: Callable | None = None) -> list[dict]:
+    def run(
+        self,
+        on_progress: Callable | None = None,
+        on_process_progress: Callable | None = None,
+    ) -> list[dict]:
         """
         Execute the full echo scan workflow.
 
@@ -115,7 +119,10 @@ class EchoWorkflow:
         ----------
         on_progress:
             Optional callback ``(scanned: int, total: int) -> None``
-            invoked after each cell is processed.
+            invoked after each cell is photographed (scan phase).
+        on_process_progress:
+            Optional callback ``(processed: int, total: int) -> None``
+            invoked after each OCR future resolves (process phase).
 
         Returns
         -------
@@ -154,10 +161,25 @@ class EchoWorkflow:
         # 4. Forward scan
         futures: list[tuple[int, concurrent.futures.Future]] = []
 
+        # Set up a thread-safe counter so on_process_progress fires as each
+        # OCR future completes (concurrently with the scan, not after).
+        _processed_count = [0]
+        _processed_lock = threading.Lock()
+
+        def _make_done_callback(total: int) -> Callable:
+            def _cb(_fut: concurrent.futures.Future) -> None:
+                with _processed_lock:
+                    _processed_count[0] += 1
+                    count = _processed_count[0]
+                if on_process_progress:
+                    on_process_progress(count, total)
+            return _cb
+
         def _forward_visitor(position: GridPosition) -> bool:
             if self._stop_event and self._stop_event.is_set():
                 return False
             future = self._capture_echo(position)
+            future.add_done_callback(_make_done_callback(total_items))
             futures.append((position.scan_index, future))
             if on_progress:
                 on_progress(len(futures), total_items)
@@ -246,7 +268,8 @@ class EchoWorkflow:
     # ── Result collection ────────────────────────────────────────────────
 
     def _collect_results(
-        self, futures: list[tuple[int, concurrent.futures.Future]]
+        self,
+        futures: list[tuple[int, concurrent.futures.Future]],
     ) -> None:
         """
         Block on all futures and update the session state.
