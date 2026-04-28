@@ -182,6 +182,7 @@ COORDINATES = {
                 "page": Coordinates(200, 50, 130, 40),
                 "start": Coordinates(205, 122, 151, 181),
                 "echoCard": Coordinates(1296, 114, 558, 170),
+                "level": Coordinates(1777, 251, 58, 30),
                 "sonataIcon": Coordinates(1441, 317, 23, 24), # Sonata icon within the sonata region.
                 "sonataIconCircle": {
                     "circle": Coordinates(12.55, 12.65), # Circle parameters for the sonata icon (for matching).

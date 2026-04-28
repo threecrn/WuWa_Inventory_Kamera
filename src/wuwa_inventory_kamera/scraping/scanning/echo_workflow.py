@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
+import re
 import threading
 from pathlib import Path
 from typing import Callable
@@ -45,7 +46,7 @@ from ...game.navigation import (
     SortOrder,
     CELLS_PER_PAGE,
 )
-from ...game.screen import capture_full
+from ...game.screen import capture_full, capture_region
 from .grid_navigator import GridNavigator
 from .scan_state import (
     GridPosition,
@@ -188,32 +189,22 @@ class EchoWorkflow:
             if on_progress:
                 on_progress(len(futures), total_items)
 
-            # At the end of each full page, do a synchronous level check
-            # on the last captured echo.  Since echoes are sorted by level
-            # (descending), a level below the threshold means all remaining
-            # echoes can be skipped.
+            # At the end of each full page, do an ad-hoc synchronous OCR
+            # of just the level ROI to check for early-stop.  Since echoes
+            # are sorted by level descending, any level below the minimum
+            # means all remaining echoes can be skipped.
             if (
                 self.min_level > 0
                 and (position.scan_index + 1) % CELLS_PER_PAGE == 0
             ):
-                try:
-                    lvl_result = future.result(timeout=10.0)
-                    if lvl_result.detected_level < self.min_level:
-                        logger.info(
-                            'Level-based early stop at index %d: '
-                            'detected_level=%d < min_level=%d',
-                            position.scan_index,
-                            lvl_result.detected_level,
-                            self.min_level,
-                        )
-                        return False
-                except concurrent.futures.TimeoutError:
-                    logger.warning(
-                        'Level check timed out at index %d — continuing scan',
-                        position.scan_index,
+                level = self._read_last_echo_level()
+                if level is not None and level < self.min_level:
+                    logger.info(
+                        'Level-based early stop at index %d: '
+                        'detected_level=%d < min_level=%d',
+                        position.scan_index, level, self.min_level,
                     )
-                except Exception:
-                    logger.exception('Level check error at index %d', position.scan_index)
+                    return False
 
             return True
 
@@ -253,6 +244,34 @@ class EchoWorkflow:
 
         # 7. Collect accepted results
         return self.session.results()
+
+    # ── Ad-hoc level read ────────────────────────────────────────────────
+
+    def _read_last_echo_level(self) -> int | None:
+        """
+        Synchronously OCR just the level number from the currently selected
+        echo panel without touching the OcrService queue.
+
+        Uses the same lightweight ``imageToString`` path as ``_nav_ocr`` in
+        :mod:`~...game.navigation` — a single recognition forward pass on the
+        CPU backend — so it adds < 100 ms to the scan per page checked.
+
+        Returns the integer level, or ``None`` if OCR failed to find digits.
+        """
+        from ...scraping.ocr import imageToString
+
+        roi = self.nav.layout.echoes.level
+        crop = capture_region(self.nav.gw, roi)
+        text = imageToString(crop, allowedChars='0123456789')
+        text = text.strip()
+        if text.isdigit():
+            return int(text)
+        # Fallback: grab first run of digits (handles OCR artefacts)
+        m = re.search(r'\d+', text)
+        if m:
+            return int(m.group())
+        logger.debug('Level OCR returned no digits: %r', text)
+        return None
 
     # ── Core capture logic ───────────────────────────────────────────────
 
