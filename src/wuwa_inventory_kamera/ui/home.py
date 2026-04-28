@@ -81,7 +81,7 @@ class ScanThread(QThread):
                 ocr_providers=self._ocr_providers,
                 min_rarity=self._min_rarity,
                 min_level=self._min_level,
-                sort_order=SortOrder.TIME_ADDED,
+                sort_order=SortOrder.LEVEL,
                 save_raw=Path(self._export_folder),
                 inventory_key=self._inventory_key,
                 on_progress=lambda step, s, t: self.progress.emit(step, s, t),
