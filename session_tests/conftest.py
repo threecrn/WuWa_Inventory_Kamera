@@ -93,14 +93,16 @@ def index_to_sonata(session_ground_truth: list[dict]) -> dict[int, str]:
 # ---------------------------------------------------------------------------
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
-    """Parametrize ``echo_case`` with one entry per echo in the session."""
-    if "echo_case" not in metafunc.fixturenames:
-        return
+    """Parametrize ``echo_case`` and/or ``stats_case`` with session data."""
+    if "echo_case" in metafunc.fixturenames:
+        _parametrize_echo_cases(metafunc)
+    if "stats_case" in metafunc.fixturenames:
+        _parametrize_stats_cases(metafunc)
 
+
+def _parametrize_echo_cases(metafunc: pytest.Metafunc) -> None:
     session_dir = _require_session_dir(metafunc.config)
     if session_dir is None:
-        # Will be handled by the fixture skip; generate a single placeholder
-        # so pytest doesn't complain about empty parametrize.
         metafunc.parametrize("echo_case", [pytest.param(None, id="no-data")])
         return
 
@@ -140,3 +142,28 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
         metafunc.parametrize("echo_case", [pytest.param(None, id="no-data")])
     else:
         metafunc.parametrize("echo_case", cases)
+
+
+def _parametrize_stats_cases(metafunc: pytest.Metafunc) -> None:
+    session_dir = _require_session_dir(metafunc.config)
+    if session_dir is None:
+        metafunc.parametrize("stats_case", [pytest.param(None, id="no-data")])
+        return
+
+    raw_dir = session_dir / "raw"
+    cases: list[pytest.param] = []
+    for echo_dir in sorted(raw_dir.glob("echo_*")):
+        debug = echo_dir / "debug"
+        if not all((
+            (debug / "stats_name.png").exists(),
+            (debug / "stats_value.png").exists(),
+            (debug / "result.json").exists(),
+        )):
+            continue
+        idx = int(echo_dir.name.split("_")[1])
+        cases.append(pytest.param({"index": idx, "debug_dir": debug}, id=echo_dir.name))
+
+    if not cases:
+        metafunc.parametrize("stats_case", [pytest.param(None, id="no-data")])
+    else:
+        metafunc.parametrize("stats_case", cases)
