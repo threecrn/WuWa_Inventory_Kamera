@@ -47,10 +47,11 @@ class EchoCapture:
 @dataclass
 class EchoResult:
     """Assembled result for one echo, produced by :class:`EchoAssembler`."""
-    echo_index: int
-    data:       dict | None    # None = rejected (below threshold or invalid)
-    warnings:   list[str]
-    retried:    bool
+    echo_index:     int
+    data:           dict | None    # None = rejected (below threshold or invalid)
+    warnings:       list[str]
+    retried:        bool
+    detected_level: int = 0        # level parsed from card OCR (0 if unparseable)
 
 
 # ---------------------------------------------------------------------------

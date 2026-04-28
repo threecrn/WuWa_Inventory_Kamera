@@ -43,6 +43,7 @@ from ...game.navigation import (
     GameNavigator,
     InventoryTab,
     SortOrder,
+    CELLS_PER_PAGE,
 )
 from ...game.screen import capture_full
 from .grid_navigator import GridNavigator
@@ -88,6 +89,7 @@ class EchoWorkflow:
         save_raw: Path | None = None,
         max_rescans: int = 2,
         stop_event: threading.Event | None = None,
+        min_level: int = 0,
     ) -> None:
         self.nav = nav
         self.ocr = ocr_service
@@ -96,6 +98,7 @@ class EchoWorkflow:
         self.save_raw = save_raw
         self.max_rescans = max_rescans
         self._stop_event = stop_event
+        self.min_level = min_level
 
     # ── Public entry point ───────────────────────────────────────────────
 
@@ -163,29 +166,73 @@ class EchoWorkflow:
 
         # Set up a thread-safe counter so on_process_progress fires as each
         # OCR future completes (concurrently with the scan, not after).
+        # _scan_total is mutable so callbacks always report the correct
+        # denominator even when the scan stops early.
         _processed_count = [0]
         _processed_lock = threading.Lock()
+        _scan_total = [total_items]  # updated after scan_forward if cut short
 
-        def _make_done_callback(total: int) -> Callable:
-            def _cb(_fut: concurrent.futures.Future) -> None:
-                with _processed_lock:
-                    _processed_count[0] += 1
-                    count = _processed_count[0]
-                if on_process_progress:
-                    on_process_progress(count, total)
-            return _cb
+        def _process_done_callback(_fut: concurrent.futures.Future) -> None:
+            with _processed_lock:
+                _processed_count[0] += 1
+                count = _processed_count[0]
+            if on_process_progress:
+                on_process_progress(count, _scan_total[0])
 
         def _forward_visitor(position: GridPosition) -> bool:
             if self._stop_event and self._stop_event.is_set():
                 return False
             future = self._capture_echo(position)
-            future.add_done_callback(_make_done_callback(total_items))
+            future.add_done_callback(_process_done_callback)
             futures.append((position.scan_index, future))
             if on_progress:
                 on_progress(len(futures), total_items)
+
+            # At the end of each full page, do a synchronous level check
+            # on the last captured echo.  Since echoes are sorted by level
+            # (descending), a level below the threshold means all remaining
+            # echoes can be skipped.
+            if (
+                self.min_level > 0
+                and (position.scan_index + 1) % CELLS_PER_PAGE == 0
+            ):
+                try:
+                    lvl_result = future.result(timeout=10.0)
+                    if lvl_result.detected_level < self.min_level:
+                        logger.info(
+                            'Level-based early stop at index %d: '
+                            'detected_level=%d < min_level=%d',
+                            position.scan_index,
+                            lvl_result.detected_level,
+                            self.min_level,
+                        )
+                        return False
+                except concurrent.futures.TimeoutError:
+                    logger.warning(
+                        'Level check timed out at index %d — continuing scan',
+                        position.scan_index,
+                    )
+                except Exception:
+                    logger.exception('Level check error at index %d', position.scan_index)
+
             return True
 
         grid.scan_forward(_forward_visitor)
+
+        # If the scan was cut short (level threshold or stop event), update
+        # the mutable total so subsequent OCR-done callbacks report the
+        # correct denominator, and emit corrective progress signals.
+        actual_scanned = len(futures)
+        if actual_scanned < total_items:
+            _scan_total[0] = actual_scanned
+            # Scan bar: show completed (n/n = 100 %)
+            if on_progress:
+                on_progress(actual_scanned, actual_scanned)
+            # Processing bar: correct the total using already-resolved count
+            if on_process_progress:
+                with _processed_lock:
+                    already_processed = _processed_count[0]
+                on_process_progress(already_processed, actual_scanned)
 
         # 5. Collect results
         self._collect_results(futures)

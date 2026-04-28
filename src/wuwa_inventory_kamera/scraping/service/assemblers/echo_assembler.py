@@ -240,18 +240,18 @@ class EchoAssembler:
                 name = close[0]
             else:
                 logger.warning('Echo %d — name %r not in echoesID, rejecting.', idx, name_raw)
-                return EchoResult(echo_index=idx, data=None, warnings=warnings, retried=False)
+                return EchoResult(echo_index=idx, data=None, warnings=warnings, retried=False, detected_level=level)
 
         # Rarity from colour (the card image is in the EchoCapture)
         rarity = _detect_rarity(capture.card)
 
         if rarity < self._min_rarity:
             logger.debug('Echo %d — rarity %d < min %d, rejecting.', idx, rarity, self._min_rarity)
-            return EchoResult(echo_index=idx, data=None, warnings=warnings, retried=False)
+            return EchoResult(echo_index=idx, data=None, warnings=warnings, retried=False, detected_level=level)
 
         if level < self._min_level:
             logger.debug('Echo %d — level %d < min %d, rejecting.', idx, level, self._min_level)
-            return EchoResult(echo_index=idx, data=None, warnings=warnings, retried=False)
+            return EchoResult(echo_index=idx, data=None, warnings=warnings, retried=False, detected_level=level)
 
         # ── Sonata detection (icon matching) ──────────────────────────────
         if capture.sonata_icon is not None:
@@ -260,10 +260,10 @@ class EchoAssembler:
             )
             if sonata is None:
                 logger.warning('Echo %d — sonata icon not matched, rejecting.', idx)
-                return EchoResult(echo_index=idx, data=None, warnings=warnings, retried=False)
+                return EchoResult(echo_index=idx, data=None, warnings=warnings, retried=False, detected_level=level)
         else:
             logger.warning('Echo %d — no sonata icon crop available, rejecting.', idx)
-            return EchoResult(echo_index=idx, data=None, warnings=warnings, retried=False)
+            return EchoResult(echo_index=idx, data=None, warnings=warnings, retried=False, detected_level=level)
 
         logger.debug('Echo %d — sonata: %r', idx, sonata)
 
@@ -298,7 +298,7 @@ class EchoAssembler:
                     'Echo %d — rejected by validator (%d error(s)): %s',
                     idx, len(vresult.errors), vresult.errors,
                 )
-                return EchoResult(echo_index=idx, data=None, warnings=warnings, retried=False)
+                return EchoResult(echo_index=idx, data=None, warnings=warnings, retried=False, detected_level=level)
 
             # Check for missing substats (may indicate an OCR miss)
             sub_count      = len(stats.get('sub', {}))
@@ -315,7 +315,7 @@ class EchoAssembler:
                 )
 
         logger.debug('Echo %d — accepted: %s', idx, echo)
-        return EchoResult(echo_index=idx, data=echo, warnings=warnings, retried=False)
+        return EchoResult(echo_index=idx, data=echo, warnings=warnings, retried=False, detected_level=level)
 
     # ------------------------------------------------------------------
     # Internal helpers

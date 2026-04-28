@@ -224,6 +224,7 @@ class SessionOrchestrator:
             sort_order=self.sort_order,
             save_raw=raw_path,
             stop_event=stop_event,
+            min_level=self.min_level,
         )
 
         def _on_progress(scanned: int, total: int) -> None:
