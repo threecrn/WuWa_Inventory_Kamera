@@ -2,7 +2,10 @@
 
 > **Status:** Implemented. The game manipulation layer, scanning workflows
 > (echoes + weapons), OcrService, assemblers, and CLI tools are all live.
+> Sonata detection uses icon template matching (no OCR / no scrolling).
 > Character, achievement, and shell scrapers remain on V1 / not yet ported.
+> A concrete plan to consolidate or remove every legacy top-level module
+> lives at the end of this document.
 
 ---
 
@@ -199,13 +202,14 @@ results = wf.run(on_progress=callback)  # → list[dict]
 
 1. Switch to echoes tab, optionally set sort order
 2. Read echo count from UI (auto-updates session if count differs)
-3. **Forward scan**: iterate all grid cells, capture 4 crops per echo,
-   submit `EchoCapture` to OcrService → collect `Future[EchoResult]`
+3. **Forward scan**: iterate all grid cells, capture 3 OCR crops + 1
+   sonata icon crop per echo (no scrolling), submit `EchoCapture` to
+   OcrService → collect `Future[EchoResult]`
 4. **Collect results**: resolve all futures, mark session items
 5. **Rescan pass(es)**: any echo where the assembler flagged
-   "missing substats" or "sonata scroll failure" is queued for rescan.
-   The grid navigator jumps to the specific cell, re-captures, and
-   re-submits. Up to `max_rescans` attempts per item.
+   "missing substats" is queued for rescan.  The grid navigator jumps
+   to the specific cell, re-captures, and re-submits.  Up to
+   `max_rescans` attempts per item.
 6. Return accepted echo dicts.
 
 ### Weapon/item workflow
@@ -304,7 +308,7 @@ Exposes 20+ scripting functions: `focus_window`, `open_inventory`,
 `ocr_roi`, `snapshot`, `mouse_pos`.
 
 ROI aliases: `echo-card`, `echo-stats-name`, `echo-stats-value`, `sonata`,
-`weapon-name`, `weapon-level`.
+`sonata-icon`, `weapon-name`, `weapon-level`.
 
 Supports `GameState` save/restore via `--state-in` / `--state-out` for
 resumable sessions.
@@ -336,7 +340,7 @@ invoked via `python -m`):
 
 | Scraper | Nav model | OCR reads per item | V2 status |
 |---|---|---|---|
-| **Echoes** | grid (up to ~1000 cells) | card name, level, rarity, sonata, stats×2 cols | **Implemented** — `EchoWorkflow` |
+| **Echoes** | grid (up to ~1000 cells) | card name, level, rarity, stats×2 cols + sonata icon match | **Implemented** — `EchoWorkflow` |
 | **Weapons** | grid (24/page, N pages) | name, level `x/y`, rank digit | **Implemented** — `WeaponWorkflow` |
 | **Dev Items** | grid (24/page, N pages) | name, quantity | **Implemented** — `WeaponWorkflow` (tab=DEV_ITEMS) |
 | **Resources** | grid (24/page, N pages) | name, quantity | **Implemented** — `WeaponWorkflow` (tab=RESOURCES) |
@@ -353,6 +357,7 @@ invoked via `python -m`):
 | Screenshot → disk → `RawEchoScan` → `echoProcessor` (threaded) | Screenshot → in-memory `Capture` → `OcrService` queue (one DML thread) |
 | OCR called per-scan inside `ThreadPoolExecutor` | OCR batched across N captures in one GPU forward pass |
 | Four OCR backends (`rapid`, `rapid_coord`, `tesser`, `tesser_coord`) | One backend: `RapidOcrBackend` with optional DML |
+| Sonata detected by scrolling subwindow + OCR text match | Sonata detected by icon template matching (`SonataIconMatcher`) — no scrolling |
 | Retry logic scattered in processor | Retry owned entirely by `OcrService` / `EchoAssembler` |
 | Each scraper crops + OCRs inline | Each scraper submits `Capture` objects; OCR is centralised |
 | `scraperManager.scrapers()` with multiprocessing | `SessionOrchestrator.run()` — single process, OcrService background thread |
@@ -371,13 +376,14 @@ Main process
  ├── OcrService thread  ◄────────────────────────────────────────────────┐
  │   (single thread; owns DML + ONNX sessions)                          │
  │   · drain queue into batches (50ms timeout, max 32 items)             │
- │   · grouped ocr_images() call per crop type (card, sonata, name, val) │
+ │   · grouped ocr_images() call per crop type (card, name, val)          │
+ │   · sonata resolved via SonataIconMatcher (no OCR)                    │
  │   · dispatch to per-type assembler                                    │
  │   · resolve Future on each item                                       │
  │                                                                       │
  ├── Echo scanner (main thread during echo phase)                        │
  │   · game nav + click + screenshot                                     │ queue
- │   · crop 4 regions                                                    │
+ │   · crop 3 OCR regions + 1 sonata icon                                │
  │   · submit(EchoCapture) → Future  (non-blocking)                     │
  │   · collect futures after grid sweep + rescan pass                    │
  │                                                                       │
@@ -427,6 +433,9 @@ src/wuwa_inventory_kamera/
   scraping/
     __init__.py
     data.py                 (loadData — echoesID, weaponsID, echoStats, sonataName, etc.)
+    matching/
+      __init__.py
+      sonata_icon.py        (SonataIconMatcher — NCC + colour-distance template matching)
     ocr/
       __init__.py           (OCR backend registry, imageToString, tokens_to_lines)
       _types.py             (OcrBackend protocol, OcrResult type)
@@ -439,7 +448,7 @@ src/wuwa_inventory_kamera/
       ocr_service.py        (OcrService — queue + single DML thread + context manager)
       assemblers/
         __init__.py
-        echo_assembler.py   (EchoAssembler — rarity detection, stat matching, validation)
+        echo_assembler.py   (EchoAssembler — rarity detection, stat matching, sonata icon match)
         weapon_assembler.py (WeaponAssembler — name lookup, level/rank parse)
         item_assembler.py   (ItemAssembler — name + count parse)
         character_assembler.py (CharAssembler — multi-section accumulator)
@@ -447,13 +456,18 @@ src/wuwa_inventory_kamera/
       __init__.py
       scan_state.py         (ScanSession, ScanItem, ScanItemStatus, GridPosition)
       grid_navigator.py     (GridNavigator, CellVisitor protocol)
-      echo_workflow.py      (EchoWorkflow — lookahead + rescan)
+      echo_workflow.py      (EchoWorkflow — lookahead + rescan, no sonata scrolling)
       weapon_workflow.py    (WeaponWorkflow — sync per cell, hash dedup)
       session_orchestrator.py (SessionOrchestrator — top-level multi-scraper runner)
     processing/
+      __init__.py
       echoesValidator.py    (validate_echo_stats, expected_sub_count — shared by V1 + V2)
       echo_stats_valid_values.yaml
+```
 
+### Legacy top-level modules (not yet migrated)
+
+```
 scraping/                   (legacy V1 — kept for backward compat / reprocess path)
   scanning/
     echoesScanner.py        (Phase 1 raw capture)
@@ -461,15 +475,71 @@ scraping/                   (legacy V1 — kept for backward compat / reprocess 
   processing/
     echoesProcessor.py      (Phase 2 offline processing)
     echoesValidator.py      (stat validation — also used by V2 assembler)
-    statsExtractor.py       (legacy extractors — reprocess path)
+    statsExtractor.py       (legacy extractors — used by reprocess --extractor path)
   models/
     rawScan.py              (RawEchoScan — disk serialisation)
-  ocr/                      (legacy OCR wrappers)
-  utils/                    (mouse_keyboard, common)
-  data.py                   (shared data loading)
+  ocr/
+    __init__.py             (legacy OCR wrappers)
+    _rapidocr.py
+    _tesserocr.py
+    _types.py
+  utils/
+    common.py               (isUserAdmin, itemsID, savingScraped)
+    mouse_keyboard.py
+  data.py                   (shared data loading — loadData, echoesID, weaponsID, etc.)
   achievementsScraper.py, charactersScraper.py, echoesScraper.py,
   itemsScraper.py, weaponsScraper.py, shellScraper.py
   scraperExectuter.py, scraperManager.py
+
+game/                       (legacy game layer)
+  foreground.py             (WindowManager — find/activate game window)
+  gameROI.py                (legacy coordinate definitions by resolution)
+  menu.py                   (menu detection helpers)
+  screenInfo.py             (resolution-aware ROI accessor)
+  stopKey.py                (legacy stop-key handler)
+
+properties/                 (configuration)
+  app_config.py             (plain Python config singleton)
+  config.py                 (QConfig-based UI config, Qt-dependent)
+
+ui/                         (Qt / PySide6-Fluent UI)
+  homeUI.py                 (scan launch, reprocess, export)
+  inventoryUI.py            (inventory display)
+  loadingUI.py              (splash screen)
+  mainUI.py                 (main window shell)
+  settingsUI.py             (settings panel)
+  custom_widgets/
+    widget.py
+
+updater/
+  assetsUpdater.py          (download updated assets)
+  databaseUpdater.py        (data JSON updates)
+
+cli/                        (legacy CLI scripts — NOT under src/)
+  debug_ocr.py
+  reprocess.py              (legacy reprocess entry point)
+  update_data.py
+
+nav-scripts/                (wuwa-nav session scripts)
+  build-sonata-templates.py
+  build-sonata-templates-from-filter.py
+  scan-echoes.py
+  scan-sonata-icons.py
+  session.py
+  set-sort.py
+
+tools/                      (development / one-off tools)
+  check_printwindow/
+  match_sonata_icon/        (prototype sonata matcher — now integrated into src/)
+  scrape_sonata_icons/
+  update_sonata_templates/
+  cli/dimbreath_wuthering_data/  (vendored game data, large)
+
+app.py                      (Qt application bootstrap)
+main.py                     (entry point with log setup)
+batch_ocr.py                (standalone batch OCR runner)
+setup.py                    (legacy setuptools config)
+conftest.py                 (root — adds project root to sys.path)
 ```
 
 ---
@@ -482,11 +552,11 @@ All defined in `scraping/service/captures.py`:
 @dataclass
 class EchoCapture:
     echo_index:      int
-    card:            np.ndarray   # name + level + rarity region (RGB)
-    sonata:          np.ndarray   # set name region (RGB)
-    stats_name:      np.ndarray   # stat name column (RGB)
-    stats_value:     np.ndarray   # stat value column (RGB)
-    full_screenshot: np.ndarray | None = None  # debug mode only
+    card:            np.ndarray        # name + level + rarity region (RGB)
+    stats_name:      np.ndarray        # stat name column (RGB)
+    stats_value:     np.ndarray        # stat value column (RGB)
+    sonata_icon:     np.ndarray | None = None  # small circular sonata icon crop (BGR)
+    full_screenshot: np.ndarray | None = None  # full frame, debug mode only
 
 @dataclass
 class EchoResult:
@@ -579,10 +649,10 @@ on `_Stop` sentinel.
 
 `_process_batch()` groups items by capture type, then calls the per-type
 processor. Each per-type processor:
-1. Runs `self._batch_ocr.ocr_images()` once per crop kind (card, sonata,
-   stats_name, stats_value for echoes) — same spatial dimensions per batch
-   avoids wasted padding.
-2. Passes tokens to the matching assembler.
+1. Runs `self._batch_ocr.ocr_images()` once per crop kind — for echoes:
+   card, stats_name, stats_value (3 batches; sonata is resolved by
+   `SonataIconMatcher` inside the assembler, not OCR).
+2. Passes tokens + sonata icon to the matching assembler.
 3. Resolves the future via `item.future.set_result()`.
 
 On error, the future receives the exception via `set_exception()`.
@@ -595,7 +665,8 @@ On error, the future receives the exception via `set_exception()`.
 
 - Pixel-color-based rarity detection (`_detect_rarity`)
 - Card tokens → name lookup in `echoesID` (exact + fuzzy)
-- Sonata tokens → match against `sonataName`
+- Sonata icon crop → `SonataIconMatcher.match_to_sonata_key()` (NCC +
+  colour-distance, no OCR)
 - Stat name + value tokens → `_match_stats` with fuzzy matching, line-wrap handling
 - `_parse_stat_value` — handles `"5.00%"` → 5.0 and `"1234"` → 1234
 - Validation via `validate_echo_stats` + `expected_sub_count`
@@ -618,9 +689,9 @@ On error, the future receives the exception via `set_exception()`.
 - Accumulates partial results across 5 section submissions per character
 - Resolves final `CharResult` on section 4
 
-| Assembler | OCR inputs | Parsing complexity | Retry? |
+| Assembler | Inputs | Parsing complexity | Retry? |
 |---|---|---|---|
-| `EchoAssembler` | card, sonata, name col, value col | High — stat matching, substat count, validation | Yes |
+| `EchoAssembler` | card (OCR), sonata icon (template match), name col (OCR), value col (OCR) | High — stat matching, substat count, validation | Yes |
 | `WeaponAssembler` | name, level string, rank digit | Low — two integer parses + lookup | No |
 | `ItemAssembler` | info block (2–3 lines) | Low — line split, regex digit strip | No |
 | `CharAssembler` | name, level, weapon fields, skill levels, chain buttons | Medium — multi-section, each simple read | No |
@@ -652,10 +723,13 @@ scraping/ocr/
 
 ## What is reused from V1
 
-- `echoesValidator.py` — `validate_echo_stats`, `expected_sub_count`
-- `scraping/data.py` — `loadData`, `echoesID`, `weaponsID`, `echoStats`, `sonataName`
-- `databaseUpdater.py`, `scraperManager.py` — untouched
-- `cli/reprocess.py` — still supports the legacy `echoesProcessor` path via `--extractor`
+- `echoesValidator.py` — `validate_echo_stats`, `expected_sub_count` (copied
+  into `src/.../scraping/processing/` and still in legacy `scraping/processing/`)
+- `scraping/data.py` — `loadData`, `echoesID`, `weaponsID`, `echoStats`,
+  `sonataName` (duplicated into `src/.../scraping/data.py`)
+- `databaseUpdater.py`, `scraperManager.py` — untouched, still legacy
+- `wuwa-reprocess` (under `src/`) still supports the legacy `echoesProcessor`
+  path via `--extractor`
 - Legacy scrapers (characters, achievements, shell) remain in top-level `scraping/`
 - Disk saving is opt-in debug mode (`--save-raw`) rather than the default
 
@@ -683,3 +757,171 @@ re-batched), which is acceptable since it's uncommon.
 **Disk saves for debug:** `EchoCapture.full_screenshot` is populated only in
 debug mode; the reprocess path remains functional via `wuwa-reprocess
 --service`.
+
+---
+
+## Sonata Icon Matching
+
+Sonata detection was moved from scroll-into-subwindow + OCR text matching to
+direct icon template matching.  This eliminates a fragile scroll step and
+removes an entire OCR batch from the echo pipeline.
+
+### Module: `scraping/matching/sonata_icon.py`
+
+`SonataIconMatcher` loads RGBA reference PNGs from `assets/IconS/` once at
+construction, then for each scanned icon:
+
+1. Scale each reference to the scan icon dimensions (`INTER_AREA`).
+2. Build a smooth circular mask (optionally using calibrated circle
+   parameters from `sonataIconCircle` in the game ROI).
+3. Combine the circular mask with each reference's alpha channel.
+4. Score: `NCC − λ × colour_dist_norm` (λ = 1.5).
+   NCC alone is colour-blind; the colour-distance penalty prevents
+   hue-different references from winning on structure alone.
+5. Try both BGR and RGB channel orderings (scanned PNGs may be stored
+   with non-standard byte order).
+6. Return the match with the highest combined score.
+
+```python
+matcher = SonataIconMatcher()
+slug, score = matcher.match(icon_bgr)           # → ("moonlitclouds", 0.87)
+key = matcher.match_to_sonata_key(icon_bgr, sonata_names, cx=cx, cy=cy, r=r)
+```
+
+Accuracy on a 964-echo reference session: 963/964 (99.9%).
+
+### ROI coordinates
+
+`game_roi.py` defines `sonataIcon` (the small icon crop) and
+`sonataIconCircle` (calibrated circle centre/radius) per resolution.
+The echo workflow crops `sonataIcon` from the single un-scrolled
+screenshot — no second capture or scroll needed.
+
+---
+
+## Testing
+
+### Unit tests (`tests/`)
+
+Located in `tests/`, run by `uv run pytest` (the `testpaths` default in
+`pyproject.toml`):
+
+| File | What it tests |
+|---|---|
+| `test_echoesValidator.py` | `validate_echo_stats`, `expected_sub_count` |
+| `test_ocrStats.py` | OCR stat value parsing |
+| `test_ocrSubstatNames.py` | Substat name fuzzy matching |
+| `data/` | Fixture data for test cases |
+
+### Session integration tests (`session_tests/`)
+
+Located in `session_tests/`, driven by `--session-dir` (external scan data
+not checked into the repo):
+
+```
+uv run pytest session_tests/ --session-dir K:/wuwa/export/2026-03-29_15-04-03
+```
+
+The `session_tests/conftest.py` registers `--session-dir PATH` and
+dynamically parametrizes two fixture types via `pytest_generate_tests`:
+
+- **`echo_case`** — one case per `raw/echo_NNNN/` with `full.png` +
+  ground truth from `echoes_wuwainventorykamera.json`.
+- **`stats_case`** — one case per `raw/echo_NNNN/debug/` with
+  `stats_name.png`, `stats_value.png`, `result.json`.
+
+Without `--session-dir`, all session tests skip (zero cost).
+
+| File | What it tests | Cases |
+|---|---|---|
+| `test_sonata_icon_matching.py` | `SonataIconMatcher` accuracy vs ground truth | 1 per echo |
+| `test_stats_extractors.py` | All 4 OCR stats extractors × colour/bw vs ground truth | 4×2 per echo |
+
+---
+
+## Legacy Module Migration Plan
+
+Every module still outside `src/wuwa_inventory_kamera/` needs to be moved in,
+replaced by a V2 equivalent, or explicitly deleted.  The table below groups
+modules by disposition and priority.
+
+### Phase 1 — Delete (no remaining callers or superseded)
+
+These modules have V2 replacements inside `src/` and are not imported by any
+V2 code path.  They can be deleted outright once the UI is ported or dropped.
+
+| Module | Superseded by | Notes |
+|---|---|---|
+| `game/foreground.py` | `src/.../game/screen.py` (`GameWindow`) | Legacy `WindowManager` |
+| `game/gameROI.py` | `src/.../game/game_roi.py` | ROI definitions migrated |
+| `game/screenInfo.py` | `src/.../game/screen_info.py` | Resolution accessor migrated |
+| `game/menu.py` | `src/.../game/navigation.py` | Menu detection is in `GameNavigator` |
+| `game/stopKey.py` | `src/.../game/stop_signal.py` | Stop-key handler migrated |
+| `scraping/scanning/echoesScanner.py` | `src/.../scraping/scanning/echo_workflow.py` | Phase 1 capture |
+| `scraping/scanning/echo.py` | `src/.../scraping/scanning/echo_workflow.py` | Echo capture helpers |
+| `scraping/models/rawScan.py` | In-memory `EchoCapture` | Disk-based scan model |
+| `scraping/utils/mouse_keyboard.py` | `src/.../game/input_controller.py` | Input abstraction migrated |
+| `scraping/ocr/` (all 4 files) | `src/.../scraping/ocr/` | OCR backend migrated |
+| `batch_ocr.py` | `src/.../scraping/ocr/batch.py` | Standalone batch runner |
+| `setup.py` | `pyproject.toml` (hatchling) | Legacy setuptools |
+| `tools/match_sonata_icon/` | `src/.../scraping/matching/sonata_icon.py` | Prototype integrated |
+
+### Phase 2 — Move into `src/` (still needed, no V2 equivalent yet)
+
+These modules provide functionality that V2 needs but doesn't yet have.
+Move them under `src/wuwa_inventory_kamera/` with updated imports.
+
+| Module | Target location | Action |
+|---|---|---|
+| `scraping/data.py` | Already duplicated in `src/.../scraping/data.py` | Delete legacy copy; update legacy callers to import from `src/` or inline |
+| `scraping/processing/echoesValidator.py` | Already duplicated in `src/.../scraping/processing/` | Delete legacy copy; point legacy imports at `src/` |
+| `scraping/processing/statsExtractor.py` | `src/.../scraping/processing/stats_extractor.py` | Move; used by `wuwa-reprocess --extractor` and session tests |
+| `scraping/processing/echoesProcessor.py` | `src/.../scraping/processing/echoes_processor.py` | Move; used by `wuwa-reprocess --extractor` path + UI reprocess |
+| `scraping/utils/common.py` | `src/.../scraping/utils/` or inline | `isUserAdmin` → `src/.../utils/`, `itemsID` / `savingScraped` → `src/.../scraping/export.py` |
+| `properties/app_config.py` | `src/.../config/app_config.py` | Plain config singleton, no Qt dependency |
+| `updater/databaseUpdater.py` | `src/.../updater/database.py` | Data JSON update logic |
+| `updater/assetsUpdater.py` | `src/.../updater/assets.py` | Asset download logic |
+
+### Phase 3 — Port or Remove (V1 scrapers + UI)
+
+These are the V1 scrapers and the Qt UI layer.  Each scraper either gets
+ported to a V2 workflow or is dropped if the feature is deprecated.
+
+| Module | Plan |
+|---|---|
+| `scraping/echoesScraper.py` | **Remove** — fully superseded by `EchoWorkflow` |
+| `scraping/weaponsScraper.py` | **Remove** — fully superseded by `WeaponWorkflow` |
+| `scraping/itemsScraper.py` | **Remove** — fully superseded by `WeaponWorkflow` (tab=RESOURCES) |
+| `scraping/charactersScraper.py` | **Port** to `src/.../scraping/scanning/character_workflow.py` |
+| `scraping/achievementsScraper.py` | **Port** to `src/.../scraping/scanning/achievement_workflow.py` |
+| `scraping/shellScraper.py` | **Port** to `src/.../scraping/scanning/shell_workflow.py` |
+| `scraping/scraperManager.py` | **Remove** — replaced by `SessionOrchestrator` |
+| `scraping/scraperExectuter.py` | **Remove** — replaced by `wuwa-scan` CLI |
+| `ui/` (all) | **Port** — update imports from legacy `scraping/` / `game/` to `src/` package, or rewrite against V2 `SessionOrchestrator` |
+| `properties/config.py` | **Port with UI** — Qt-dependent, moves when UI moves |
+| `app.py` + `main.py` | **Port with UI** — entry points for the Qt application |
+
+### Phase 4 — Cleanup
+
+| Item | Action |
+|---|---|
+| `cli/` (top-level) | `debug_ocr.py` → nav-script or remove; `reprocess.py` → remove (superseded by `wuwa-reprocess`); `update_data.py` → `src/.../cli/` or remove |
+| `conftest.py` (root) | Remove once no test imports legacy modules via bare `from scraping...` |
+| `nav-scripts/` | Keep as-is (run via `wuwa-nav session.py`) |
+| `tools/` (minus `match_sonata_icon/`) | Keep as development tools; not part of the distributed package |
+| `scratchpad/` | Keep; not part of the package |
+
+### Dependency on migration order
+
+```
+Phase 1 (delete dead code)
+  └─► Phase 2 (move shared modules into src/)
+        └─► Phase 3 (port remaining scrapers + UI)
+              └─► Phase 4 (cleanup root conftest, top-level cli/, etc.)
+```
+
+Phase 1 can proceed immediately — nothing depends on the deleted modules
+except the UI, which itself needs porting (Phase 3).  Phase 2 is
+prerequisite to Phase 3 because the ported scrapers / UI will import from
+`src/`.  Phase 4 is a final sweep once all functional code lives under
+`src/`.
