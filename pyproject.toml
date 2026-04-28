@@ -16,6 +16,7 @@ dependencies = [
     "rapidocr-onnxruntime",
     "PyYAML",
     "onnxruntime-directml",
+    "babel",
 ]
 
 [project.optional-dependencies]
