@@ -77,6 +77,38 @@ class CustomSpinBox(SpinBox):
         return self.textFromValue(value)
 
 
+class SpinBoxSettingCard(SettingCard):
+    """Setting card with a SpinBox bound to a ConfigItem."""
+
+    def __init__(
+        self,
+        configItem,
+        icon: Union[str, QIcon, FluentIconBase],
+        title: str,
+        content: str = None,
+        min_value: int = 1,
+        max_value: int = 100,
+        parent=None,
+    ):
+        super().__init__(icon, title, content, parent)
+        self.configItem = configItem
+
+        self.spinBox = SpinBox(self)
+        self.spinBox.setRange(min_value, max_value)
+        self.spinBox.setValue(qconfig.get(configItem))
+        self.spinBox.setMinimumWidth(80)
+
+        self.hBoxLayout.addWidget(self.spinBox, 0, Qt.AlignRight)
+        self.hBoxLayout.addSpacing(16)
+
+        self.spinBox.valueChanged.connect(lambda v: qconfig.set(self.configItem, v))
+        configItem.valueChanged.connect(self._setValue)
+
+    def _setValue(self, value: int):
+        if self.spinBox.value() != value:
+            self.spinBox.setValue(value)
+
+
 class MultiplePushSettingCard(SettingCard):
     """Setting card with multiple push buttons aligned to the right."""
 

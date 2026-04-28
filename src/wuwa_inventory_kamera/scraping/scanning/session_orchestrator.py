@@ -67,6 +67,9 @@ class SessionOrchestrator:
         Keybind to open the inventory.
     on_progress:
         Progress callback ``(step, scanned, total)``.
+    max_batch_size:
+        Hard cap on captures processed per OcrService batch iteration.
+        Lower values reduce GPU memory pressure when the game is running.
     """
 
     def __init__(
@@ -79,6 +82,7 @@ class SessionOrchestrator:
         save_raw: Path | None = None,
         inventory_key: str = 'b',
         on_progress: ProgressCallback | None = None,
+        max_batch_size: int = 8,
         *,
         windowed: bool = False,
     ) -> None:
@@ -90,6 +94,7 @@ class SessionOrchestrator:
         self.save_raw = save_raw
         self.inventory_key = inventory_key
         self.on_progress = on_progress or _noop_progress
+        self.max_batch_size = max_batch_size
         self.windowed = windowed
 
     def run(self) -> dict[str, Any]:
@@ -138,6 +143,7 @@ class SessionOrchestrator:
             providers=self.ocr_providers,
             min_rarity=self.min_rarity,
             min_level=self.min_level,
+            max_batch_size=self.max_batch_size,
         ) as ocr_service:
 
             for scraper_name in self.scrapers:

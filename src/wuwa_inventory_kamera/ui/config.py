@@ -119,6 +119,13 @@ class Config(QConfig):
     weaponsMinRarity = ConfigItem("Scanner", "WeaponsMinRarity", 1, RangeValidator(1, 5))
     weaponsMinLevel = ConfigItem("Scanner", "WeaponsMinLevel", 1, RangeValidator(1, 90))
 
+    # OCR backend
+    ocrBackend = OptionsConfigItem(
+        "OCR", "Backend", "DML+CPU",
+        OptionsValidator(["DML+CPU", "CPU only"]),
+    )
+    ocrBatchSize = ConfigItem("OCR", "BatchSize", 8, RangeValidator(1, 64))
+
 
 # ---------------------------------------------------------------------------
 # Singleton

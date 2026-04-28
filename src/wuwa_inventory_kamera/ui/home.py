@@ -63,6 +63,7 @@ class ScanThread(QThread):
         min_level: int,
         inventory_key: str,
         export_folder: str,
+        max_batch_size: int = 8,
     ):
         super().__init__()
         self._scrapers = scrapers
@@ -71,6 +72,7 @@ class ScanThread(QThread):
         self._min_level = min_level
         self._inventory_key = inventory_key
         self._export_folder = export_folder
+        self._max_batch_size = max_batch_size
 
     def run(self):  # noqa: D102  (QThread override)
         from ..scraping.scanning.session_orchestrator import SessionOrchestrator
@@ -85,6 +87,7 @@ class ScanThread(QThread):
                 sort_order=SortOrder.LEVEL,
                 save_raw=Path(self._export_folder),
                 inventory_key=self._inventory_key,
+                max_batch_size=self._max_batch_size,
                 on_progress=lambda step, s, t: self.progress.emit(step, s, t),
             )
             result = orch.run()
@@ -422,13 +425,20 @@ class LControlPanel(QFrame):
 
         self.startScanning.setEnabled(False)
 
+        backend = cfg.ocrBackend.value
+        if backend == 'CPU only':
+            ocr_providers = ['CPUExecutionProvider']
+        else:
+            ocr_providers = ['DmlExecutionProvider', 'CPUExecutionProvider']
+
         self._scan_thread = ScanThread(
             scrapers=scrapers,
-            ocr_providers=['DmlExecutionProvider', 'CPUExecutionProvider'],
+            ocr_providers=ocr_providers,
             min_rarity=cfg.echoMinRarity.value,
             min_level=cfg.echoMinLevel.value,
             inventory_key=cfg.get(cfg.inventoryKeybind).lower(),
             export_folder=cfg.get(cfg.exportFolder),
+            max_batch_size=cfg.ocrBatchSize.value,
         )
         self._scan_thread.progress.connect(self._onScanProgress)
         self._scan_thread.finished.connect(self._onScanFinished)

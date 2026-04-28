@@ -20,7 +20,7 @@ from qfluentwidgets import (
     OptionsSettingCard, Theme, setTheme,
 )
 
-from .custom_widgets import FieldSettingCard
+from .custom_widgets import FieldSettingCard, SpinBoxSettingCard
 from .config import (
     cfg, alphabethList, maxLength,
     HELP_URL, FEEDBACK_URL, LANGUAGES,
@@ -109,6 +109,26 @@ class SettingInterface(ScrollArea):
             self.inGameGroup,
         )
 
+        # OCR
+        self.ocrGroup = SettingCardGroup(self.tr('OCR'), self.scrollWidget)
+        self.ocrBackendCard = ComboBoxSettingCard(
+            cfg.ocrBackend,
+            FIF.SPEED_HIGH,
+            self.tr('OCR Backend'),
+            self.tr('DML+CPU uses the GPU (DirectML) for faster OCR; CPU only avoids GPU memory pressure when the game is running'),
+            ['DML+CPU', 'CPU only'],
+            self.ocrGroup,
+        )
+        self.ocrBatchSizeCard = SpinBoxSettingCard(
+            cfg.ocrBatchSize,
+            FIF.TILES,
+            self.tr('OCR Batch Size'),
+            self.tr('Number of images processed per GPU forward pass. Lower values reduce GPU memory usage (default: 8)'),
+            min_value=1,
+            max_value=64,
+            parent=self.ocrGroup,
+        )
+
         # Software update
         self.updateSoftwareGroup = SettingCardGroup(self.tr("Software update"), self.scrollWidget)
         self.updateOnStartUpCard = SwitchSettingCard(
@@ -152,6 +172,8 @@ class SettingInterface(ScrollArea):
         self.inGameGroup.addSettingCard(self.languageGame)
         self.inGameGroup.addSettingCard(self.inventoryKey)
         self.inGameGroup.addSettingCard(self.resonatorKey)
+        self.ocrGroup.addSettingCard(self.ocrBackendCard)
+        self.ocrGroup.addSettingCard(self.ocrBatchSizeCard)
         self.updateSoftwareGroup.addSettingCard(self.updateOnStartUpCard)
         self.aboutGroup.addSettingCard(self.helpCard)
         self.aboutGroup.addSettingCard(self.feedbackCard)
@@ -160,6 +182,7 @@ class SettingInterface(ScrollArea):
         self.expandLayout.setContentsMargins(60, 10, 60, 0)
         self.expandLayout.addWidget(self.personalizationGroup)
         self.expandLayout.addWidget(self.inGameGroup)
+        self.expandLayout.addWidget(self.ocrGroup)
         self.expandLayout.addWidget(self.updateSoftwareGroup)
         self.expandLayout.addWidget(self.aboutGroup)
 
