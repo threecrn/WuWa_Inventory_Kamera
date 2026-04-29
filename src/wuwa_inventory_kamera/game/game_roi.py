@@ -289,13 +289,276 @@ COORDINATES = {
                     Coordinates(1170, 995)
                 ]
             }
-        }
+        },
+        (2560, 1440): {
+            # All values scaled from (1920, 1080) by factor 4/3.
+            "terminal": Coordinates(186.7, 53.3, 200.0, 53.3),
+            "shell": Coordinates(1673.3, 50.7, 220.0, 66.7),
+            "offsets": {
+                "page": Coordinates(21.3, 32.0)
+            },
+            "scroll": {
+                "page": Coordinates(y=-41.67),
+                "characters": Coordinates(y=-74.67),
+                "sonata": Coordinates(y=93.33)
+            },
+            "scrapers": {
+                "weapons": Coordinates(108.7, 255.3),
+                "echoes": Coordinates(108.7, 435.3),
+                "devItems": Coordinates(108.7, 795.3),
+                "resources": Coordinates(108.7, 975.3),
+            },
+            "items": {
+                "start": Coordinates(273.3, 162.7, 201.3, 241.3),
+                "info": Coordinates(1728.0, 152.0, 744.0, 370.7),
+                "description": Coordinates(1728.0, 152.0, 744.0, 1093.3)
+            },
+            "weapons": {
+                "page": Coordinates(266.7, 66.7, 173.3, 53.3),
+                "start": Coordinates(273.3, 162.7, 201.3, 241.3),
+                "name": Coordinates(1740.0, 154.7, 726.7, 73.3),
+                "value": Coordinates(2206.7, 426.7, 253.3, 53.3),
+                "level": Coordinates(2213.3, 313.3, 240.0, 60.0),
+                "rank": Coordinates(1733.3, 706.7, 153.3, 66.7),
+                "sort": {
+                    "button": Coordinates(574.7, 1284.0),
+                    "items": [
+                        Coordinates(574.7, 1033.3),   # 0 – Sort by Rarity
+                        Coordinates(574.7, 1129.3),   # 1 – Sort by Level
+                        Coordinates(574.7, 1225.3),   # 2 – Sort by Amount
+                    ],
+                },
+            },
+            "echoes": {
+                "page": Coordinates(266.7, 66.7, 173.3, 53.3),
+                "start": Coordinates(273.3, 162.7, 201.3, 241.3),
+                "echoCard": Coordinates(1728.0, 152.0, 744.0, 226.7),
+                "level": Coordinates(2369.3, 334.7, 77.3, 40.0),
+                "sonataIcon": Coordinates(1921.3, 422.7, 30.7, 32.0),
+                "sonataIconCircle": {
+                    "circle": Coordinates(16.7, 16.9),
+                    "radius": 15.33,
+                },
+                "sonata": Coordinates(1730.7, 529.3, 738.7, 622.7),
+                "mouseMovement": Coordinates(2102.0, 887.3),
+                "fullStatsName": Coordinates(1840.0, 573.3, 480.0, 506.7),
+                "fullStatsValue": Coordinates(2320.0, 573.3, 133.3, 506.7),
+                "sort": {
+                    "button": Coordinates(574.7, 1284.0),
+                    "items": [
+                        Coordinates(574.7, 841.3),    # 0 – Sort by Level
+                        Coordinates(574.7, 937.3),    # 1 – Sort by Rarity
+                        Coordinates(574.7, 1033.3),   # 2 – Sort by Time Added
+                        Coordinates(574.7, 1129.3),   # 3 – Sort by Tuning Status
+                        Coordinates(574.7, 1225.3),   # 4 – Show Discarded First
+                    ],
+                },
+                "filter": {
+                    "button": Coordinates(302.7, 1304.0),
+                    "sonata": {
+                        "dropdown": Coordinates(1762.7, 624.0, 462.7, 60.0),
+                        "item_positions": [
+                            Coordinates(2053.3, 746.7),   # position 0
+                            Coordinates(2053.3, 853.3),   # position 1
+                        ],
+                        "item_names": [
+                            Coordinates(1762.7, 725.3, 462.7, 53.3),   # position 0
+                            Coordinates(1762.7, 826.7, 462.7, 53.3),   # position 1
+                            Coordinates(1762.7, 928.0, 462.7, 53.3),   # position 2
+                            Coordinates(1762.7, 1029.3, 462.7, 53.3),  # position 3
+                            Coordinates(1762.7, 1130.7, 462.7, 53.3),  # position 4
+                            Coordinates(1762.7, 1232.0, 462.7, 53.3),  # position 5
+                        ],
+                        "item_amounts": [
+                            Coordinates(2226.7, 725.3, 93.3, 53.3),    # position 0
+                            Coordinates(2226.7, 826.7, 93.3, 53.3),    # position 1
+                            Coordinates(2226.7, 928.0, 93.3, 53.3),    # position 2
+                            Coordinates(2226.7, 1029.3, 93.3, 53.3),   # position 3
+                            Coordinates(2226.7, 1130.7, 93.3, 53.3),   # position 4
+                            Coordinates(2226.7, 1232.0, 93.3, 53.3),   # position 5
+                        ],
+                        "bottom_offset_item_names": Coordinates(y=50.7),
+                        "scroll": Coordinates(y=3.88),
+                    }
+                }
+            },
+            "achievements": {
+                "status": Coordinates(2105.3, 306.7, 341.3, 86.7),
+                "searchBar": Coordinates(517.3, 198.7),
+                "searchButton": Coordinates(838.7, 198.7),
+                "achievementsButton": Coordinates(2232.0, 1053.3),
+                "achievementsTab": Coordinates(1113.3, 760.0),
+            },
+            "characters": {
+                "offsets": {
+                    "leftSide": Coordinates(y=181.3),
+                    "rightSide": Coordinates(y=141.3),
+                    "skillPosition": Coordinates(y=340.0)
+                },
+                "leftSide": Coordinates(109.3, 254.7),
+                "rightSide": Coordinates(2418.7, 271.3),
+                "resonatorName": Coordinates(333.3, 146.7, 373.3, 66.7),
+                "resonatorLevel": Coordinates(240.0, 266.7, 180.0, 106.7),
+                "weaponName": Coordinates(342.7, 168.0, 364.0, 45.3),
+                "weaponLevel": Coordinates(340.0, 213.3, 146.7, 46.7),
+                "weaponRank": Coordinates(233.3, 473.3, 126.7, 46.7),
+                "skillClick": Coordinates(614.0, 1204.0),
+                "skillLevel": Coordinates(520.0, 133.3, 93.3, 53.3),
+                "skillButton": Coordinates(266.7, 1306.7, 160.0, 46.7),
+                "chainClick": Coordinates(1686.7, 180.0),
+                "chainButton": Coordinates(456.0, 1285.3, 146.7, 42.7),
+                "skillPositions": [
+                    Coordinates(1006.7, 1206.7),
+                    Coordinates(1313.3, 1020.0),
+                    Coordinates(1680.0, 940.0),
+                    Coordinates(2046.7, 1020.0),
+                    Coordinates(2346.7, 1206.7)
+                ],
+                "chainPositions": [
+                    Coordinates(1860.0, 186.7),
+                    Coordinates(2086.7, 406.7),
+                    Coordinates(2186.7, 713.3),
+                    Coordinates(2086.7, 1020.0),
+                    Coordinates(1866.7, 1246.7),
+                    Coordinates(1560.0, 1326.7)
+                ]
+            }
+        },
     },
     (16, 10): {
         (1920, 1200): {
-            "echoes": {
-                "sonataIcon": Coordinates(1441, 377, 23, 23) # Sonata icon within the sonata region
+            # All values scaled from (1680, 1050) by factor 8/7.
+            "terminal": Coordinates(142.9, 36.6, 171.4, 45.7),
+            "shell": Coordinates(1257.1, 40.0, 165.7, 45.7),
+            "offsets": {
+                "page": Coordinates(18.3, 27.4)
             },
+            "scroll": {
+                "page": Coordinates(y=-36.23),
+                "characters": Coordinates(y=-64.0),
+                "sonata": Coordinates(y=80.0)
+            },
+            "scrapers": {
+                "weapons": Coordinates(81.7, 190.9),
+                "echoes": Coordinates(81.7, 325.7),
+                "devItems": Coordinates(81.7, 595.4),
+                "resources": Coordinates(81.7, 730.3),
+            },
+            "items": {
+                "start": Coordinates(205.7, 118.9, 148.6, 185.1),
+                "info": Coordinates(1298.3, 176.0, 554.3, 274.3),
+                "description": Coordinates(1298.3, 176.0, 554.3, 817.1)
+            },
+            "weapons": {
+                "page": Coordinates(200.0, 45.7, 148.6, 45.7),
+                "start": Coordinates(205.7, 118.9, 148.6, 185.1),
+                "name": Coordinates(1302.9, 173.7, 548.6, 57.1),
+                "value": Coordinates(1634.3, 377.1, 217.1, 45.7),
+                "level": Coordinates(1640.0, 291.4, 205.7, 51.4),
+                "rank": Coordinates(1297.1, 582.9, 114.3, 57.1),
+                "sort": {
+                    "button": Coordinates(430.9, 1069.7),
+                    "items": [
+                        Coordinates(430.9, 861.7),   # 0 – Sort by Rarity
+                        Coordinates(430.9, 941.7),   # 1 – Sort by Level
+                        Coordinates(430.9, 1021.7),  # 2 – Sort by Amount
+                    ],
+                },
+            },
+            "echoes": {
+                "page": Coordinates(200.0, 45.7, 148.6, 45.7),
+                "start": Coordinates(205.7, 118.9, 148.6, 185.1),
+                "echoCard": Coordinates(1298.3, 173.7, 555.4, 173.7),
+                "level": Coordinates(1777.0, 251.0, 58.1, 29.9),
+                "sonataIcon": Coordinates(1441.1, 377.1, 22.9, 22.9),
+                "sonataIconCircle": {
+                    "circle": Coordinates(12.55, 12.65),
+                    "radius": 11.5,
+                },
+                "sonata": Coordinates(1297.1, 457.1, 555.4, 466.3),
+                "mouseMovement": Coordinates(1801.7, 760.6),
+                "fullStatsName": Coordinates(1371.4, 480.0, 365.7, 434.3),
+                "fullStatsValue": Coordinates(1725.7, 480.0, 114.3, 434.3),
+                "sort": {
+                    "button": Coordinates(430.9, 1069.7),
+                    "items": [
+                        Coordinates(430.9, 701.7),   # 0 – Sort by Level
+                        Coordinates(430.9, 780.6),   # 1 – Sort by Rarity
+                        Coordinates(430.9, 861.7),   # 2 – Sort by Time Added
+                        Coordinates(430.9, 941.7),   # 3 – Sort by Tuning Status
+                        Coordinates(430.9, 1021.7),  # 4 – Show Discarded First
+                    ],
+                },
+                "filter": {
+                    "button": Coordinates(227.0, 978.1),
+                    "sonata": {
+                        "dropdown": Coordinates(1322.1, 468.0, 347.0, 45.0),
+                        "item_positions": [
+                            Coordinates(1540.0, 560.0),   # position 0
+                            Coordinates(1540.0, 640.0),   # position 1
+                        ],
+                        "item_names": [
+                            Coordinates(1322.1, 544.0, 347.0, 40.0),   # position 0
+                            Coordinates(1322.1, 620.0, 347.0, 40.0),   # position 1
+                            Coordinates(1322.1, 696.0, 347.0, 40.0),   # position 2
+                            Coordinates(1322.1, 772.0, 347.0, 40.0),   # position 3
+                            Coordinates(1322.1, 848.0, 347.0, 40.0),   # position 4
+                            Coordinates(1322.1, 924.0, 347.0, 40.0),   # position 5
+                        ],
+                        "item_amounts": [
+                            Coordinates(1669.9, 544.0, 69.9, 40.0),    # position 0
+                            Coordinates(1669.9, 620.0, 69.9, 40.0),    # position 1
+                            Coordinates(1669.9, 696.0, 69.9, 40.0),    # position 2
+                            Coordinates(1669.9, 772.0, 69.9, 40.0),    # position 3
+                            Coordinates(1669.9, 848.0, 69.9, 40.0),    # position 4
+                            Coordinates(1669.9, 924.0, 69.9, 40.0),    # position 5
+                        ],
+                        "bottom_offset_item_names": Coordinates(y=38.0),
+                        "scroll": Coordinates(y=2.91),
+                    }
+                }
+            },
+            "achievements": {
+                "status": Coordinates(1804.6, 225.1, 292.6, 74.3),
+                "searchBar": Coordinates(443.4, 147.4),
+                "searchButton": Coordinates(628.6, 147.4),
+                "achievementsButton": Coordinates(1674.3, 788.6),
+                "achievementsTab": Coordinates(840.0, 651.4),
+            },
+            "characters": {
+                "offsets": {
+                    "leftSide": Coordinates(y=136.0),
+                    "rightSide": Coordinates(y=106.9),
+                    "skillPosition": Coordinates(y=251.4)
+                },
+                "leftSide": Coordinates(77.7, 191.4),
+                "rightSide": Coordinates(1813.1, 202.9),
+                "resonatorName": Coordinates(251.4, 116.6, 320.0, 57.1),
+                "resonatorLevel": Coordinates(182.9, 205.7, 154.3, 91.4),
+                "weaponName": Coordinates(257.1, 134.9, 274.3, 38.9),
+                "weaponLevel": Coordinates(245.7, 171.4, 125.7, 40.0),
+                "weaponRank": Coordinates(163.4, 365.7, 106.3, 40.0),
+                "skillClick": Coordinates(460.6, 965.7),
+                "skillLevel": Coordinates(388.6, 108.6, 80.0, 45.7),
+                "skillButton": Coordinates(194.3, 1085.7, 137.1, 40.0),
+                "chainClick": Coordinates(1267.4, 198.9),
+                "chainButton": Coordinates(333.7, 1069.7, 125.7, 36.6),
+                "skillPositions": [
+                    Coordinates(754.3, 962.3),
+                    Coordinates(987.4, 825.1),
+                    Coordinates(1260.6, 762.3),
+                    Coordinates(1533.7, 825.1),
+                    Coordinates(1765.7, 962.3)
+                ],
+                "chainPositions": [
+                    Coordinates(1398.9, 201.1),
+                    Coordinates(1564.6, 364.6),
+                    Coordinates(1627.4, 593.1),
+                    Coordinates(1564.6, 827.4),
+                    Coordinates(1398.9, 987.4),
+                    Coordinates(1170.3, 1050.3)
+                ]
+            }
         },
         (1680, 1050): {
             "terminal": Coordinates(125, 32, 150, 40),
@@ -342,6 +605,7 @@ COORDINATES = {
                 "page": Coordinates(175, 40, 130, 40),
                 "start": Coordinates(180, 104, 130, 162),
                 "echoCard": Coordinates(1136, 152, 486, 152),
+                "level": Coordinates(1554.9, 219.6, 50.8, 26.2),  # Estimated from 1920x1080 × 7/8
                 "sonata": Coordinates(1135, 400, 486, 408),
                 "sonataIcon": Coordinates(1261, 330, 20, 20), # Scaled from 1920x1200 (×0.875)
                 "mouseMovement": Coordinates(1576.5, 665.5),
@@ -358,6 +622,35 @@ COORDINATES = {
                         Coordinates(377, 894),   # 4 – Sort Discarded First
                     ],
                 },
+                # Filter section – estimated from 1920x1080 × 7/8.
+                "filter": {
+                    "button": Coordinates(198.6, 855.8),
+                    "sonata": {
+                        "dropdown": Coordinates(1156.8, 409.5, 303.6, 39.4),
+                        "item_positions": [
+                            Coordinates(1347.5, 490.0),   # position 0
+                            Coordinates(1347.5, 560.0),   # position 1
+                        ],
+                        "item_names": [
+                            Coordinates(1156.8, 476.0, 303.6, 35.0),   # position 0
+                            Coordinates(1156.8, 542.5, 303.6, 35.0),   # position 1
+                            Coordinates(1156.8, 609.0, 303.6, 35.0),   # position 2
+                            Coordinates(1156.8, 675.5, 303.6, 35.0),   # position 3
+                            Coordinates(1156.8, 742.0, 303.6, 35.0),   # position 4
+                            Coordinates(1156.8, 808.5, 303.6, 35.0),   # position 5
+                        ],
+                        "item_amounts": [
+                            Coordinates(1461.2, 476.0, 61.2, 35.0),    # position 0
+                            Coordinates(1461.2, 542.5, 61.2, 35.0),    # position 1
+                            Coordinates(1461.2, 609.0, 61.2, 35.0),    # position 2
+                            Coordinates(1461.2, 675.5, 61.2, 35.0),    # position 3
+                            Coordinates(1461.2, 742.0, 61.2, 35.0),    # position 4
+                            Coordinates(1461.2, 808.5, 61.2, 35.0),    # position 5
+                        ],
+                        "bottom_offset_item_names": Coordinates(y=33.25),
+                        "scroll": Coordinates(y=2.55),
+                    }
+                }
             },
             "achievements": {
                 "status": Coordinates(1579, 197, 256, 65),
