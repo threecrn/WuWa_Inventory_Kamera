@@ -13,13 +13,14 @@ Exports
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Project root
 # ---------------------------------------------------------------------------
 
-#: Repository / install root — resolates to the directory containing
+#: Repository / install root — resolves to the directory containing
 #: ``assets/``, ``data/``, ``config/``, etc.
 basePATH: Path = Path(__file__).resolve().parents[3]
 
@@ -46,7 +47,7 @@ class AppConfig:
 
     Attributes are set to sensible defaults and can be overridden at runtime
     by the Qt config layer via :meth:`sync_from_qconfig`, or directly by CLI
-    tools.
+    tools.  Call :meth:`load` to populate from ``config/config.json``.
     """
 
     def __init__(self) -> None:
@@ -71,6 +72,77 @@ class AppConfig:
         self.scanResources: bool = False
         self.scanAchievements: bool = False
 
+        # Advanced / debug
+        self.logLevel: str = 'INFO'
+        self.saveRaw: bool = False
+
+    def load(self, path: str | Path = 'config/config.json') -> 'AppConfig':
+        """Populate fields from *path* (QConfig JSON format).
+
+        Silently ignores a missing or malformed file — defaults are kept.
+        """
+        _BOOL: dict = {
+            True: True, False: False,
+            'true': True, 'false': False,
+            1: True, 0: False,
+        }
+
+        def _bool(v) -> bool:
+            return _BOOL.get(v, bool(v))
+
+        try:
+            data = json.loads(Path(path).read_text(encoding='utf-8'))
+        except Exception:
+            return self
+
+        folders = data.get('Folders', {})
+        if 'Export' in folders:
+            self.exportFolder = str(folders['Export'])
+
+        update = data.get('Update', {})
+        if 'CheckUpdateAtStartUp' in update:
+            self.checkUpdateAtStartUp = _bool(update['CheckUpdateAtStartUp'])
+
+        in_game = data.get('InGame', {})
+        if 'Language' in in_game:
+            self.gameLanguage = str(in_game['Language'])
+        if 'InventoryKeybind' in in_game:
+            self.inventoryKeybind = str(in_game['InventoryKeybind'])
+        if 'ResonatorKeybind' in in_game:
+            self.resonatorKeybind = str(in_game['ResonatorKeybind'])
+        if 'RoverName' in in_game:
+            self.roverName = str(in_game['RoverName'])
+
+        scanner = data.get('Scanner', {})
+        _flag_map = {
+            'ScanCharacters':   'scanCharacters',
+            'ScanWeapons':      'scanWeapons',
+            'ScanEchoes':       'scanEchoes',
+            'ScanDevItems':     'scanDevItems',
+            'ScanResources':    'scanResources',
+            'scanAchievements': 'scanAchievements',
+        }
+        for json_key, attr in _flag_map.items():
+            if json_key in scanner:
+                setattr(self, attr, _bool(scanner[json_key]))
+        if 'EchoMinRarity' in scanner:
+            self.echoMinRarity = int(scanner['EchoMinRarity'])
+        if 'EchoMinLevel' in scanner:
+            self.echoMinLevel = int(scanner['EchoMinLevel'])
+        if 'WeaponsMinRarity' in scanner:
+            self.weaponsMinRarity = int(scanner['WeaponsMinRarity'])
+        if 'WeaponsMinLevel' in scanner:
+            self.weaponsMinLevel = int(scanner['WeaponsMinLevel'])
+
+        advanced = data.get('Advanced', {})
+        _valid_levels = {'DEBUG', 'INFO', 'WARNING', 'ERROR'}
+        if 'LogLevel' in advanced and str(advanced['LogLevel']).upper() in _valid_levels:
+            self.logLevel = str(advanced['LogLevel']).upper()
+        if 'SaveRaw' in advanced:
+            self.saveRaw = _bool(advanced['SaveRaw'])
+
+        return self
+
     def sync_from_qconfig(self, qcfg: object) -> None:
         """Pull values from a ``QConfig`` instance (Qt config layer).
 
@@ -84,24 +156,27 @@ class AppConfig:
         if get is None:
             return
 
-        self.exportFolder = get(qcfg.exportFolder)
-        self.gameLanguage = get(qcfg.gameLanguage)
-        self.inventoryKeybind = get(qcfg.inventoryKeybind)
-        self.resonatorKeybind = get(qcfg.resonatorKeybind)
-        self.roverName = get(qcfg.roverName)
+        self.exportFolder         = get(qcfg.exportFolder)
+        self.gameLanguage         = get(qcfg.gameLanguage)
+        self.inventoryKeybind     = get(qcfg.inventoryKeybind)
+        self.resonatorKeybind     = get(qcfg.resonatorKeybind)
+        self.roverName            = get(qcfg.roverName)
         self.checkUpdateAtStartUp = get(qcfg.checkUpdateAtStartUp)
 
-        self.echoMinRarity = qcfg.echoMinRarity.value
-        self.echoMinLevel = qcfg.echoMinLevel.value
+        self.echoMinRarity    = qcfg.echoMinRarity.value
+        self.echoMinLevel     = qcfg.echoMinLevel.value
         self.weaponsMinRarity = qcfg.weaponsMinRarity.value
-        self.weaponsMinLevel = qcfg.weaponsMinLevel.value
+        self.weaponsMinLevel  = qcfg.weaponsMinLevel.value
 
-        self.scanCharacters = qcfg.scanCharacters.value
-        self.scanWeapons = qcfg.scanWeapons.value
-        self.scanEchoes = qcfg.scanEchoes.value
-        self.scanDevItems = qcfg.scanDevItems.value
-        self.scanResources = qcfg.scanResources.value
+        self.scanCharacters  = qcfg.scanCharacters.value
+        self.scanWeapons     = qcfg.scanWeapons.value
+        self.scanEchoes      = qcfg.scanEchoes.value
+        self.scanDevItems    = qcfg.scanDevItems.value
+        self.scanResources   = qcfg.scanResources.value
         self.scanAchievements = qcfg.scanAchievements.value
 
+        self.logLevel = get(qcfg.logLevel)
+        self.saveRaw  = get(qcfg.saveRaw)
 
-app_config = AppConfig()
+
+app_config: AppConfig = AppConfig().load()
