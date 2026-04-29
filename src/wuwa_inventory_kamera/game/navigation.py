@@ -67,10 +67,11 @@ class InventoryTab(enum.Enum):
 
 class SortOrder(enum.Enum):
     """
-    Sort orders available in the echo inventory dropdown (top → bottom).
+    Sort orders available in inventory dropdowns.
 
-    The values are the 0-based position in the dropdown list as it opens
-    upward from the sort button.
+    For the **echoes** tab the values equal the 0-based dropdown index.
+    For other tabs (weapons, …) a separate per-tab index table is used by
+    :meth:`GameNavigator.set_sort_order`.
     """
     LEVEL           = 0   # Sort by Level
     RARITY          = 1   # Sort by Rarity
@@ -183,6 +184,13 @@ class GameNavigator:
 
     # ── Sort order manipulation ──────────────────────────────────────────
 
+    # Weapons sort dropdown: Rarity (0) → Level (1) → Amount (2).
+    # This differs from the echoes dropdown where LEVEL=0, RARITY=1.
+    _WEAPON_SORT_INDICES: dict = {
+        SortOrder.RARITY: 0,
+        SortOrder.LEVEL:  1,
+    }
+
     def set_sort_order(self, order: SortOrder, wait: float = 0.3) -> None:
         """
         Activate a specific sort order in the current inventory tab.
@@ -191,16 +199,20 @@ class GameNavigator:
         clicks the desired option.  Sort state is tracked so repeated calls
         for the same order are skipped.
 
-        The dropdown opens *above* the trigger button.  Coordinates are
-        stored in ``game_roi.COORDINATES`` under ``echoes.sort``.  Only
-        the options visible in the default dropdown (indices 0-3) are
-        directly reachable; higher indices raise ``ValueError``.
+        For the **echoes** tab the ``SortOrder`` value is used directly as
+        the dropdown index.  For the **weapons** tab a separate mapping is
+        applied because the weapon dropdown has a different order.
         """
         if self._current_sort == order:
             logger.debug('Sort order already %s', order.name)
             return
 
-        sort_coords = getattr(getattr(self.layout, 'echoes', None), 'sort', None)
+        # Resolve coordinates: prefer the current tab's own sort block,
+        # fall back to echoes.sort for tabs that share that dropdown.
+        tab_layout = getattr(self.layout, self._current_tab.value, None) if self._current_tab else None
+        sort_coords = getattr(tab_layout, 'sort', None)
+        if sort_coords is None:
+            sort_coords = getattr(getattr(self.layout, 'echoes', None), 'sort', None)
         if sort_coords is None:
             logger.warning(
                 'No sort coordinates in layout for %dx%d — skipping sort change',
@@ -208,10 +220,21 @@ class GameNavigator:
             )
             return
 
+        # Resolve the dropdown index for this tab.
+        if self._current_tab == InventoryTab.WEAPONS:
+            idx = self._WEAPON_SORT_INDICES.get(order)
+            if idx is None:
+                raise ValueError(
+                    f'SortOrder {order.name!r} is not available for the weapons tab. '
+                    f'Supported: {list(self._WEAPON_SORT_INDICES)}'
+                )
+        else:
+            idx = order.value
+
         sort_items = getattr(sort_coords, 'items', [])
-        if order.value >= len(sort_items):
+        if idx >= len(sort_items):
             raise ValueError(
-                f'SortOrder {order.name!r} (index {order.value}) is outside the '
+                f'SortOrder {order.name!r} (index {idx}) is outside the '
                 f'{len(sort_items)}-item dropdown visible in the current layout.'
             )
 
@@ -220,11 +243,11 @@ class GameNavigator:
         self.ctrl.click(btn.x, btn.y, wait=0.3)
 
         # Click the target option (dropdown opens upward: index 0 = topmost)
-        item = sort_items[order.value]
+        item = sort_items[idx]
         self.ctrl.click(item.x, item.y, wait=wait)
 
         self._current_sort = order
-        logger.info('Sort order set to %s', order.name)
+        logger.info('Sort order set to %s (dropdown index %d)', order.name, idx)
 
     # ── Page / item count reading ────────────────────────────────────────
 
@@ -245,6 +268,12 @@ class GameNavigator:
             int(page_roi.x) : int(page_roi.x + page_roi.w),
         ]
         raw = _nav_ocr(crop, allowed=string.digits + '/')
+        logger.debug(
+            'read_item_count: tab=%s roi=(%d,%d,%d,%d) ocr=%r',
+            self._current_tab.value if self._current_tab else '?',
+            int(page_roi.x), int(page_roi.y), int(page_roi.w), int(page_roi.h),
+            raw,
+        )
         parts = raw.split('/')
         try:
             count = int(parts[0])
@@ -270,7 +299,10 @@ class GameNavigator:
         if tab is None:
             raise RuntimeError('No inventory tab is selected')
 
-        tab_coords = getattr(self.layout, tab.value)
+        # devItems and resources share the same grid layout as the generic
+        # 'items' coordinate block.
+        layout_key = tab.value if tab not in (InventoryTab.DEV_ITEMS, InventoryTab.RESOURCES) else 'items'
+        tab_coords = getattr(self.layout, layout_key)
         start = tab_coords.start
         offsets = self.layout.offsets.page
 
@@ -603,7 +635,9 @@ class GameNavigator:
         tab = self._current_tab
         if tab is None:
             return None
-        tab_coords = getattr(self.layout, tab.value, None)
+        # devItems/resources share the weapons page-count ROI (same panel location).
+        layout_key = tab.value if tab not in (InventoryTab.DEV_ITEMS, InventoryTab.RESOURCES) else 'weapons'
+        tab_coords = getattr(self.layout, layout_key, None)
         if tab_coords is None:
             return None
         return getattr(tab_coords, 'page', None)

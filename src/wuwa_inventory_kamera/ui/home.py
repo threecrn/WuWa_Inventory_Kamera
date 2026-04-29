@@ -448,8 +448,8 @@ class LControlPanel(QFrame):
     def _onScanProgress(self, step: str, scanned: int, total: int):
         logger.debug("Scan progress: %s %d/%d", step, scanned, total)
         pct = int(scanned * 100 / total) if total > 0 else 0
-        if step == 'echoes':
-            self.scanProgressLabel.setText(f'Scan: {scanned}/{total}')
+        if step in ('echoes', 'weapons', 'devItems', 'resources', 'characters', 'achievements'):
+            self.scanProgressLabel.setText(f'Scan ({step}): {scanned}/{total}')
             self.scanProgressBar.setValue(pct)
         elif step == 'echoes:processing':
             self.processProgressLabel.setText(f'Processing: {scanned}/{total}')

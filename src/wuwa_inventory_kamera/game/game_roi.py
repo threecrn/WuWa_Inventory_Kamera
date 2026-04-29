@@ -176,7 +176,17 @@ COORDINATES = {
                 "name": Coordinates(1305, 116, 545, 55),
                 "value": Coordinates(1655, 320, 190, 40),
                 "level": Coordinates(1660, 235, 180, 45),
-                "rank": Coordinates(1300, 530, 115, 50)
+                "rank": Coordinates(1300, 530, 115, 50),
+                # Sort dropdown — same button as echoes; 3 options at 72 px spacing.
+                # Options top→bottom: Sort by Rarity / Sort by Level / Sort by Amount.
+                "sort": {
+                    "button": Coordinates(431, 963),
+                    "items": [
+                        Coordinates(431, 775),   # 0 – Sort by Rarity
+                        Coordinates(431, 847),   # 1 – Sort by Level
+                        Coordinates(431, 919),   # 2 – Sort by Amount
+                    ],
+                },
             },
             "echoes": {
                 "page": Coordinates(200, 50, 130, 40),
@@ -317,7 +327,16 @@ COORDINATES = {
                 "name": Coordinates(1140, 152, 480, 50),
                 "value": Coordinates(1430, 330, 190, 40),
                 "level": Coordinates(1435, 255, 180, 45),
-                "rank": Coordinates(1135, 510, 100, 50)
+                "rank": Coordinates(1135, 510, 100, 50),
+                # Sort dropdown – proportionally scaled from 1920x1080 measurements.
+                "sort": {
+                    "button": Coordinates(377, 936),
+                    "items": [
+                        Coordinates(377, 754),   # 0 – Sort by Rarity
+                        Coordinates(377, 824),   # 1 – Sort by Level
+                        Coordinates(377, 894),   # 2 – Sort by Amount
+                    ],
+                },
             },
             "echoes": {
                 "page": Coordinates(175, 40, 130, 40),

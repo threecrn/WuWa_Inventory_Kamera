@@ -71,9 +71,10 @@ class WeaponCapture:
 @dataclass
 class WeaponResult:
     """Assembled result for one weapon or item stack."""
-    index:     int
-    is_weapon: bool
-    data:      dict | None   # None = below threshold or not recognised
+    index:          int
+    is_weapon:      bool
+    data:           dict | None   # None = below threshold or not recognised
+    below_minimum:  bool = False  # True when rejected solely because level < min_level
 
 
 # ---------------------------------------------------------------------------

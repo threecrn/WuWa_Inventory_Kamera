@@ -105,7 +105,7 @@ class WeaponAssembler:
 
             if level < self._min_level:
                 logger.debug('Weapon %d — level %d < min %d, rejecting.', idx, level, self._min_level)
-                return WeaponResult(index=idx, is_weapon=True, data=None)
+                return WeaponResult(index=idx, is_weapon=True, data=None, below_minimum=True)
         else:
             level   = 0
             max_lv  = 0

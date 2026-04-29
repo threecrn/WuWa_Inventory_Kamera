@@ -180,7 +180,8 @@ class CharacterWorkflow:
                 self.ocr.submit(sec1_cap).result(timeout=30)
 
                 # --- Section 3: skills ---
-                # Click the skill navigation button to open the skill panel
+                # Navigate to the skills tab in the left sidebar, then open the skill tree
+                ctrl.click(ch.leftSide.x, ch.leftSide.y + ch.offsets.leftSide.y * 3, wait=0.8)
                 ctrl.click(ch.skillClick.x, ch.skillClick.y, wait=0.5)
                 skill_crops: dict[str, np.ndarray] = {}
                 for idx, pos in enumerate(ch.skillPositions):
@@ -197,6 +198,8 @@ class CharacterWorkflow:
                 self.ocr.submit(sec3_cap).result(timeout=30)
 
                 # --- Section 4: resonance chain ---
+                # Navigate to the chain tab in the left sidebar, then open the chain detail
+                ctrl.click(ch.leftSide.x, ch.leftSide.y + ch.offsets.leftSide.y * 4, wait=0.8)
                 ctrl.click(ch.chainClick.x, ch.chainClick.y, wait=0.7)
                 chain_crops: dict[str, np.ndarray] = {}
                 for idx, pos in enumerate(ch.chainPositions):

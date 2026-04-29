@@ -84,7 +84,10 @@ class WeaponWorkflow:
         Returns a list of accepted result dicts.
         """
         self.nav.switch_tab(self.tab)
-        if self.sort_order is not None:
+        # Only sort weapons by level — DEV_ITEMS/RESOURCES have no level
+        # and share a 3-option dropdown whose positions differ from the
+        # echoes dropdown that set_sort_order falls back to.
+        if self.sort_order is not None and self.tab == InventoryTab.WEAPONS:
             self.nav.set_sort_order(self.sort_order)
 
         total_items, total_pages = self.nav.read_item_count()
@@ -103,8 +106,10 @@ class WeaponWorkflow:
         grid = GridNavigator(self.nav, total_items, total_pages)
         seen_hashes: set[int] = set()
         results: list[dict] = []
+        processed = 0
 
         def _visitor(position: GridPosition) -> bool:
+            nonlocal processed
             if self._stop_event and self._stop_event.is_set():
                 return False
             layout = self.nav.layout
@@ -117,23 +122,33 @@ class WeaponWorkflow:
             if img_hash in seen_hashes:
                 self.session.mark_skipped(position.scan_index)
                 logger.debug('Weapon %d — duplicate image, skipping', position.scan_index)
+                processed += 1
+                if on_progress:
+                    on_progress(processed, self.session.total_items)
                 return True
             seen_hashes.add(img_hash)
 
-            # Crop regions
-            wi = getattr(layout, self.tab.value)
+            # Crop regions.
+            # devItems/resources share the weapons detail-panel layout for
+            # name and value, but use .value (item count) instead of .level.
+            is_item_tab = self.tab in (InventoryTab.DEV_ITEMS, InventoryTab.RESOURCES)
+            wi = layout.weapons  # weapons coords cover both weapons and item panels
             name_crop = full[
                 int(wi.name.y) : int(wi.name.y + wi.name.h),
                 int(wi.name.x) : int(wi.name.x + wi.name.w),
             ]
+            if is_item_tab:
+                value_roi = wi.value
+            else:
+                value_roi = wi.level
             value_crop = full[
-                int(wi.level.y) : int(wi.level.y + wi.level.h),
-                int(wi.level.x) : int(wi.level.x + wi.level.w),
+                int(value_roi.y) : int(value_roi.y + value_roi.h),
+                int(value_roi.x) : int(value_roi.x + value_roi.w),
             ]
 
             # Rank crop (weapons only, not items)
             rank_crop = None
-            if hasattr(wi, 'rank'):
+            if not is_item_tab:
                 rank_crop = full[
                     int(wi.rank.y) : int(wi.rank.y + wi.rank.h),
                     int(wi.rank.x) : int(wi.rank.x + wi.rank.w),
@@ -152,6 +167,9 @@ class WeaponWorkflow:
             except Exception as exc:
                 logger.error('Weapon %d — OCR error: %s', position.scan_index, exc)
                 self.session.mark_failed(position.scan_index, str(exc))
+                processed += 1
+                if on_progress:
+                    on_progress(processed, self.session.total_items)
                 return True
 
             if result.data is not None:
@@ -161,8 +179,18 @@ class WeaponWorkflow:
                 self.session.mark_skipped(position.scan_index)
                 logger.debug('Weapon %d — rejected', position.scan_index)
 
+            processed += 1
             if on_progress:
-                on_progress(self.session.scanned_count, self.session.total_items)
+                on_progress(processed, self.session.total_items)
+
+            # Early termination: when sorted by level, the first weapon below
+            # the minimum guarantees all remaining weapons are also below it.
+            if result.below_minimum and self.sort_order == SortOrder.LEVEL:
+                logger.info(
+                    'Weapon %d — below minimum level while sorted by level, stopping scan.',
+                    position.scan_index,
+                )
+                return False
 
             return True
 
