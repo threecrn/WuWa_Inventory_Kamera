@@ -177,7 +177,7 @@ The data format is specifically designed for [WuWa Tracker](https://wuwatracker.
 ## Credits
 - Highly inspired by [Inventory Kamera](https://github.com/Andrewthe13th/Inventory_Kamera) created by [Andrewthe13th](https://github.com/Andrewthe13th)
 - Item IDs sourced from [Dimbreath](https://github.com/Dimbreath/WutheringData)
-- Assets sourced from [Stormy Waves](https://github.com/Stormy-Waves/WW_Icon)
+- Sonata icons sourced from the [Wuthering Waves Fandom wiki](https://wutheringwaves.fandom.com) (fair use)
 
 ## License
 This project is licensed under the [GNU General Public License (GPL) v3](https://www.gnu.org/licenses/gpl-3.0.html).  
