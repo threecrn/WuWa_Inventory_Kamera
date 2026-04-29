@@ -76,6 +76,9 @@ class AppConfig:
         self.logLevel: str = 'INFO'
         self.saveRaw: bool = False
 
+        # Window mode
+        self.windowed: bool = False
+
     def load(self, path: str | Path = 'config/config.json') -> 'AppConfig':
         """Populate fields from *path* (QConfig JSON format).
 
@@ -140,6 +143,8 @@ class AppConfig:
             self.logLevel = str(advanced['LogLevel']).upper()
         if 'SaveRaw' in advanced:
             self.saveRaw = _bool(advanced['SaveRaw'])
+        if 'WindowedMode' in advanced:
+            self.windowed = _bool(advanced['WindowedMode'])
 
         return self
 
@@ -175,8 +180,9 @@ class AppConfig:
         self.scanResources   = qcfg.scanResources.value
         self.scanAchievements = qcfg.scanAchievements.value
 
-        self.logLevel = get(qcfg.logLevel)
-        self.saveRaw  = get(qcfg.saveRaw)
+        self.logLevel  = get(qcfg.logLevel)
+        self.saveRaw   = get(qcfg.saveRaw)
+        self.windowed  = get(qcfg.windowed)
 
 
 app_config: AppConfig = AppConfig().load()

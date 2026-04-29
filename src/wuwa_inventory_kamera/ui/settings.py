@@ -108,6 +108,13 @@ class SettingInterface(ScrollArea):
             alphabethList(),
             self.inGameGroup,
         )
+        self.windowedCard = SwitchSettingCard(
+            FIF.MINIMIZE,
+            self.tr('Windowed mode'),
+            self.tr('Enable if the game runs in a window instead of fullscreen. Screenshots and input coordinates will be relative to the game window.'),
+            configItem=cfg.windowed,
+            parent=self.inGameGroup,
+        )
 
         # OCR
         self.ocrGroup = SettingCardGroup(self.tr('OCR'), self.scrollWidget)
@@ -190,6 +197,7 @@ class SettingInterface(ScrollArea):
         self.inGameGroup.addSettingCard(self.languageGame)
         self.inGameGroup.addSettingCard(self.inventoryKey)
         self.inGameGroup.addSettingCard(self.resonatorKey)
+        self.inGameGroup.addSettingCard(self.windowedCard)
         self.ocrGroup.addSettingCard(self.ocrBackendCard)
         self.ocrGroup.addSettingCard(self.ocrBatchSizeCard)
         self.advancedGroup.addSettingCard(self.logLevelCard)

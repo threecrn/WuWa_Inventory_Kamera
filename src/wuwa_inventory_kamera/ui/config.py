@@ -126,6 +126,9 @@ class Config(QConfig):
     )
     ocrBatchSize = ConfigItem("OCR", "BatchSize", 8, RangeValidator(1, 64))
 
+    # Window mode
+    windowed = ConfigItem("Advanced", "WindowedMode", False, BoolValidator())
+
     # Advanced / debug
     logLevel = OptionsConfigItem(
         "Advanced", "LogLevel", "INFO",
