@@ -1,21 +1,21 @@
 # Ignore the virtual environment folder
-.venv/
+/.venv/
 
 # Ignore specific folders
-dist/
-build/
-logs/
-data/
-export/
-config/
+/dist/
+/build/
+/logs/
+/data/
+/export/
+/config/
 _test/
 
-captures/
-scratchpad/
-screenshots/
+/captures/
+/scratchpad/
+/screenshots/
 
 # Ignore assets
-assets/*
+/assets/*
 !assets/icon.ico
 
 
@@ -25,8 +25,8 @@ __pycache__/
 *.pyo
 
 # Ignore IDE-specific files (optional)
-.vscode/
-.idea/
+/.vscode/
+/.idea/
 
 # Ignore other common files
 *.log
