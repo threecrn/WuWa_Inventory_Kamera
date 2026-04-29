@@ -126,6 +126,13 @@ class Config(QConfig):
     )
     ocrBatchSize = ConfigItem("OCR", "BatchSize", 8, RangeValidator(1, 64))
 
+    # Advanced / debug
+    logLevel = OptionsConfigItem(
+        "Advanced", "LogLevel", "INFO",
+        OptionsValidator(["DEBUG", "INFO", "WARNING", "ERROR"]),
+    )
+    saveRaw = ConfigItem("Advanced", "SaveRaw", False, BoolValidator())
+
 
 # ---------------------------------------------------------------------------
 # Singleton

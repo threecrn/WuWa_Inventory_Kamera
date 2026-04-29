@@ -129,6 +129,24 @@ class SettingInterface(ScrollArea):
             parent=self.ocrGroup,
         )
 
+        # Advanced
+        self.advancedGroup = SettingCardGroup(self.tr('Advanced'), self.scrollWidget)
+        self.logLevelCard = ComboBoxSettingCard(
+            cfg.logLevel,
+            FIF.DEVELOPER_TOOLS,
+            self.tr('Console log level'),
+            self.tr('Verbosity of the console output (takes effect on next launch). Log files always capture DEBUG.'),
+            ['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+            self.advancedGroup,
+        )
+        self.saveRawCard = SwitchSettingCard(
+            FIF.SAVE,
+            self.tr('Save raw screenshots'),
+            self.tr('Save a copy of every raw screenshot to the export folder for offline reprocessing (increases disk usage).'),
+            configItem=cfg.saveRaw,
+            parent=self.advancedGroup,
+        )
+
         # Software update
         self.updateSoftwareGroup = SettingCardGroup(self.tr("Software update"), self.scrollWidget)
         self.updateOnStartUpCard = SwitchSettingCard(
@@ -174,6 +192,8 @@ class SettingInterface(ScrollArea):
         self.inGameGroup.addSettingCard(self.resonatorKey)
         self.ocrGroup.addSettingCard(self.ocrBackendCard)
         self.ocrGroup.addSettingCard(self.ocrBatchSizeCard)
+        self.advancedGroup.addSettingCard(self.logLevelCard)
+        self.advancedGroup.addSettingCard(self.saveRawCard)
         self.updateSoftwareGroup.addSettingCard(self.updateOnStartUpCard)
         self.aboutGroup.addSettingCard(self.helpCard)
         self.aboutGroup.addSettingCard(self.feedbackCard)
@@ -183,6 +203,7 @@ class SettingInterface(ScrollArea):
         self.expandLayout.addWidget(self.personalizationGroup)
         self.expandLayout.addWidget(self.inGameGroup)
         self.expandLayout.addWidget(self.ocrGroup)
+        self.expandLayout.addWidget(self.advancedGroup)
         self.expandLayout.addWidget(self.updateSoftwareGroup)
         self.expandLayout.addWidget(self.aboutGroup)
 

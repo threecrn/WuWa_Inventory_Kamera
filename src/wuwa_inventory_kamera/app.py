@@ -19,6 +19,20 @@ from .ui.loading import LoadingScreen
 logger = logging.getLogger('WuWaInventoryKamera')
 
 
+def _read_console_log_level() -> int:
+    """Read the console log level from config.json without Qt."""
+    import json
+    _valid = {'DEBUG', 'INFO', 'WARNING', 'ERROR'}
+    try:
+        data = json.loads(Path('config/config.json').read_text(encoding='utf-8'))
+        level_str = str(data.get('Advanced', {}).get('LogLevel', 'INFO')).upper()
+        if level_str in _valid:
+            return getattr(logging, level_str)
+    except Exception:
+        pass
+    return logging.INFO
+
+
 def configure_logging() -> None:
     """Set up file + console logging."""
     Path('logs').mkdir(parents=True, exist_ok=True)
@@ -43,7 +57,7 @@ def configure_logging() -> None:
 
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
-    console_handler.setLevel(logging.DEBUG)
+    console_handler.setLevel(_read_console_log_level())
 
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)

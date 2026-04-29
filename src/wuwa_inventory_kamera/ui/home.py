@@ -63,6 +63,7 @@ class ScanThread(QThread):
         min_level: int,
         inventory_key: str,
         export_folder: str,
+        save_raw: bool = False,
         max_batch_size: int = 8,
     ):
         super().__init__()
@@ -72,6 +73,7 @@ class ScanThread(QThread):
         self._min_level = min_level
         self._inventory_key = inventory_key
         self._export_folder = export_folder
+        self._save_raw = save_raw
         self._max_batch_size = max_batch_size
 
     def run(self):  # noqa: D102  (QThread override)
@@ -85,7 +87,7 @@ class ScanThread(QThread):
                 min_rarity=self._min_rarity,
                 min_level=self._min_level,
                 sort_order=SortOrder.LEVEL,
-                save_raw=Path(self._export_folder),
+                save_raw=Path(self._export_folder) if self._save_raw else None,
                 inventory_key=self._inventory_key,
                 max_batch_size=self._max_batch_size,
                 on_progress=lambda step, s, t: self.progress.emit(step, s, t),
@@ -438,6 +440,7 @@ class LControlPanel(QFrame):
             min_level=cfg.echoMinLevel.value,
             inventory_key=cfg.get(cfg.inventoryKeybind).lower(),
             export_folder=cfg.get(cfg.exportFolder),
+            save_raw=cfg.saveRaw.value,
             max_batch_size=cfg.ocrBatchSize.value,
         )
         self._scan_thread.progress.connect(self._onScanProgress)
