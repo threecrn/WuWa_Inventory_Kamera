@@ -192,13 +192,14 @@ COORDINATES = {
                 "page": Coordinates(200, 50, 130, 40),
                 "start": Coordinates(205, 122, 151, 181),
                 "echoCard": Coordinates(1296, 114, 558, 170),
+                "echoName": Coordinates(1316,125,544,40), # NEW-UI: Echo name
                 "level": Coordinates(1330, 198, 58, 30), # NEW-UI: Echo level has moved into the echo card header.
                 #"sonataIcon": Coordinates(1441, 317, 23, 24), # Sonata icon within the sonata region.
                 "sonataIcon": {
                     "radius": 14.5,
                     "level_XX": { # if level is 10 or above, the sonata icon shifts slightly to the left to make room for the double digit level badge.
                         "circle": Coordinates(14.5, 14.5),     # Circle parameters for the sonata icon (for matching).
-                        "icon":Coordinates(1396, 198, 29, 29), # NEW-UI: Sonata icon has moved to the echo card header.
+                        "icon": Coordinates(1396, 198, 29, 29), # NEW-UI: Sonata icon has moved to the echo card header.
                     },
                     "level_X":  { # if level is below 10, the sonata icon is slightly further to the right
                         "circle": Coordinates(14.5, 14.5),     # Circle parameters for the sonata icon (for matching).
