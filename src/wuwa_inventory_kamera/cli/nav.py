@@ -145,7 +145,7 @@ def _resolve_roi(layout, roi_name):
 
 
 # ---------------------------------------------------------------------------
-# Annotation helper
+# Annotation helpers
 # ---------------------------------------------------------------------------
 
 _ANNOTATE_COLORS = [
@@ -156,6 +156,65 @@ _ANNOTATE_COLORS = [
     (0,    0, 255),  # red
     (200,   0, 200),  # purple
 ]
+
+
+def _iter_coordinates(obj, prefix: str = ''):
+    """
+    Recursively yield ``(label, Coordinates)`` pairs from a
+    :class:`~...game.screen_info.ScreenInfoObject`, dict, or list.
+
+    Skips non-:class:`~...game.game_roi.Coordinates` scalars silently.
+    """
+    from ..game.game_roi import Coordinates as _Coords
+    from ..game.screen_info import ScreenInfoObject as _SIO
+
+    if isinstance(obj, _Coords):
+        yield prefix, obj
+    elif isinstance(obj, (_SIO, dict)):
+        items = obj.__dict__.items() if isinstance(obj, _SIO) else obj.items()
+        for key, val in items:
+            child = f'{prefix}.{key}' if prefix else key
+            yield from _iter_coordinates(val, child)
+    elif isinstance(obj, list):
+        for i, val in enumerate(obj):
+            yield from _iter_coordinates(val, f'{prefix}[{i}]')
+
+
+def _draw_single_coord(
+    img: 'np.ndarray',
+    label: str,
+    coord,
+    color: tuple,
+    ox: int,
+    oy: int,
+) -> None:
+    """Draw one :class:`~...game.game_roi.Coordinates` onto *img* (in-place)."""
+    import cv2
+
+    if coord is None:
+        h_img, w_img = img.shape[:2]
+        cv2.rectangle(img, (1, 1), (w_img - 2, h_img - 2), color, 2)
+    elif coord.w > 0 and coord.h > 0:
+        x1 = int(coord.x) - ox
+        y1 = int(coord.y) - oy
+        x2 = x1 + int(coord.w)
+        y2 = y1 + int(coord.h)
+        cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+        cv2.putText(
+            img, label, (x1 + 3, y1 + 14),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA,
+        )
+    else:
+        cx = int(coord.x) - ox
+        cy = int(coord.y) - oy
+        arm = 12
+        cv2.line(img, (cx - arm, cy), (cx + arm, cy), color, 2)
+        cv2.line(img, (cx, cy - arm), (cx, cy + arm), color, 2)
+        cv2.circle(img, (cx, cy), 3, color, -1)
+        cv2.putText(
+            img, label, (cx + arm + 3, cy + 5),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA,
+        )
 
 
 def _draw_annotations(
@@ -182,54 +241,46 @@ def _draw_annotations(
         * **Rectangle** when ``w > 0`` and ``h > 0``.
         * **Crosshair** when ``w == 0`` or ``h == 0`` (click target).
         * **Border** when the specifier resolves to ``'full'`` (``None``).
+
+        When a specifier resolves to a **section dict** (e.g. ``'echoes'``,
+        ``'weapons'``, ``'characters'``) rather than a single
+        :class:`~...game.game_roi.Coordinates`, *all* Coordinates nested
+        within that section are drawn recursively, each labelled with its
+        full dotpath (e.g. ``echoes.echoCard``, ``echoes.sort.button``).
     crop_origin:
         ``(x, y)`` top-left of the captured region in game-viewport pixels.
         Annotation coordinates are shifted by this offset so they align with
         the cropped image.
     """
-    import cv2
+    from ..game.game_roi import Coordinates as _Coords
+    from ..game.screen_info import ScreenInfoObject as _SIO
 
     img = img.copy()
     ox, oy = int(crop_origin[0]), int(crop_origin[1])
     names: list = annotate if isinstance(annotate, list) else [annotate]
 
-    for i, name in enumerate(names):
-        color = _ANNOTATE_COLORS[i % len(_ANNOTATE_COLORS)]
+    # Global color counter so each drawn element gets a distinct colour even
+    # when multiple section dicts are expanded across one annotate call.
+    color_idx = 0
+
+    for name in names:
+        label = name if isinstance(name, str) else repr(name)
         try:
             coord = _resolve_roi(layout, name)
         except NavError as exc:
             logger.warning('annotate: skipping %r — %s', name, exc)
             continue
 
-        label = name if isinstance(name, str) else repr(name)
-
-        if coord is None:
-            # 'full' — border around the whole image
-            h_img, w_img = img.shape[:2]
-            cv2.rectangle(img, (1, 1), (w_img - 2, h_img - 2), color, 2)
-        elif coord.w > 0 and coord.h > 0:
-            # ROI rectangle
-            x1 = int(coord.x) - ox
-            y1 = int(coord.y) - oy
-            x2 = x1 + int(coord.w)
-            y2 = y1 + int(coord.h)
-            cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
-            cv2.putText(
-                img, label, (x1 + 3, y1 + 14),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA,
-            )
+        if isinstance(coord, (_SIO, dict)):
+            # Section name — draw every nested Coordinates with its dotpath label
+            for entry_label, entry_coord in _iter_coordinates(coord, label):
+                color = _ANNOTATE_COLORS[color_idx % len(_ANNOTATE_COLORS)]
+                color_idx += 1
+                _draw_single_coord(img, entry_label, entry_coord, color, ox, oy)
         else:
-            # Click target — crosshair
-            cx = int(coord.x) - ox
-            cy = int(coord.y) - oy
-            arm = 12
-            cv2.line(img, (cx - arm, cy), (cx + arm, cy), color, 2)
-            cv2.line(img, (cx, cy - arm), (cx, cy + arm), color, 2)
-            cv2.circle(img, (cx, cy), 3, color, -1)
-            cv2.putText(
-                img, label, (cx + arm + 3, cy + 5),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA,
-            )
+            color = _ANNOTATE_COLORS[color_idx % len(_ANNOTATE_COLORS)]
+            color_idx += 1
+            _draw_single_coord(img, label, coord, color, ox, oy)
 
     return img
 
