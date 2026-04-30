@@ -76,8 +76,12 @@ class ScreenInfo:
 
         referenceData = COORDINATES[closestRatio][closestResolution]
 
-        def _scale(data):
+        def _scale(data, _no_scale: bool = False):
             if isinstance(data, Coordinates):
+                # Scroll values are wheel-notch amounts, not pixel coordinates.
+                # They are resolution-independent so must never be scaled.
+                if _no_scale:
+                    return data
                 return Coordinates(
                     x=self._scaleWidth(data.x, closestResolution[0]) if data.x else 0,
                     y=self._scaleHeight(data.y, closestResolution[1]) if data.y else 0,
@@ -85,9 +89,12 @@ class ScreenInfo:
                     h=self._scaleHeight(data.h, closestResolution[1]) if data.h else 0,
                 )
             elif isinstance(data, dict):
-                return {key: _scale(value) for key, value in data.items()}
+                return {
+                    key: _scale(value, _no_scale=(_no_scale or key == 'scroll'))
+                    for key, value in data.items()
+                }
             elif isinstance(data, list):
-                return [_scale(item) for item in data]
+                return [_scale(item, _no_scale=_no_scale) for item in data]
             else:
                 return data
 

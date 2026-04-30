@@ -292,15 +292,17 @@ COORDINATES = {
         },
         (2560, 1440): {
             # All values scaled from (1920, 1080) by factor 4/3.
+            # Exception: scroll values are mouse-wheel notch counts and are
+            # resolution-independent — they match the 1920x1080 values exactly.
             "terminal": Coordinates(186.7, 53.3, 200.0, 53.3),
             "shell": Coordinates(1673.3, 50.7, 220.0, 66.7),
             "offsets": {
                 "page": Coordinates(21.3, 32.0)
             },
             "scroll": {
-                "page": Coordinates(y=-41.67),
-                "characters": Coordinates(y=-74.67),
-                "sonata": Coordinates(y=93.33)
+                "page": Coordinates(y=-31.25),
+                "characters": Coordinates(y=-56),
+                "sonata": Coordinates(y=70)
             },
             "scrapers": {
                 "weapons": Coordinates(108.7, 255.3),
@@ -378,7 +380,7 @@ COORDINATES = {
                             Coordinates(2226.7, 1232.0, 93.3, 53.3),   # position 5
                         ],
                         "bottom_offset_item_names": Coordinates(y=50.7),
-                        "scroll": Coordinates(y=3.88),
+                        "scroll": Coordinates(y=2.91),
                     }
                 }
             },
@@ -428,15 +430,17 @@ COORDINATES = {
     (16, 10): {
         (1920, 1200): {
             # All values scaled from (1680, 1050) by factor 8/7.
+            # Exception: scroll values are mouse-wheel notch counts and are
+            # resolution-independent — they match the 1680x1050 values exactly.
             "terminal": Coordinates(142.9, 36.6, 171.4, 45.7),
             "shell": Coordinates(1257.1, 40.0, 165.7, 45.7),
             "offsets": {
                 "page": Coordinates(18.3, 27.4)
             },
             "scroll": {
-                "page": Coordinates(y=-36.23),
-                "characters": Coordinates(y=-64.0),
-                "sonata": Coordinates(y=80.0)
+                "page": Coordinates(y=-31.70),
+                "characters": Coordinates(y=-56),
+                "sonata": Coordinates(y=70)
             },
             "scrapers": {
                 "weapons": Coordinates(81.7, 190.9),
