@@ -82,6 +82,26 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Echo name colour-filter preprocessing
+# ---------------------------------------------------------------------------
+
+# The echo name in the new UI is rendered in a distinctive turquoise colour
+# (HSV H≈94, S≈84, V≈247) on a busy, non-monotone portrait background.
+# Masking by hue before OCR isolates the text and discards the background.
+_ECHO_NAME_HSV_LO = np.array([85,  60, 170], dtype=np.uint8)
+_ECHO_NAME_HSV_HI = np.array([105, 255, 255], dtype=np.uint8)
+
+
+def _filter_echo_name(bgr: np.ndarray) -> np.ndarray:
+    """Return a white-on-black RGB image containing only the turquoise name text."""
+    import cv2
+    hsv  = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, _ECHO_NAME_HSV_LO, _ECHO_NAME_HSV_HI)
+    mono = np.where(mask[:, :, None] > 0, np.uint8(255), np.uint8(0))
+    return cv2.cvtColor(mono, cv2.COLOR_GRAY2RGB)
+
+
+# ---------------------------------------------------------------------------
 # Internal queue item wrapper
 # ---------------------------------------------------------------------------
 
@@ -288,7 +308,13 @@ class OcrService:
         """
         captures = [it.capture for it in group]
 
-        card_results   = self._batch_ocr.ocr_images([c.card        for c in captures])
+        # Use the colour-filtered echo name crop when available (new UI),
+        # otherwise fall back to the raw card crop (legacy path).
+        name_source = [
+            _filter_echo_name(c.echo_name) if c.echo_name is not None else c.card
+            for c in captures
+        ]
+        card_results   = self._batch_ocr.ocr_images(name_source)
         name_results   = self._batch_ocr.ocr_images([c.stats_name   for c in captures])
         value_results  = self._batch_ocr.ocr_images([c.stats_value  for c in captures])
 

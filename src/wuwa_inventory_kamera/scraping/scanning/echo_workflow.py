@@ -320,6 +320,7 @@ class EchoWorkflow:
         sonata_icon_cx: float | None = None
         sonata_icon_cy: float | None = None
         sonata_icon_r:  float | None = None
+        detected_level: int | None = None
 
         if hasattr(si_raw, 'level_X'):
             # New-UI nested structure — pick variant based on digit count.
@@ -340,6 +341,9 @@ class EchoWorkflow:
             sonata_icon_cx = si_slot.circle.x
             sonata_icon_cy = si_slot.circle.y
             sonata_icon_r  = si_raw.radius
+            # Parse the level here so the assembler doesn't need to OCR card for it
+            if level_text.isdigit():
+                detected_level = min(25, int(level_text))
         else:
             # Legacy flat Coordinates (older resolution entries).
             si = si_raw
@@ -356,6 +360,15 @@ class EchoWorkflow:
             int(si.x) : int(si.x + si.w),
         ]
 
+        # ── Echo name crop (colour-filtered in the OCR service) ──────────
+        echo_name: np.ndarray | None = None
+        if hasattr(ei, 'echoName'):
+            en = ei.echoName
+            echo_name = full[
+                int(en.y) : int(en.y + en.h),
+                int(en.x) : int(en.x + en.w),
+            ]
+
         # Optionally save raw images
         if self.save_raw:
             self._save_raw(pos, full)
@@ -363,6 +376,8 @@ class EchoWorkflow:
         capture = EchoCapture(
             echo_index=pos.scan_index,
             card=card,
+            echo_name=echo_name,
+            detected_level=detected_level,
             sonata_icon=sonata_icon,
             sonata_icon_cx=sonata_icon_cx,
             sonata_icon_cy=sonata_icon_cy,

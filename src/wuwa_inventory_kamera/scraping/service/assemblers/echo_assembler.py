@@ -223,12 +223,16 @@ class EchoAssembler:
             name = name[len('phantom:'):]
             logger.debug('Echo %d — phantom prefix stripped: %r → %r', idx, name_raw, name)
 
-        # Level is on the third line of the card OCR
-        level_text = card_lines[2] if len(card_lines) > 2 else ''
-        try:
-            level = min(25, int(level_text))
-        except ValueError:
-            level = 0
+        # Level: prefer the value already parsed during capture (new UI path);
+        # fall back to the third card-OCR line for legacy resolutions.
+        if capture.detected_level is not None:
+            level = capture.detected_level
+        else:
+            level_text = card_lines[2] if len(card_lines) > 2 else ''
+            try:
+                level = min(25, int(level_text))
+            except ValueError:
+                level = 0
 
         logger.debug('Echo %d — card lines: %s | name=%r level=%d', idx, card_lines, name, level)
 

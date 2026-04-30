@@ -103,8 +103,8 @@ class Coordinates:
 # echoes
 #   page            ROI   — Item-count text region.
 #   start           ROI   — First grid cell.
-#   echoCard        ROI   — Echo card header (name + cost + element icon).
-#   sonata          ROI   — Sonata effect region (captured after scrolling).
+#   echoCard        ROI   — Echo card header (name + cost + element icon).#   echoName        ROI   — Echo name text line in the card header (turquoise text,
+#                           colour-filtered before OCR).#   sonata          ROI   — Sonata effect region (captured after scrolling).
 #   sonataIcon      ROI   — Sonata icon on the Echo portrait in the sonata region.
 #   mouseMovement   click — Position to hover the cursor before scrolling
 #                           the echo detail panel (ensures scroll targets
@@ -343,6 +343,7 @@ COORDINATES = {
                 "page": Coordinates(266.7, 66.7, 173.3, 53.3),
                 "start": Coordinates(273.3, 162.7, 201.3, 241.3),
                 "echoCard": Coordinates(1728.0, 152.0, 744.0, 226.7),
+                "echoName": Coordinates(1754.7, 166.7, 725.3, 53.3), # Scaled from 1920x1080 (×4/3)
                 "level": Coordinates(2369.3, 334.7, 77.3, 40.0),
                 "sonataIcon": Coordinates(1921.3, 422.7, 30.7, 32.0),
                 "sonataIconCircle": {
