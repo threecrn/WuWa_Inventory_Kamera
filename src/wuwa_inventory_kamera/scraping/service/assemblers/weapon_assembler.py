@@ -78,7 +78,11 @@ class WeaponAssembler:
         weaponsID, itemsID = _get_data()
         idx = capture.index
 
-        name_text  = tokens_to_string(name_tokens,  divisor='').lower().strip()
+        # Strip all whitespace so "Tyro Sword" → "tyrosword", matching the
+        # space-free lowercase keys in weaponsID / itemsID regardless of
+        # whether the OCR engine returns one token per word or one per phrase.
+        raw_name   = tokens_to_string(name_tokens,  divisor=' ').lower().strip()
+        name_text  = re.sub(r'\s+', '', raw_name)
         value_text = tokens_to_string(value_tokens, divisor=' ').strip()
 
         # ── Determine weapon vs item ──────────────────────────────────────
