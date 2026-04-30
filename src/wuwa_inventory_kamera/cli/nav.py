@@ -145,6 +145,96 @@ def _resolve_roi(layout, roi_name):
 
 
 # ---------------------------------------------------------------------------
+# Annotation helper
+# ---------------------------------------------------------------------------
+
+_ANNOTATE_COLORS = [
+    (0,   200,  0  ),  # green
+    (0,   140, 255),  # orange
+    (255,  0, 128),  # pink
+    (255, 255,   0),  # cyan
+    (0,    0, 255),  # red
+    (200,   0, 200),  # purple
+]
+
+
+def _draw_annotations(
+    img: 'np.ndarray',
+    layout,
+    annotate: 'str | tuple | list',
+    crop_origin: 'tuple[float, float]',
+) -> 'np.ndarray':
+    """
+    Draw ROI boxes and click-target crosshairs onto *img* (BGR) and return
+    a new annotated copy.
+
+    Parameters
+    ----------
+    img:
+        BGR image (as returned by ``cv2.cvtColor(rgb, COLOR_RGB2BGR)``).
+    layout:
+        The navigator layout object (passed to :func:`_resolve_roi`).
+    annotate:
+        A single ROI specifier or a list of specifiers — the same forms
+        accepted by :meth:`NavSession.screenshot` for its *roi* parameter.
+        Each resolved :class:`~...game.game_roi.Coordinates` is drawn as:
+
+        * **Rectangle** when ``w > 0`` and ``h > 0``.
+        * **Crosshair** when ``w == 0`` or ``h == 0`` (click target).
+        * **Border** when the specifier resolves to ``'full'`` (``None``).
+    crop_origin:
+        ``(x, y)`` top-left of the captured region in game-viewport pixels.
+        Annotation coordinates are shifted by this offset so they align with
+        the cropped image.
+    """
+    import cv2
+
+    img = img.copy()
+    ox, oy = int(crop_origin[0]), int(crop_origin[1])
+    names: list = annotate if isinstance(annotate, list) else [annotate]
+
+    for i, name in enumerate(names):
+        color = _ANNOTATE_COLORS[i % len(_ANNOTATE_COLORS)]
+        try:
+            coord = _resolve_roi(layout, name)
+        except NavError as exc:
+            logger.warning('annotate: skipping %r — %s', name, exc)
+            continue
+
+        label = name if isinstance(name, str) else repr(name)
+
+        if coord is None:
+            # 'full' — border around the whole image
+            h_img, w_img = img.shape[:2]
+            cv2.rectangle(img, (1, 1), (w_img - 2, h_img - 2), color, 2)
+        elif coord.w > 0 and coord.h > 0:
+            # ROI rectangle
+            x1 = int(coord.x) - ox
+            y1 = int(coord.y) - oy
+            x2 = x1 + int(coord.w)
+            y2 = y1 + int(coord.h)
+            cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(
+                img, label, (x1 + 3, y1 + 14),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA,
+            )
+        else:
+            # Click target — crosshair
+            cx = int(coord.x) - ox
+            cy = int(coord.y) - oy
+            arm = 12
+            cv2.line(img, (cx - arm, cy), (cx + arm, cy), color, 2)
+            cv2.line(img, (cx, cy - arm), (cx, cy + arm), color, 2)
+            cv2.circle(img, (cx, cy), 3, color, -1)
+            cv2.putText(
+                img, label, (cx + arm + 3, cy + 5),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA,
+            )
+
+    return img
+
+
+# ---------------------------------------------------------------------------
 # Domain error
 # ---------------------------------------------------------------------------
 
@@ -480,6 +570,7 @@ class NavSession:
         out: 'str | Path | None' = None,
         *,
         as_image: bool = False,
+        annotate: 'str | tuple[float, float, float, float] | list | None' = None,
     ) -> 'dict | np.ndarray | None':
         """
         Capture a screenshot.
@@ -497,6 +588,19 @@ class NavSession:
         as_image:
             When ``True``, skip file I/O and return the captured region as a
             BGR ``np.ndarray`` (same format as ``cv2.imread``).
+        annotate:
+            One ROI specifier or a list of specifiers to draw on top of the
+            captured image.  Accepts the same forms as *roi*: named aliases
+            (``'echo-card'``), dot-paths (``'echoes.echoCard'``), numeric
+            tuples ``(x, y, w, h)``, or comma-separated strings.
+
+            Each resolved coordinate is drawn as:
+
+            * **Rectangle** — when ``w > 0`` and ``h > 0``.
+            * **Crosshair** — when ``w == 0`` or ``h == 0`` (click target).
+
+            Coordinates are automatically offset to align with the cropped
+            region when *roi* is not ``'full'``.
 
         Returns a dict with ``saved``, ``roi``, and ``shape`` keys unless
         *as_image* is ``True``, in which case a BGR ``np.ndarray`` is returned
@@ -506,7 +610,7 @@ class NavSession:
         from ..game.screen import capture, capture_region
 
         if as_image:
-            logger.info('screenshot roi=%s (as_image)', roi)
+            logger.info('screenshot roi=%s annotate=%s (as_image)', roi, annotate)
             if self.dry_run:
                 return None
             layout  = self.nav.layout
@@ -515,7 +619,11 @@ class NavSession:
                 capture(self.gw) if roi_obj is None
                 else capture_region(self.gw, roi_obj)
             )
-            return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            if annotate is not None:
+                origin = (0.0, 0.0) if roi_obj is None else (roi_obj.x, roi_obj.y)
+                bgr = _draw_annotations(bgr, layout, annotate, origin)
+            return bgr
 
         out_path = Path(out) if out is not None else None
         if out_path is None:
@@ -523,7 +631,7 @@ class NavSession:
             self.screenshot_dir.mkdir(parents=True, exist_ok=True)
             out_path = self.screenshot_dir / f'screenshot_{ts}.png'
 
-        logger.info('screenshot roi=%s out=%s', roi, out_path)
+        logger.info('screenshot roi=%s annotate=%s out=%s', roi, annotate, out_path)
         if self.dry_run:
             return {'saved': str(out_path), 'roi': roi, 'dry_run': True}
 
@@ -533,9 +641,13 @@ class NavSession:
             capture(self.gw) if roi_obj is None
             else capture_region(self.gw, roi_obj)
         )
+        bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        if annotate is not None:
+            origin = (0.0, 0.0) if roi_obj is None else (roi_obj.x, roi_obj.y)
+            bgr = _draw_annotations(bgr, layout, annotate, origin)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        cv2.imwrite(str(out_path), cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
-        return {'saved': str(out_path), 'roi': roi, 'shape': list(img.shape)}
+        cv2.imwrite(str(out_path), bgr)
+        return {'saved': str(out_path), 'roi': roi, 'shape': list(bgr.shape)}
 
     # â”€â”€ State / inspection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
