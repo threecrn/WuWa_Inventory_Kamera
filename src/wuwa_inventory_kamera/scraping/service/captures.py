@@ -40,6 +40,9 @@ class EchoCapture:
     stats_value:     np.ndarray        # stat value column (RGB)
     sonata_icon:     np.ndarray | None = None  # small circular sonata icon crop (BGR)
     full_screenshot: np.ndarray | None = None  # full frame, debug mode only
+    sonata_icon_cx:  float | None = None  # circle centre-x in icon-crop space
+    sonata_icon_cy:  float | None = None  # circle centre-y in icon-crop space
+    sonata_icon_r:   float | None = None  # circle radius in icon-crop space
     # Set by OcrService.submit(); callers must not touch this field.
     _uid: int = field(default=-1, init=False, repr=False, compare=False)
 

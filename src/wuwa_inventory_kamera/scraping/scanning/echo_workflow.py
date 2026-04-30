@@ -309,8 +309,48 @@ class EchoWorkflow:
             int(ei.fullStatsValue.y) : int(ei.fullStatsValue.y + ei.fullStatsValue.h),
             int(ei.fullStatsValue.x) : int(ei.fullStatsValue.x + ei.fullStatsValue.w),
         ]
-        # Small circular sonata icon from the echo card area
-        si = ei.sonataIcon
+
+        # ── Sonata icon crop (level-dependent for new UI) ────────────────
+        # In the new UI the sonata icon sits immediately to the right of the
+        # level badge on the echo card header.  A two-digit level (10-25) is
+        # wider than a single-digit one (0-9), so the icon position differs.
+        # We OCR the level directly from the already-captured full screenshot
+        # to select the correct ROI variant before submitting the future.
+        si_raw = ei.sonataIcon
+        sonata_icon_cx: float | None = None
+        sonata_icon_cy: float | None = None
+        sonata_icon_r:  float | None = None
+
+        if hasattr(si_raw, 'level_X'):
+            # New-UI nested structure — pick variant based on digit count.
+            from ...scraping.ocr import imageToString
+            level_crop = full[
+                int(ei.level.y) : int(ei.level.y + ei.level.h),
+                int(ei.level.x) : int(ei.level.x + ei.level.w),
+            ]
+            level_text = imageToString(level_crop, allowedChars='0123456789').strip()
+            two_digits = len(level_text) == 2
+            si_slot = si_raw.level_XX if two_digits else si_raw.level_X
+            logger.debug(
+                'Echo %d — level_text=%r two_digits=%s → sonataIcon=%s',
+                pos.scan_index, level_text, two_digits,
+                'level_XX' if two_digits else 'level_X',
+            )
+            si = si_slot.icon
+            sonata_icon_cx = si_slot.circle.x
+            sonata_icon_cy = si_slot.circle.y
+            sonata_icon_r  = si_raw.radius
+        else:
+            # Legacy flat Coordinates (older resolution entries).
+            si = si_raw
+            if hasattr(ei, 'sonataIconCircle'):
+                sic = ei.sonataIconCircle
+                if hasattr(sic, 'circle'):
+                    sonata_icon_cx = sic.circle.x
+                    sonata_icon_cy = sic.circle.y
+                if hasattr(sic, 'radius'):
+                    sonata_icon_r = sic.radius
+
         sonata_icon = full[
             int(si.y) : int(si.y + si.h),
             int(si.x) : int(si.x + si.w),
@@ -324,6 +364,9 @@ class EchoWorkflow:
             echo_index=pos.scan_index,
             card=card,
             sonata_icon=sonata_icon,
+            sonata_icon_cx=sonata_icon_cx,
+            sonata_icon_cy=sonata_icon_cy,
+            sonata_icon_r=sonata_icon_r,
             stats_name=stats_name,
             stats_value=stats_value,
             full_screenshot=full if self.save_raw else None,

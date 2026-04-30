@@ -257,6 +257,9 @@ class EchoAssembler:
         if capture.sonata_icon is not None:
             sonata = self._sonata_matcher.match_to_sonata_key(
                 capture.sonata_icon, sonataName,
+                cx=capture.sonata_icon_cx,
+                cy=capture.sonata_icon_cy,
+                r=capture.sonata_icon_r,
             )
             if sonata is None:
                 logger.warning('Echo %d — sonata icon not matched, rejecting.', idx)
