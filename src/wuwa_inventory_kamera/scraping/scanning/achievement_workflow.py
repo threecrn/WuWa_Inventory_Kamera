@@ -33,7 +33,10 @@ from __future__ import annotations
 
 import logging
 import threading
+from pathlib import Path
 from typing import Callable
+
+import numpy as np
 
 from ...game.navigation import GameNavigator
 from ...game.screen import capture_region
@@ -58,6 +61,9 @@ class AchievementWorkflow:
         Scan session (used for progress tracking only).
     stop_event:
         Optional :class:`~threading.Event`; scanning stops when set.
+    save_raw:
+        If set, raw screenshots are saved to this directory for offline
+        reprocessing.
     """
 
     def __init__(
@@ -66,11 +72,13 @@ class AchievementWorkflow:
         ocr_service: OcrService,
         session: ScanSession,
         stop_event: threading.Event | None = None,
+        save_raw: Path | None = None,
     ) -> None:
         self.nav = nav
         self.ocr = ocr_service
         self.session = session
         self._stop_event = stop_event
+        self.save_raw = save_raw
 
     # ------------------------------------------------------------------
     # Public
@@ -112,6 +120,10 @@ class AchievementWorkflow:
             # Capture status crop
             status_crop = capture_region(self.nav.gw, ach.status)
 
+            # Optionally save raw images
+            if self.save_raw:
+                self._save_raw(achievement_id, achievement_name, status_crop)
+
             capture = AchievementCapture(
                 achievement_name=achievement_name,
                 achievement_id=achievement_id,
@@ -134,3 +146,31 @@ class AchievementWorkflow:
         ctrl.press_key('esc', wait=0.5)
         logger.info('Achievement workflow finished — %d/%d completed', len(completed_ids), total)
         return completed_ids
+
+    # ── Raw image persistence ────────────────────────────────────────────
+
+    def _save_raw(
+        self,
+        achievement_id: int,
+        achievement_name: str,
+        status_crop: np.ndarray,
+    ) -> None:
+        """Save raw screenshots to disk for offline reprocessing."""
+        import json
+        import cv2
+
+        assert self.save_raw is not None
+        ach_dir = self.save_raw / f'achievement_{achievement_id}'
+        ach_dir.mkdir(parents=True, exist_ok=True)
+
+        cv2.imwrite(str(ach_dir / 'status.png'), status_crop)
+
+        meta = {
+            'achievement_name': achievement_name,
+            'achievement_id': achievement_id,
+            'screen_width': self.nav.layout.width,
+            'screen_height': self.nav.layout.height,
+            'monitor': self.nav.layout.monitor,
+        }
+        with open(ach_dir / 'meta.json', 'w') as f:
+            json.dump(meta, f, indent=2)

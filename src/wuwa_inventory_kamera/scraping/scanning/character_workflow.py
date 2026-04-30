@@ -35,6 +35,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections import defaultdict
+from pathlib import Path
 from typing import Callable
 
 import numpy as np
@@ -74,6 +75,9 @@ class CharacterWorkflow:
         Keybind that opens the resonator panel (default: ``'c'``).
     stop_event:
         Optional :class:`~threading.Event`; scanning stops when set.
+    save_raw:
+        If set, raw screenshots are saved to this directory for offline
+        reprocessing.
     """
 
     def __init__(
@@ -83,12 +87,14 @@ class CharacterWorkflow:
         session: ScanSession,
         resonator_key: str = 'c',
         stop_event: threading.Event | None = None,
+        save_raw: Path | None = None,
     ) -> None:
         self.nav = nav
         self.ocr = ocr_service
         self.session = session
         self._resonator_key = resonator_key
         self._stop_event = stop_event
+        self.save_raw = save_raw
 
     # ------------------------------------------------------------------
     # Public
@@ -137,6 +143,9 @@ class CharacterWorkflow:
                     int(ch.resonatorLevel.x) : int(ch.resonatorLevel.x + ch.resonatorLevel.w),
                 ]
 
+                if self.save_raw:
+                    self._save_raw(char_index, 0, {'full': full})
+
                 sec0_cap = CharCapture(
                     char_index=char_index,
                     section=0,
@@ -168,6 +177,8 @@ class CharacterWorkflow:
                     int(ch.weaponRank.y) : int(ch.weaponRank.y + ch.weaponRank.h),
                     int(ch.weaponRank.x) : int(ch.weaponRank.x + ch.weaponRank.w),
                 ]
+                if self.save_raw:
+                    self._save_raw(char_index, 1, {'full': full})
                 sec1_cap = CharCapture(
                     char_index=char_index,
                     section=1,
@@ -190,6 +201,9 @@ class CharacterWorkflow:
                     skill_crops[SKILL_KEYS[idx]] = level_shot
                 ctrl.press_key('esc', wait=0.3)
 
+                if self.save_raw:
+                    self._save_raw(char_index, 3, skill_crops)
+
                 sec3_cap = CharCapture(
                     char_index=char_index,
                     section=3,
@@ -207,6 +221,9 @@ class CharacterWorkflow:
                     btn_shot = capture_region(self.nav.gw, ch.chainButton)
                     chain_crops[CHAIN_KEYS[idx]] = btn_shot
                 ctrl.press_key('esc', wait=0.3)
+
+                if self.save_raw:
+                    self._save_raw(char_index, 4, chain_crops)
 
                 sec4_cap = CharCapture(
                     char_index=char_index,
@@ -285,3 +302,33 @@ class CharacterWorkflow:
             'skills': dict(skills_out),
             'chain':  chain_count,
         }
+
+    # ── Raw image persistence ────────────────────────────────────────────
+
+    def _save_raw(
+        self,
+        char_index: int,
+        section: int,
+        images: dict[str, np.ndarray],
+    ) -> None:
+        """Save raw screenshots/crops to disk for offline reprocessing."""
+        import json
+        import cv2
+
+        assert self.save_raw is not None
+        char_dir = self.save_raw / f'char_{char_index:04d}'
+        section_dir = char_dir / f'section_{section}'
+        section_dir.mkdir(parents=True, exist_ok=True)
+
+        for name, img in images.items():
+            cv2.imwrite(str(section_dir / f'{name}.png'), img)
+
+        if section == 0:
+            meta = {
+                'char_index': char_index,
+                'screen_width': self.nav.layout.width,
+                'screen_height': self.nav.layout.height,
+                'monitor': self.nav.layout.monitor,
+            }
+            with open(char_dir / 'meta.json', 'w') as f:
+                json.dump(meta, f, indent=2)

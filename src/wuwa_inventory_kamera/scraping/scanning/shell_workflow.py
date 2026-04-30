@@ -20,6 +20,9 @@ part of the persistent HUD and is always visible on the main screen.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
+
+import numpy as np
 
 from ...game.navigation import GameNavigator
 from ...game.screen import capture_region
@@ -45,6 +48,9 @@ class ShellWorkflow:
         OCR service used to assemble the shell amount.
     session:
         Scan session (carried for consistency; not actively used).
+    save_raw:
+        If set, raw screenshots are saved to this directory for offline
+        reprocessing.
     """
 
     def __init__(
@@ -52,10 +58,12 @@ class ShellWorkflow:
         nav: GameNavigator,
         ocr_service: OcrService,
         session: ScanSession,
+        save_raw: Path | None = None,
     ) -> None:
         self.nav = nav
         self.ocr = ocr_service
         self.session = session
+        self.save_raw = save_raw
 
     # ------------------------------------------------------------------
     # Public
@@ -78,6 +86,10 @@ class ShellWorkflow:
 
         amount_crop = capture_region(self.nav.gw, layout.shell)
 
+        # Optionally save raw images
+        if self.save_raw:
+            self._save_raw(amount_crop)
+
         capture = ShellCapture(amount=amount_crop)
 
         try:
@@ -89,3 +101,23 @@ class ShellWorkflow:
 
         logger.info('ShellWorkflow finished — shell amount: %d', amount)
         return {_SHELL_ITEM_ID: amount}
+
+    # ── Raw image persistence ────────────────────────────────────────────
+
+    def _save_raw(self, amount_crop: np.ndarray) -> None:
+        """Save raw screenshot to disk for offline reprocessing."""
+        import json
+        import cv2
+
+        assert self.save_raw is not None
+        self.save_raw.mkdir(parents=True, exist_ok=True)
+
+        cv2.imwrite(str(self.save_raw / 'shell.png'), amount_crop)
+
+        meta = {
+            'screen_width': self.nav.layout.width,
+            'screen_height': self.nav.layout.height,
+            'monitor': self.nav.layout.monitor,
+        }
+        with open(self.save_raw / 'meta.json', 'w') as f:
+            json.dump(meta, f, indent=2)

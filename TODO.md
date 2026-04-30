@@ -1,4 +1,10 @@
 # To-Do List
+- [ ] WuWa 3.3 had UI overhaul, need to adjust nav and recognition for new UI elements
+  - [ ] character scan
+  - [ ] weapon scan
+  - [ ] echo scan
+  - [ ] other scans (dev items, achievements, etc)
+
 - [ ] echo scraper:
   - [x] improve validation
     - [x] validate echo sonata name against data/sonataName.json
@@ -13,6 +19,8 @@
   - [ ] domain specific recognition interface
     - [ ] control use of bw/rgb mode for ocr calls
     - [ ] don't write entire screenshots to file, only necessary image fragments?
+- [ ] weapon scraper:
+  - [ ] weapon name ocr: currently needs fuzzy-resolving every time due to whitespaces
 - [ ] game screen nav:
   - [ ] test scaffolding for nav functions / workflows
   - [ ] "pacing" (waits between actions)

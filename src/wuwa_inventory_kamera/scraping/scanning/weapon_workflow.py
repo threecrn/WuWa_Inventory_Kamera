@@ -19,7 +19,10 @@ from __future__ import annotations
 
 import logging
 import threading
+from pathlib import Path
 from typing import Callable
+
+import numpy as np
 
 from ...game.navigation import (
     GameNavigator,
@@ -59,6 +62,9 @@ class WeaponWorkflow:
         ``DEV_ITEMS`` or ``RESOURCES`` for item scanning).
     sort_order:
         Desired sort order, or ``None`` to leave unchanged.
+    save_raw:
+        If set, raw screenshots are saved to this directory for offline
+        reprocessing.
     """
 
     def __init__(
@@ -68,6 +74,7 @@ class WeaponWorkflow:
         session: ScanSession,
         tab: InventoryTab = InventoryTab.WEAPONS,
         sort_order: SortOrder | None = None,
+        save_raw: Path | None = None,
         stop_event: threading.Event | None = None,
     ) -> None:
         self.nav = nav
@@ -75,6 +82,7 @@ class WeaponWorkflow:
         self.session = session
         self.tab = tab
         self.sort_order = sort_order
+        self.save_raw = save_raw
         self._stop_event = stop_event
 
     def run(self, on_progress: Callable | None = None) -> list[dict]:
@@ -116,6 +124,10 @@ class WeaponWorkflow:
 
             # Full screenshot for this cell
             full = capture_full(layout.width, layout.height, layout.monitor, gw=self.nav.gw)
+
+            # Optionally save raw images
+            if self.save_raw:
+                self._save_raw(position, full)
 
             # Hash-based dedup: skip if identical to a previously seen cell
             img_hash = hash(full.tobytes())
@@ -201,3 +213,33 @@ class WeaponWorkflow:
             len(results), total_items,
         )
         return results
+
+    # ── Raw image persistence ────────────────────────────────────────────
+
+    def _save_raw(
+        self,
+        pos: GridPosition,
+        full: np.ndarray,
+    ) -> None:
+        """Save raw screenshots to disk for offline reprocessing."""
+        import json
+        import cv2
+
+        assert self.save_raw is not None
+        item_dir = self.save_raw / f'weapon_{pos.scan_index:04d}'
+        item_dir.mkdir(parents=True, exist_ok=True)
+
+        cv2.imwrite(str(item_dir / 'full.png'), full)
+
+        meta = {
+            'session_id': self.session.session_id,
+            'index': pos.scan_index,
+            'page': pos.page,
+            'row': pos.row,
+            'col': pos.col,
+            'screen_width': self.nav.layout.width,
+            'screen_height': self.nav.layout.height,
+            'monitor': self.nav.layout.monitor,
+        }
+        with open(item_dir / 'meta.json', 'w') as f:
+            json.dump(meta, f, indent=2)
