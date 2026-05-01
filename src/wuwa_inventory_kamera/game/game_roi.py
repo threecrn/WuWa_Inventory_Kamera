@@ -192,8 +192,14 @@ COORDINATES = {
                 "page": Coordinates(200, 50, 130, 40),
                 "start": Coordinates(205, 122, 151, 181),
                 "echoCard": Coordinates(1296, 114, 558, 170),
-                "echoName": Coordinates(1316,125,544,40), # NEW-UI: Echo name
+                "echoName": Coordinates(1316, 125, 544, 40), # NEW-UI: Echo name
                 "level": Coordinates(1330, 198, 58, 30), # NEW-UI: Echo level has moved into the echo card header.
+                # NEW-UI: Rarity is indicated by the colored area below the echo card portrait:
+                #  rarity 5: (1.00,0.98,0.69) = "gold"
+                #  rarity 4: (0.91,0.63,1.00) = "purple"
+                #  rarity 3: (0.60,0.60,1.00) = "blue"
+                #  rarity 2: (0.60,1.00,0.60) = "green"
+                "rarityColorPick": Coordinates(1313, 423), 
                 #"sonataIcon": Coordinates(1441, 317, 23, 24), # Sonata icon within the sonata region.
                 "sonataIcon": {
                     "radius": 14.5,
@@ -208,8 +214,8 @@ COORDINATES = {
                 },
                 "sonata": Coordinates(1298, 397, 554, 467),
                 "mouseMovement": Coordinates(1576.5, 665.5),
-                "fullStatsName": Coordinates(1380, 430, 360, 380),
-                "fullStatsValue": Coordinates(1740, 430, 100, 380),
+                "fullStatsName": Coordinates(1367, 455, 378, 398),
+                "fullStatsValue": Coordinates(1742, 455, 115, 398),
                 # Sort dropdown (opens upward from the button).
                 # Measured from screenshots/screenshot_inventory_echoes_sort_drop_down.png
                 # at 1920x1080.  button = trigger that opens the dropdown;

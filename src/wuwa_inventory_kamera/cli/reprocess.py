@@ -210,10 +210,20 @@ def _run_service(
                 int(icon_roi.x) : int(icon_roi.x + icon_roi.w),
             ]
 
+            # Rarity from colour-pick pixel (new-UI).
+            detected_rarity: int | None = None
+            if hasattr(si, 'rarityColorPick'):
+                from ..scraping.scanning.echo_workflow import _rarity_from_bgr_pixel
+                rcp = si.rarityColorPick
+                detected_rarity = _rarity_from_bgr_pixel(
+                    scan.full_screenshot[int(rcp.y), int(rcp.x)]
+                )
+
             cap = EchoCapture(
                 echo_index=scan.index,
                 card=card,
                 sonata_icon=sonata_icon,
+                detected_rarity=detected_rarity,
                 stats_name=s_name,
                 stats_value=s_val,
                 full_screenshot=scan.full_screenshot if write_debug else None,

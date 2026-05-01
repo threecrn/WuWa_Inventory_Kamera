@@ -35,7 +35,7 @@ class _Stop:
 class EchoCapture:
     """All image crops needed to process one echo card."""
     echo_index:      int
-    card:            np.ndarray        # echo card header region (BGR) — rarity detection only
+    card:            np.ndarray        # echo card header region (BGR)
     stats_name:      np.ndarray        # stat name column (RGB)
     stats_value:     np.ndarray        # stat value column (RGB)
     echo_name:       np.ndarray | None = None  # raw BGR crop of echoName ROI (colour-filtered for OCR)
@@ -45,6 +45,7 @@ class EchoCapture:
     sonata_icon_cy:  float | None = None  # circle centre-y in icon-crop space
     sonata_icon_r:   float | None = None  # circle radius in icon-crop space
     detected_level:  int | None = None    # level parsed during capture (skip card OCR for level)
+    detected_rarity: int | None = None    # rarity sampled from the rarityColorPick pixel during capture
     # Set by OcrService.submit(); callers must not touch this field.
     _uid: int = field(default=-1, init=False, repr=False, compare=False)
 

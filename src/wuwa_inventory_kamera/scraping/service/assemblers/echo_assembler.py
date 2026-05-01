@@ -34,7 +34,6 @@ import re
 from collections import defaultdict
 from difflib import get_close_matches
 
-import cv2
 import numpy as np
 
 from ...ocr._types import OcrResult
@@ -63,33 +62,8 @@ def _get_validators():
     return infer_cost, expected_sub_count, validate_echo_stats
 
 
-# ---------------------------------------------------------------------------
-# Rarity detection (colour-based fallback)
-# ---------------------------------------------------------------------------
-
-_RARITY_COLORS: dict[int, np.ndarray] = {
-    5: np.array([90, 230, 255]),
-    4: np.array([255, 109, 202]),
-    3: np.array([211, 180, 89]),
-    2: np.array([94, 195, 92]),
-    1: np.array([225, 236, 239]),
-}
-_RARITY_TOL = 10
-_RARITY_BOUNDS = {
-    r: (c - _RARITY_TOL, c + _RARITY_TOL)
-    for r, c in _RARITY_COLORS.items()
-}
-
 # Monster ID prefix → slot cost  (first two digits of the numeric ID)
 _MONSTER_COST_MAP: dict[str, int] = {'31': 1, '32': 3, '34': 4}
-
-
-def _detect_rarity(card_image: np.ndarray) -> int:
-    """Detect rarity from the colour of an echo card crop (RGB array)."""
-    for rarity, (lower, upper) in _RARITY_BOUNDS.items():
-        if np.any(cv2.inRange(card_image, lower, upper)):
-            return rarity
-    return 1
 
 
 # ---------------------------------------------------------------------------
@@ -246,8 +220,10 @@ class EchoAssembler:
                 logger.warning('Echo %d — name %r not in echoesID, rejecting.', idx, name_raw)
                 return EchoResult(echo_index=idx, data=None, warnings=warnings, retried=False, detected_level=level)
 
-        # Rarity from colour (the card image is in the EchoCapture)
-        rarity = _detect_rarity(capture.card)
+        # Rarity from the colour-pick pixel sampled during capture
+        rarity = capture.detected_rarity if capture.detected_rarity is not None else 1
+        if capture.detected_rarity is None:
+            logger.warning('Echo %d — detected_rarity not set; defaulting to 1.', idx)
 
         if rarity < self._min_rarity:
             logger.debug('Echo %d — rarity %d < min %d, rejecting.', idx, rarity, self._min_rarity)

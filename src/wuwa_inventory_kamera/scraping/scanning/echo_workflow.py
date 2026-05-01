@@ -58,6 +58,35 @@ from ..service.ocr_service import OcrService
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Rarity detection from a single sampled pixel (new-UI mechanic)
+# ---------------------------------------------------------------------------
+# Reference colors from game_roi.py comments, expressed in BGR order
+# as used by OpenCV / mss captures.
+#   rarity 5: gold   – (R=1.00, G=0.98, B=0.69)
+#   rarity 4: purple – (R=0.91, G=0.63, B=1.00)
+#   rarity 3: blue   – (R=0.60, G=0.60, B=1.00)
+#   rarity 2: green  – (R=0.60, G=1.00, B=0.60)
+_RARITY_PIXEL_COLORS_BGR: dict[int, np.ndarray] = {
+    5: np.array([176, 250, 255], dtype=np.int32),   # B=176 G=250 R=255
+    4: np.array([255, 161, 232], dtype=np.int32),   # B=255 G=161 R=232
+    3: np.array([255, 153, 153], dtype=np.int32),   # B=255 G=153 R=153
+    2: np.array([153, 255, 153], dtype=np.int32),   # B=153 G=255 R=153
+}
+
+
+def _rarity_from_bgr_pixel(pixel: np.ndarray) -> int:
+    """Return the rarity (2–5) whose reference color is closest to *pixel* (BGR)."""
+    px = pixel[:3].astype(np.int32)
+    best_rarity = 1
+    best_dist = float('inf')
+    for rarity, ref in _RARITY_PIXEL_COLORS_BGR.items():
+        dist = float(np.sum((px - ref) ** 2))
+        if dist < best_dist:
+            best_dist = dist
+            best_rarity = rarity
+    return best_rarity
+
 
 class EchoWorkflow:
     """
@@ -297,6 +326,15 @@ class EchoWorkflow:
 
         # Crop regions from the full screenshot
         ei = layout.echoes
+
+        # ── Rarity via single pixel sample (new-UI) ──────────────────────
+        detected_rarity: int | None = None
+        if hasattr(ei, 'rarityColorPick'):
+            rcp = ei.rarityColorPick
+            detected_rarity = _rarity_from_bgr_pixel(full[int(rcp.y), int(rcp.x)])
+            logger.debug('Echo %d — rarity pixel BGR=%s → rarity %d',
+                         pos.scan_index, full[int(rcp.y), int(rcp.x)].tolist(), detected_rarity)
+
         card = full[
             int(ei.echoCard.y) : int(ei.echoCard.y + ei.echoCard.h),
             int(ei.echoCard.x) : int(ei.echoCard.x + ei.echoCard.w),
@@ -378,6 +416,7 @@ class EchoWorkflow:
             card=card,
             echo_name=echo_name,
             detected_level=detected_level,
+            detected_rarity=detected_rarity,
             sonata_icon=sonata_icon,
             sonata_icon_cx=sonata_icon_cx,
             sonata_icon_cy=sonata_icon_cy,
