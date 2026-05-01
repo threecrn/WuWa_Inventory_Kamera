@@ -160,6 +160,7 @@ def _run_service(
     min_rarity: int,
     min_level: int,
     write_debug: bool,
+    echo_stat_cache_path: Path | None,
 ) -> list[dict]:
     """
     Process *scans* using the new
@@ -170,118 +171,16 @@ def _run_service(
     by cropping the stored images using the scan's ``screenInfo``, submitted
     to the service, then collected in order.
     """
-    from ..scraping.service.ocr_service import OcrService
-    from ..scraping.service.captures import EchoCapture
-    from ..game.screen_info import ScreenInfo
+    from ..scraping.service.echo_reprocess import reprocess_echo_scans_with_service
 
-    echoes: list[dict] = []
-
-    with OcrService(
+    return reprocess_echo_scans_with_service(
+        scans,
         providers=providers,
         min_rarity=min_rarity,
         min_level=min_level,
-    ) as svc:
-        futures = []
-        for scan in scans:
-            try:
-                scan.load_images()
-            except FileNotFoundError as exc:
-                logger.error('Scan %d — images missing, skipping: %s', scan.index, exc)
-                continue
-
-            si = ScreenInfo(scan.screen_width, scan.screen_height).echoes
-
-            card   = scan.full_screenshot[
-                si.echoCard.y      : si.echoCard.y      + si.echoCard.h,
-                si.echoCard.x      : si.echoCard.x      + si.echoCard.w,
-            ]
-            s_name = scan.full_screenshot[
-                si.fullStatsName.y : si.fullStatsName.y + si.fullStatsName.h,
-                si.fullStatsName.x : si.fullStatsName.x + si.fullStatsName.w,
-            ]
-            s_val  = scan.full_screenshot[
-                si.fullStatsValue.y: si.fullStatsValue.y + si.fullStatsValue.h,
-                si.fullStatsValue.x: si.fullStatsValue.x + si.fullStatsValue.w,
-            ]
-            # Crop the small circular sonata icon from the un-scrolled full screenshot.
-            # For new-UI resolutions sonataIcon is a nested structure
-            # {radius, level_X: {circle, icon}, level_XX: {circle, icon}};
-            # for older resolutions it is a flat Coordinates object.
-            si_raw = si.sonataIcon
-            sonata_icon_cx: float | None = None
-            sonata_icon_cy: float | None = None
-            sonata_icon_r:  float | None = None
-            detected_level: int | None = None
-            if hasattr(si_raw, 'level_X'):
-                # New-UI: pick variant based on level digit count.
-                from ..scraping.ocr import imageToString as _ocr_str
-                level_crop = scan.full_screenshot[
-                    int(si.level.y) : int(si.level.y + si.level.h),
-                    int(si.level.x) : int(si.level.x + si.level.w),
-                ]
-                level_text = _ocr_str(level_crop, allowedChars='0123456789').strip()
-                two_digits = len(level_text) == 2
-                si_slot  = si_raw.level_XX if two_digits else si_raw.level_X
-                icon_roi = si_slot.icon
-                sonata_icon_cx = si_slot.circle.x
-                sonata_icon_cy = si_slot.circle.y
-                sonata_icon_r  = si_raw.radius
-                if level_text.isdigit():
-                    detected_level = min(25, int(level_text))
-            else:
-                icon_roi = si_raw
-                if hasattr(si, 'sonataIconCircle'):
-                    sic = si.sonataIconCircle
-                    if hasattr(sic, 'circle'):
-                        sonata_icon_cx = sic.circle.x
-                        sonata_icon_cy = sic.circle.y
-                    if hasattr(sic, 'radius'):
-                        sonata_icon_r = sic.radius
-            sonata_icon = scan.full_screenshot[
-                int(icon_roi.y) : int(icon_roi.y + icon_roi.h),
-                int(icon_roi.x) : int(icon_roi.x + icon_roi.w),
-            ]
-
-            # Rarity from colour-pick pixel (new-UI).
-            detected_rarity: int | None = None
-            if hasattr(si, 'rarityColorPick'):
-                from ..scraping.scanning.echo_workflow import _rarity_from_bgr_pixel
-                rcp = si.rarityColorPick
-                # full_screenshot is stored as RGB (see raw_scan.py load_images);
-                # _rarity_from_bgr_pixel expects BGR, so reverse the channels.
-                detected_rarity = _rarity_from_bgr_pixel(
-                    scan.full_screenshot[int(rcp.y), int(rcp.x)][::-1]
-                )
-
-            cap = EchoCapture(
-                echo_index=scan.index,
-                card=card,
-                sonata_icon=sonata_icon,
-                sonata_icon_cx=sonata_icon_cx,
-                sonata_icon_cy=sonata_icon_cy,
-                sonata_icon_r=sonata_icon_r,
-                detected_level=detected_level,
-                detected_rarity=detected_rarity,
-                stats_name=s_name,
-                stats_value=s_val,
-                full_screenshot=scan.full_screenshot if write_debug else None,
-            )
-            futures.append((scan.index, svc.submit(cap)))
-
-        for scan_index, fut in futures:
-            try:
-                result = fut.result(timeout=60)
-            except Exception as exc:
-                logger.error('Scan %d — service error: %s', scan_index, exc)
-                continue
-            if result.data is not None:
-                echoes.append(result.data)
-                for w in result.warnings:
-                    logger.warning('Scan %d — %s', scan_index, w)
-            else:
-                logger.debug('Scan %d — rejected', scan_index)
-
-    return echoes
+        write_debug=write_debug,
+        echo_stat_cache_path=echo_stat_cache_path,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -395,6 +294,13 @@ def main() -> None:
         '--write-debug', action='store_true', default=False,
         help='Write debug crop images and OCR trace files for every echo.',
     )
+    parser.add_argument(
+        '--echo-stat-cache', metavar='PATH', default=None,
+        help=(
+            'SQLite cache path for persistent echo stat-name/value OCR results. '
+            'Defaults to the configured app cache path when available.'
+        ),
+    )
 
     # ── Mode selection ─────────────────────────────────────────────────────
     mode = parser.add_argument_group('processing mode (mutually exclusive with legacy options)')
@@ -453,9 +359,11 @@ def main() -> None:
     try:
         from ..config.app_config import app_config
         export_folder: str = app_config.exportFolder
+        default_echo_stat_cache = Path(app_config.echoStatCachePath)
     except Exception:
         app_config = None  # type: ignore[assignment]
         export_folder = 'export'
+        default_echo_stat_cache = None
 
     if app_config is not None:
         if args.min_rarity is not None:
@@ -465,6 +373,7 @@ def main() -> None:
 
     min_rarity: int = (app_config.echoMinRarity if app_config else 1) if args.min_rarity is None else args.min_rarity
     min_level:  int = (app_config.echoMinLevel  if app_config else 0) if args.min_level  is None else args.min_level
+    echo_stat_cache_path = Path(args.echo_stat_cache) if args.echo_stat_cache else default_echo_stat_cache
 
     export_dir = Path(args.export_dir) if args.export_dir else Path(export_folder)
 
@@ -558,6 +467,7 @@ def main() -> None:
             min_rarity=min_rarity,
             min_level=min_level,
             write_debug=args.write_debug,
+            echo_stat_cache_path=echo_stat_cache_path,
         )
     else:
         # Parse extractor params JSON

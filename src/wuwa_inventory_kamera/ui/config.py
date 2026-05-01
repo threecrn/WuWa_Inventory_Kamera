@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import string
 from pathlib import Path
+from typing import Any
 
 from qfluentwidgets import (
     qconfig, QConfig, ConfigValidator,
@@ -28,6 +29,7 @@ from qfluentwidgets import (
 from ..config.app_config import (
     app_config,
     basePATH,
+    default_echo_stat_cache_path,
     INVENTORY, FAILED,
     PROCESS_NAME, WINDOW_NAME,
 )
@@ -67,7 +69,7 @@ class TextValidator(ConfigValidator):
             raise ValueError("The `max_length` must be a positive integer.")
         self.max_length = max_length
 
-    def validate(self, value: str) -> bool:
+    def validate(self, value: str) -> Any:
         if not value:
             return False
         if self.max_length is not None and len(value) > self.max_length:
@@ -80,6 +82,19 @@ class TextValidator(ConfigValidator):
         if self.max_length is not None:
             value = value[:self.max_length]
         return value
+
+
+class PathValidator(ConfigValidator):
+    """Validator for non-empty filesystem paths."""
+
+    def __init__(self, default_path: str):
+        self.default_path = default_path
+
+    def validate(self, value: str) -> Any:
+        return isinstance(value, str) and bool(value.strip())
+
+    def correct(self, value: str) -> str:
+        return value.strip() or self.default_path
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +144,10 @@ class Config(QConfig):
         OptionsValidator(["DML+CPU", "CPU only"]),
     )
     ocrBatchSize = ConfigItem("OCR", "BatchSize", 8, RangeValidator(1, 64))
+    echoStatCachePath = ConfigItem(
+        'OCR', 'EchoStatCachePath', default_echo_stat_cache_path(),
+        PathValidator(default_echo_stat_cache_path()),
+    )
 
     # Window mode
     windowed = ConfigItem("Advanced", "WindowedMode", False, BoolValidator())

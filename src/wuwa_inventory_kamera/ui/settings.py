@@ -135,6 +135,13 @@ class SettingInterface(ScrollArea):
             max_value=64,
             parent=self.ocrGroup,
         )
+        self.echoStatCachePathCard = FieldSettingCard(
+            cfg.echoStatCachePath,
+            FIF.SAVE,
+            self.tr('Echo stat OCR cache path'),
+            self.tr('SQLite file used to reuse stat-name/value OCR across repeated echo scans and service-mode reprocessing.'),
+            parent=self.ocrGroup,
+        )
 
         # Advanced
         self.advancedGroup = SettingCardGroup(self.tr('Advanced'), self.scrollWidget)
@@ -208,6 +215,7 @@ class SettingInterface(ScrollArea):
         self.inGameGroup.addSettingCard(self.windowedCard)
         self.ocrGroup.addSettingCard(self.ocrBackendCard)
         self.ocrGroup.addSettingCard(self.ocrBatchSizeCard)
+        self.ocrGroup.addSettingCard(self.echoStatCachePathCard)
         self.advancedGroup.addSettingCard(self.logLevelCard)
         self.advancedGroup.addSettingCard(self.saveRawCard)
         self.advancedGroup.addSettingCard(self.dataSourceCard)

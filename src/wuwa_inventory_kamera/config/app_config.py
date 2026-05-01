@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any, cast
 
 # ---------------------------------------------------------------------------
 # Project root
@@ -38,6 +39,11 @@ WINDOW_NAME: str = 'Wuthering Waves'
 INVENTORY: dict = {'items': {}, 'date': ''}
 FAILED: list = []
 
+
+def default_echo_stat_cache_path(export_folder: str | Path = 'export') -> str:
+    """Return the default SQLite path for the persistent echo stat OCR cache."""
+    return str(Path(export_folder) / 'echo-stat-ocr.sqlite3')
+
 # ---------------------------------------------------------------------------
 # AppConfig singleton
 # ---------------------------------------------------------------------------
@@ -52,6 +58,7 @@ class AppConfig:
 
     def __init__(self) -> None:
         self.exportFolder: str = 'export'
+        self.echoStatCachePath: str = default_echo_stat_cache_path(self.exportFolder)
         self.gameLanguage: str = 'English'
         self.inventoryKeybind: str = 'B'
         self.resonatorKeybind: str = 'C'
@@ -102,6 +109,11 @@ class AppConfig:
         folders = data.get('Folders', {})
         if 'Export' in folders:
             self.exportFolder = str(folders['Export'])
+
+        ocr = data.get('OCR', {})
+        self.echoStatCachePath = default_echo_stat_cache_path(self.exportFolder)
+        if 'EchoStatCachePath' in ocr:
+            self.echoStatCachePath = str(ocr['EchoStatCachePath'])
 
         update = data.get('Update', {})
         if 'CheckUpdateAtStartUp' in update:
@@ -164,29 +176,32 @@ class AppConfig:
         if get is None:
             return
 
-        self.exportFolder         = get(qcfg.exportFolder)
-        self.gameLanguage         = get(qcfg.gameLanguage)
-        self.inventoryKeybind     = get(qcfg.inventoryKeybind)
-        self.resonatorKeybind     = get(qcfg.resonatorKeybind)
-        self.roverName            = get(qcfg.roverName)
-        self.checkUpdateAtStartUp = get(qcfg.checkUpdateAtStartUp)
-        self.dataSource           = get(qcfg.dataSource)
+        qcfg_obj: Any = cast(Any, qcfg)
 
-        self.echoMinRarity    = qcfg.echoMinRarity.value
-        self.echoMinLevel     = qcfg.echoMinLevel.value
-        self.weaponsMinRarity = qcfg.weaponsMinRarity.value
-        self.weaponsMinLevel  = qcfg.weaponsMinLevel.value
+        self.exportFolder         = get(qcfg_obj.exportFolder)
+        self.gameLanguage         = get(qcfg_obj.gameLanguage)
+        self.inventoryKeybind     = get(qcfg_obj.inventoryKeybind)
+        self.resonatorKeybind     = get(qcfg_obj.resonatorKeybind)
+        self.roverName            = get(qcfg_obj.roverName)
+        self.checkUpdateAtStartUp = get(qcfg_obj.checkUpdateAtStartUp)
+        self.dataSource           = get(qcfg_obj.dataSource)
 
-        self.scanCharacters  = qcfg.scanCharacters.value
-        self.scanWeapons     = qcfg.scanWeapons.value
-        self.scanEchoes      = qcfg.scanEchoes.value
-        self.scanDevItems    = qcfg.scanDevItems.value
-        self.scanResources   = qcfg.scanResources.value
-        self.scanAchievements = qcfg.scanAchievements.value
+        self.echoMinRarity    = qcfg_obj.echoMinRarity.value
+        self.echoMinLevel     = qcfg_obj.echoMinLevel.value
+        self.weaponsMinRarity = qcfg_obj.weaponsMinRarity.value
+        self.weaponsMinLevel  = qcfg_obj.weaponsMinLevel.value
 
-        self.logLevel  = get(qcfg.logLevel)
-        self.saveRaw   = get(qcfg.saveRaw)
-        self.windowed  = get(qcfg.windowed)
+        self.scanCharacters  = qcfg_obj.scanCharacters.value
+        self.scanWeapons     = qcfg_obj.scanWeapons.value
+        self.scanEchoes      = qcfg_obj.scanEchoes.value
+        self.scanDevItems    = qcfg_obj.scanDevItems.value
+        self.scanResources   = qcfg_obj.scanResources.value
+        self.scanAchievements = qcfg_obj.scanAchievements.value
+
+        self.echoStatCachePath = get(qcfg_obj.echoStatCachePath)
+        self.logLevel  = get(qcfg_obj.logLevel)
+        self.saveRaw   = get(qcfg_obj.saveRaw)
+        self.windowed  = get(qcfg_obj.windowed)
 
 
 app_config: AppConfig = AppConfig().load()

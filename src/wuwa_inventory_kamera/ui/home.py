@@ -63,6 +63,7 @@ class ScanThread(QThread):
         min_level: int,
         inventory_key: str,
         export_folder: str,
+        echo_stat_cache_path: str | None,
         save_raw: bool = False,
         max_batch_size: int = 8,
         windowed: bool = False,
@@ -74,6 +75,7 @@ class ScanThread(QThread):
         self._min_level = min_level
         self._inventory_key = inventory_key
         self._export_folder = export_folder
+        self._echo_stat_cache_path = echo_stat_cache_path
         self._save_raw = save_raw
         self._max_batch_size = max_batch_size
         self._windowed = windowed
@@ -94,6 +96,10 @@ class ScanThread(QThread):
                 max_batch_size=self._max_batch_size,
                 on_progress=lambda step, s, t: self.progress.emit(step, s, t),
                 windowed=self._windowed,
+                echo_stat_cache_path=(
+                    Path(self._echo_stat_cache_path)
+                    if self._echo_stat_cache_path else None
+                ),
             )
             result = orch.run()
             self.finished.emit(result)
@@ -443,6 +449,7 @@ class LControlPanel(QFrame):
             min_level=cfg.echoMinLevel.value,
             inventory_key=cfg.get(cfg.inventoryKeybind).lower(),
             export_folder=cfg.get(cfg.exportFolder),
+            echo_stat_cache_path=cfg.get(cfg.echoStatCachePath),
             save_raw=cfg.saveRaw.value,
             max_batch_size=cfg.ocrBatchSize.value,
             windowed=cfg.windowed.value,
@@ -523,7 +530,8 @@ class LControlPanel(QFrame):
     # ------------------------------------------------------------------
 
     def runReprocessSession(self):
-        from ..scraping.processing.echoes_processor import reprocessSession
+        from ..scraping.service.echo_reprocess import reprocess_echo_scans_with_service
+        from ..scraping.utils.common import loadRawScans
 
         folder = QFileDialog.getExistingDirectory(
             self,
@@ -544,7 +552,28 @@ class LControlPanel(QFrame):
             return
 
         try:
-            echoes = reprocessSession(session_id)
+            scans = loadRawScans(raw_base)
+            if not scans:
+                self.signalNotifier.emit(
+                    'warning', 'Warning',
+                    f'No raw scans found in {raw_base}.',
+                )
+                return
+
+            backend = cfg.ocrBackend.value
+            if backend == 'CPU only':
+                ocr_providers = ['CPUExecutionProvider']
+            else:
+                ocr_providers = ['DmlExecutionProvider', 'CPUExecutionProvider']
+
+            echoes = reprocess_echo_scans_with_service(
+                scans,
+                providers=ocr_providers,
+                min_rarity=cfg.echoMinRarity.value,
+                min_level=cfg.echoMinLevel.value,
+                write_debug=True,
+                echo_stat_cache_path=cfg.get(cfg.echoStatCachePath),
+            )
             savingScraped(
                 {'echoes_wuwainventorykamera.json': (echoes, list)},
                 session_id,
