@@ -335,23 +335,18 @@ class OcrService:
 
         card_results: list[list[tuple[str, float, np.ndarray]]] = []
         for i, c in enumerate(captures):
-            if _has_usable_text(filtered_results[i]):
-                card_results.append(filtered_results[i])
-                continue
-
-            # Fallback chain for new-UI echo names:
-            #   1) single-image recognize on filtered crop (matches nav script)
-            #   2) thorough recognize on filtered crop
-            #   3) batched OCR on raw echoName crop
+            # New-UI path: captures with a dedicated echoName ROI use
+            # single-image backend.recognize as the PRIMARY method.  This
+            # matches the nav-script (imageToString on the filtered crop) and
+            # gives excellent quality.  The batch-OCR pipeline (text_det +
+            # text_rec) on the binary white-on-black filtered image frequently
+            # produces spurious single-character results that pass
+            # _has_usable_text and silently block the reliable fallback.
             if c.echo_name is not None:
                 single_results = _backend_to_batch(
                     self._backend.recognize(name_source_filtered[i])
                 )
                 if _has_usable_text(single_results):
-                    logger.debug(
-                        'Echo %d — echoName recovered via single-image OCR fallback.',
-                        c.echo_index,
-                    )
                     card_results.append(single_results)
                     continue
 
@@ -360,20 +355,33 @@ class OcrService:
                 )
                 if _has_usable_text(thorough_results):
                     logger.debug(
-                        'Echo %d — echoName recovered via thorough OCR fallback.',
+                        'Echo %d — echoName recovered via thorough OCR.',
                         c.echo_index,
                     )
                     card_results.append(thorough_results)
                     continue
 
+                # Late fallback: batch OCR on filtered image, then raw crop.
+                if _has_usable_text(filtered_results[i]):
+                    logger.debug(
+                        'Echo %d — echoName recovered via batch-OCR on filtered crop.',
+                        c.echo_index,
+                    )
+                    card_results.append(filtered_results[i])
+                    continue
+
                 if _has_usable_text(raw_results[i]):
                     logger.debug(
-                        'Echo %d — echoName filtered OCR empty; '
-                        'falling back to raw echoName crop.',
+                        'Echo %d — echoName recovered via raw echoName crop.',
                         c.echo_index,
                     )
                     card_results.append(raw_results[i])
                     continue
+
+            # Legacy path (no echoName ROI): use batch OCR on card crop.
+            elif _has_usable_text(filtered_results[i]):
+                card_results.append(filtered_results[i])
+                continue
 
             card_results.append(raw_results[i])
 
