@@ -70,7 +70,6 @@ class BaseDataUpdater:
 			owner='Arikatsu',
 			repo='WutheringWaves_Data',
 			language_root='Textmaps',
-			ref='3.3',
 			files=(
 				FileConfig(['Textmaps', '{lang}', 'multi_text'], 'MultiText.json'),
 				FileConfig(['BinData', 'item'], 'iteminfo.json', 'ItemInfo.json'),
