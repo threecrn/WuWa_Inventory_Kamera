@@ -178,8 +178,10 @@ def loadRawScans(base_path: Path) -> list:
     :func:`saveRawScan`.
 
     Scans directories named ``echo_XXXX/`` under *base_path* in sorted order.
-    Directories that are missing any of ``full.png``, ``sonata.png``, or
-    ``meta.json`` are skipped with a warning.
+    Directories that are missing ``full.png`` or ``meta.json`` are skipped
+    with a warning.  ``sonata.png`` is optional — new-format sessions
+    captured by the v2 workflow (``echo_workflow.py``) omit it and rely on
+    icon matching during reprocessing.
 
     Parameters
     ----------
@@ -209,17 +211,28 @@ def loadRawScans(base_path: Path) -> list:
         full_path   = echo_dir / "full.png"
         sonata_path = echo_dir / "sonata.png"
 
-        if not (meta_path.exists() and full_path.exists() and sonata_path.exists()):
+        # full.png and meta.json are required; sonata.png is optional
+        # (v2-workflow sessions do not save it — sonata is derived from
+        # full.png via icon matching during reprocessing).
+        if not (meta_path.exists() and full_path.exists()):
             _raw_logger.warning(
                 "Skipping incomplete raw scan directory: %s "
                 "(missing: %s)",
                 echo_dir,
                 ", ".join(
-                    p.name for p in [meta_path, full_path, sonata_path]
+                    p.name for p in [meta_path, full_path]
                     if not p.exists()
                 ),
             )
             continue
+
+        optional_sonata_path = sonata_path if sonata_path.exists() else None
+        if optional_sonata_path is None:
+            _raw_logger.debug(
+                "Raw scan %s has no sonata.png — sonata will be derived "
+                "from full.png via icon matching during processing.",
+                echo_dir.name,
+            )
 
         with open(meta_path, 'r', encoding='utf-8') as f:
             meta = json.load(f)
@@ -233,7 +246,7 @@ def loadRawScans(base_path: Path) -> list:
             row           = meta['row'],
             col           = meta['col'],
             full_path     = full_path,
-            sonata_path   = sonata_path,
+            sonata_path   = optional_sonata_path,
             screen_width  = meta.get('screen_width', _session_manifest.get('screen_width', 1920)),
             screen_height = meta.get('screen_height', _session_manifest.get('screen_height', 1080)),
             monitor       = meta.get('monitor', _session_manifest.get('monitor', 1)),

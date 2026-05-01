@@ -93,13 +93,14 @@ class RawEchoScan:
                 raise FileNotFoundError(f"Scan {self.index}: could not read {self.full_path}")
             self.full_screenshot = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
 
-        if self.sonata_screenshot is None:
-            if self.sonata_path is None:
-                raise FileNotFoundError(f"Scan {self.index}: sonata_path is not set.")
+        if self.sonata_screenshot is None and self.sonata_path is not None:
             bgr = cv2.imread(str(self.sonata_path))
             if bgr is None:
                 raise FileNotFoundError(f"Scan {self.index}: could not read {self.sonata_path}")
             self.sonata_screenshot = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        # If sonata_path is None, sonata_screenshot stays None.
+        # The caller (_processRawScan / _run_service) will derive the sonata
+        # set from the full screenshot via icon matching.
 
     def release_images(self) -> None:
         """

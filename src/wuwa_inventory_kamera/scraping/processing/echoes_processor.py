@@ -86,6 +86,86 @@ _RARITY_BOUNDS = _setupRarityDetection()
 # e.g. 310000020 (prefix "31") → cost 1,  320000020 → cost 3,  340000020 → cost 4.
 _MONSTER_COST_MAP: dict[str, int] = {'31': 1, '32': 3, '34': 4}
 
+# ---------------------------------------------------------------------------
+# Sonata icon matching (lazy-initialised, shared across all scans in a session)
+# ---------------------------------------------------------------------------
+
+_sonata_icon_matcher = None  # type: ignore[assignment]
+
+
+def _get_sonata_icon_matcher():
+    """Return a module-level cached :class:`SonataIconMatcher` instance."""
+    global _sonata_icon_matcher
+    if _sonata_icon_matcher is None:
+        from ..matching.sonata_icon import SonataIconMatcher
+        _sonata_icon_matcher = SonataIconMatcher()
+    return _sonata_icon_matcher
+
+
+def _extractSonataFromIcon(
+    full_screenshot: np.ndarray,
+    echoes_info,
+    scan_index: int,
+    level: int,
+) -> str | None:
+    """
+    Identify the sonata set by matching the circular icon visible on the
+    un-scrolled echo detail panel.
+
+    Used when ``RawEchoScan.sonata_screenshot`` is ``None`` (v2-workflow
+    sessions that only save ``full.png`` + ``meta.json``).
+
+    Parameters
+    ----------
+    full_screenshot:
+        Full game screenshot (RGB).
+    echoes_info:
+        ``ScreenInfo(...).echoes`` object with ROI coordinates.
+    scan_index:
+        Echo index for log messages.
+    level:
+        Echo level (used to pick the correct ``level_X`` / ``level_XX``
+        sonata-icon variant for new-UI resolutions).
+
+    Returns
+    -------
+    str | None
+        Matched ``sonataName`` key, or ``None`` on failure.
+    """
+    si_raw = echoes_info.sonataIcon
+    sonata_icon_cx: float | None = None
+    sonata_icon_cy: float | None = None
+    sonata_icon_r:  float | None = None
+
+    if hasattr(si_raw, 'level_X'):
+        # New-UI nested structure: level_XX (≥10) vs level_X (<10).
+        si_slot  = si_raw.level_XX if level >= 10 else si_raw.level_X
+        icon_roi = si_slot.icon
+        sonata_icon_cx = si_slot.circle.x
+        sonata_icon_cy = si_slot.circle.y
+        sonata_icon_r  = si_raw.radius
+    else:
+        icon_roi = si_raw
+
+    sonata_icon = full_screenshot[
+        int(icon_roi.y) : int(icon_roi.y + icon_roi.h),
+        int(icon_roi.x) : int(icon_roi.x + icon_roi.w),
+    ]
+
+    matcher = _get_sonata_icon_matcher()
+    matched = matcher.match_to_sonata_key(
+        sonata_icon, sonataName,
+        cx=sonata_icon_cx,
+        cy=sonata_icon_cy,
+        r=sonata_icon_r,
+    )
+    if matched is None:
+        logger.warning(
+            "Scan %d — sonata icon matching failed (no template match).",
+            scan_index,
+        )
+    return matched
+
 
 def _getRarity(image: np.ndarray) -> int:
     """Detect rarity from the colour of an echo card crop."""
@@ -303,7 +383,8 @@ def _writeDebugCrops(
     cv2.imwrite(str(debug_dir / "stats_name_bw.png"),   convertToBlackWhite(name_crop))
     cv2.imwrite(str(debug_dir / "stats_value.png"),     cv2.cvtColor(value_crop,             cv2.COLOR_RGB2BGR))
     cv2.imwrite(str(debug_dir / "stats_value_bw.png"),  convertToBlackWhite(value_crop))
-    cv2.imwrite(str(debug_dir / "sonata.png"),          cv2.cvtColor(scan.sonata_screenshot, cv2.COLOR_RGB2BGR))
+    if scan.sonata_screenshot is not None:
+        cv2.imwrite(str(debug_dir / "sonata.png"),      cv2.cvtColor(scan.sonata_screenshot, cv2.COLOR_RGB2BGR))
 
     if ocr_data is not None:
         with open(debug_dir / "ocr.json", 'w', encoding='utf-8') as fh:
@@ -472,7 +553,15 @@ def _processRawScan(
 
         # --- Stats + sonata ---
         tune_lv, stats, stats_trace = _extractStats(image, screenInfo, _cache, scan.index, extractor=extractor)
-        sonata, sonata_raw = _extractSonata(scan.sonata_screenshot, _cache, scan.index)
+
+        if scan.sonata_screenshot is not None:
+            # Legacy path: sonata.png was captured separately (old scanner
+            # with scroll-down).
+            sonata, sonata_raw = _extractSonata(scan.sonata_screenshot, _cache, scan.index)
+        else:
+            # v2-workflow path: only full.png is available; use icon matching.
+            sonata = _extractSonataFromIcon(image, screenInfo.echoes, scan.index, level)
+            sonata_raw = sonata or ''
 
         if sonata not in sonataName:
             logger.warning(

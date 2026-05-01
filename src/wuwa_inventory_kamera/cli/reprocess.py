@@ -204,7 +204,39 @@ def _run_service(
                 si.fullStatsValue.x: si.fullStatsValue.x + si.fullStatsValue.w,
             ]
             # Crop the small circular sonata icon from the un-scrolled full screenshot.
-            icon_roi = si.sonataIcon
+            # For new-UI resolutions sonataIcon is a nested structure
+            # {radius, level_X: {circle, icon}, level_XX: {circle, icon}};
+            # for older resolutions it is a flat Coordinates object.
+            si_raw = si.sonataIcon
+            sonata_icon_cx: float | None = None
+            sonata_icon_cy: float | None = None
+            sonata_icon_r:  float | None = None
+            detected_level: int | None = None
+            if hasattr(si_raw, 'level_X'):
+                # New-UI: pick variant based on level digit count.
+                from ..scraping.ocr import imageToString as _ocr_str
+                level_crop = scan.full_screenshot[
+                    int(si.level.y) : int(si.level.y + si.level.h),
+                    int(si.level.x) : int(si.level.x + si.level.w),
+                ]
+                level_text = _ocr_str(level_crop, allowedChars='0123456789').strip()
+                two_digits = len(level_text) == 2
+                si_slot  = si_raw.level_XX if two_digits else si_raw.level_X
+                icon_roi = si_slot.icon
+                sonata_icon_cx = si_slot.circle.x
+                sonata_icon_cy = si_slot.circle.y
+                sonata_icon_r  = si_raw.radius
+                if level_text.isdigit():
+                    detected_level = min(25, int(level_text))
+            else:
+                icon_roi = si_raw
+                if hasattr(si, 'sonataIconCircle'):
+                    sic = si.sonataIconCircle
+                    if hasattr(sic, 'circle'):
+                        sonata_icon_cx = sic.circle.x
+                        sonata_icon_cy = sic.circle.y
+                    if hasattr(sic, 'radius'):
+                        sonata_icon_r = sic.radius
             sonata_icon = scan.full_screenshot[
                 int(icon_roi.y) : int(icon_roi.y + icon_roi.h),
                 int(icon_roi.x) : int(icon_roi.x + icon_roi.w),
@@ -215,14 +247,20 @@ def _run_service(
             if hasattr(si, 'rarityColorPick'):
                 from ..scraping.scanning.echo_workflow import _rarity_from_bgr_pixel
                 rcp = si.rarityColorPick
+                # full_screenshot is stored as RGB (see raw_scan.py load_images);
+                # _rarity_from_bgr_pixel expects BGR, so reverse the channels.
                 detected_rarity = _rarity_from_bgr_pixel(
-                    scan.full_screenshot[int(rcp.y), int(rcp.x)]
+                    scan.full_screenshot[int(rcp.y), int(rcp.x)][::-1]
                 )
 
             cap = EchoCapture(
                 echo_index=scan.index,
                 card=card,
                 sonata_icon=sonata_icon,
+                sonata_icon_cx=sonata_icon_cx,
+                sonata_icon_cy=sonata_icon_cy,
+                sonata_icon_r=sonata_icon_r,
+                detected_level=detected_level,
                 detected_rarity=detected_rarity,
                 stats_name=s_name,
                 stats_value=s_val,

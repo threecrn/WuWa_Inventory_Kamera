@@ -202,11 +202,16 @@ class EchoAssembler:
         if capture.detected_level is not None:
             level = capture.detected_level
         else:
-            level_text = card_lines[2] if len(card_lines) > 2 else ''
+            # card layout: [name, level, cost] — level is at index 1
+            level_text = card_lines[1] if len(card_lines) > 1 else ''
             try:
                 level = min(25, int(level_text))
             except ValueError:
-                level = 0
+                # Fallback: trailing digits in name (e.g. phantom OCR merges
+                # name + level into one token like 'phantom:sigillum25')
+                import re as _re
+                m = _re.search(r'(\d+)$', name_raw)
+                level = min(25, int(m.group(1))) if m else 0
 
         logger.debug('Echo %d — name lines: %s | name=%r level=%d', idx, card_lines, name, level)
 
