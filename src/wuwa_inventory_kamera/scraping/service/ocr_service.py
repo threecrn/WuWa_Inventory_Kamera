@@ -85,25 +85,18 @@ logger = logging.getLogger(__name__)
 # Echo name colour-filter preprocessing
 # ---------------------------------------------------------------------------
 
-# The echo name in the new UI is rendered in a distinctive turquoise colour
-# (HSV H≈94, S≈84, V≈247) on a busy, non-monotone portrait background.
+# The echo name in the new UI is a dull orange (HSV H≈25, S≈70, V≈80) on a busy portrait background.
 # Masking by hue before OCR isolates the text and discards the background.
-#
-# It's not actually torquoise: we should have compensated for BGR capture treated as RGB
-# The color is a pastel yellow but appears turquoise due to the BGR→RGB swap.
-_ECHO_NAME_HSV_LO = np.array([85,  60, 170], dtype=np.uint8)
-_ECHO_NAME_HSV_HI = np.array([105, 255, 255], dtype=np.uint8)
-
+_ECHO_NAME_HSV_LO = np.array([20, 60, 80], dtype=np.uint8)
+_ECHO_NAME_HSV_HI = np.array([30, 255, 255], dtype=np.uint8)
 
 def _filter_echo_name(bgr: np.ndarray) -> np.ndarray:
-    """Return a white-on-black RGB image containing only the turquoise name text."""
     import cv2
-    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-    hsv  = cv2.cvtColor(rgb, cv2.COLOR_BGR2HSV)
+    # Standard BGR directly to HSV mapping
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv, _ECHO_NAME_HSV_LO, _ECHO_NAME_HSV_HI)
     mono = np.where(mask > 0, np.uint8(255), np.uint8(0))
     return cv2.cvtColor(mono, cv2.COLOR_GRAY2RGB)
-
 
 # ---------------------------------------------------------------------------
 # Internal queue item wrapper
