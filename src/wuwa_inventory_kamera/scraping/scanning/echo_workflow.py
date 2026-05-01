@@ -212,20 +212,12 @@ class EchoWorkflow:
         def _forward_visitor(position: GridPosition) -> bool:
             if self._stop_event and self._stop_event.is_set():
                 return False
-            future = self._capture_echo(position)
-            future.add_done_callback(_process_done_callback)
-            futures.append((position.scan_index, future))
-            if on_progress:
-                on_progress(len(futures), total_items)
 
-            # At the end of each full page, do an ad-hoc synchronous OCR
-            # of just the level ROI to check for early-stop.  Since echoes
-            # are sorted by level descending, any level below the minimum
-            # means all remaining echoes can be skipped.
-            if (
-                self.min_level > 0
-                and (position.scan_index + 1) % CELLS_PER_PAGE == 0
-            ):
+            # Before capturing, check the level against min_level constraint.
+            # Since echoes are sorted by level descending, any level below the
+            # minimum means all remaining echoes can be skipped.  This avoids
+            # submitting unnecessary OCR jobs to the service.
+            if self.min_level > 0:
                 level = self._read_last_echo_level()
                 if level is not None and level < self.min_level:
                     logger.info(
@@ -234,6 +226,12 @@ class EchoWorkflow:
                         position.scan_index, level, self.min_level,
                     )
                     return False
+
+            future = self._capture_echo(position)
+            future.add_done_callback(_process_done_callback)
+            futures.append((position.scan_index, future))
+            if on_progress:
+                on_progress(len(futures), total_items)
 
             return True
 
