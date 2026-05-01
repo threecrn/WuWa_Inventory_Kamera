@@ -57,6 +57,7 @@ class AppConfig:
         self.resonatorKeybind: str = 'C'
         self.roverName: str = 'Rover'
         self.checkUpdateAtStartUp: bool = True
+        self.dataSource: str = 'Dimbreath'
 
         # Scanner thresholds
         self.echoMinRarity: int = 1
@@ -105,6 +106,8 @@ class AppConfig:
         update = data.get('Update', {})
         if 'CheckUpdateAtStartUp' in update:
             self.checkUpdateAtStartUp = _bool(update['CheckUpdateAtStartUp'])
+        if 'DataSource' in update:
+            self.dataSource = str(update['DataSource'])
 
         in_game = data.get('InGame', {})
         if 'Language' in in_game:
@@ -167,6 +170,7 @@ class AppConfig:
         self.resonatorKeybind     = get(qcfg.resonatorKeybind)
         self.roverName            = get(qcfg.roverName)
         self.checkUpdateAtStartUp = get(qcfg.checkUpdateAtStartUp)
+        self.dataSource           = get(qcfg.dataSource)
 
         self.echoMinRarity    = qcfg.echoMinRarity.value
         self.echoMinLevel     = qcfg.echoMinLevel.value

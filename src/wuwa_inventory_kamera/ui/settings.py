@@ -153,6 +153,14 @@ class SettingInterface(ScrollArea):
             configItem=cfg.saveRaw,
             parent=self.advancedGroup,
         )
+        self.dataSourceCard = ComboBoxSettingCard(
+            cfg.dataSource,
+            FIF.UPDATE,
+            self.tr('Game data source'),
+            self.tr('Choose which upstream repository provides ItemInfo, WeaponConf, and MultiText updates.'),
+            ['Dimbreath', 'Arikatsu'],
+            self.advancedGroup,
+        )
 
         # Software update
         self.updateSoftwareGroup = SettingCardGroup(self.tr("Software update"), self.scrollWidget)
@@ -202,6 +210,7 @@ class SettingInterface(ScrollArea):
         self.ocrGroup.addSettingCard(self.ocrBatchSizeCard)
         self.advancedGroup.addSettingCard(self.logLevelCard)
         self.advancedGroup.addSettingCard(self.saveRawCard)
+        self.advancedGroup.addSettingCard(self.dataSourceCard)
         self.updateSoftwareGroup.addSettingCard(self.updateOnStartUpCard)
         self.aboutGroup.addSettingCard(self.helpCard)
         self.aboutGroup.addSettingCard(self.feedbackCard)
@@ -234,6 +243,7 @@ class SettingInterface(ScrollArea):
 
     def __connectSignals(self):
         cfg.gameLanguage.valueChanged.connect(self.__showRestartTooltip)
+        cfg.dataSource.valueChanged.connect(self.__showRestartTooltip)
         cfg.themeChanged.connect(self.__onThemeChanged)
         self.exportFolderCard.clicked.connect(self.__onExportFolderCardClicked)
         self.feedbackCard.clicked.connect(

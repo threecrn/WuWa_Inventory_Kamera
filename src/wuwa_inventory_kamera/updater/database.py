@@ -9,6 +9,7 @@ The Qt-dependent ``DataUpdater`` remains in the legacy module.
 """
 import re
 import json
+import urllib.parse
 import urllib.request
 import logging
 from babel import Locale
@@ -23,6 +24,24 @@ logger = logging.getLogger('DatabaseManager')
 class FileConfig:
 	folder: list[str]
 	file: str
+	local_file: Optional[str] = None
+
+	def remote_path(self, lang: str) -> str:
+		parts = [part.format(lang=lang) for part in self.folder]
+		return '/'.join(parts + [self.file])
+
+	@property
+	def local_name(self) -> str:
+		return self.local_file or self.file
+
+
+@dataclass(frozen=True)
+class SourceConfig:
+	owner: str
+	repo: str
+	language_root: str
+	files: tuple[FileConfig, ...]
+	ref: Optional[str] = None
 
 
 class BaseDataUpdater:
@@ -35,26 +54,107 @@ class BaseDataUpdater:
 	"""
 
 	API = 'https://api.github.com/repos/{owner}/{repo}/contents/{path}'
+	DEFAULT_SOURCE = 'dimbreath'
+	SOURCES = {
+		'dimbreath': SourceConfig(
+			owner='Dimbreath',
+			repo='WutheringData',
+			language_root='TextMap',
+			files=(
+				FileConfig(['TextMap', '{lang}'], 'MultiText.json'),
+				FileConfig(['ConfigDB'], 'ItemInfo.json'),
+				FileConfig(['ConfigDB'], 'WeaponConf.json'),
+			),
+		),
+		'arikatsu': SourceConfig(
+			owner='Arikatsu',
+			repo='WutheringWaves_Data',
+			language_root='Textmaps',
+			ref='3.3',
+			files=(
+				FileConfig(['Textmaps', '{lang}', 'multi_text'], 'MultiText.json'),
+				FileConfig(['BinData', 'item'], 'iteminfo.json', 'ItemInfo.json'),
+				FileConfig(['BinData', 'weapon'], 'weaponconf.json', 'WeaponConf.json'),
+			),
+		),
+	}
 
-	def __init__(self, lang: Optional[str] = None):
-		self.author = 'Dimbreath'
-		self.repo = 'WutheringData'
+	def __init__(self, lang: Optional[str] = None, source: Optional[str] = None):
+		self.source = self._getSource(source)
+		self.source_config = self.SOURCES[self.source]
+		self.author = self.source_config.owner
+		self.repo = self.source_config.repo
+		self.ref = self.source_config.ref
 		self.lang = self._getLanguage(lang)
 		self.makeFolder(self.lang)
-		self.files = [
-			FileConfig(['TextMap', self.lang], 'MultiText.json'),
-			FileConfig(['ConfigDB'], 'ItemInfo.json'),
-			FileConfig(['ConfigDB'], 'WeaponConf.json'),
-		]
+		self.files = list(self.source_config.files)
+		self.state_path = Path('data') / self.lang / '.updater_state.json'
+		self.state = self._loadUpdaterState()
 		self.updated = False
+		self._update_failed = False
+
+	def _getSource(self, preferred: Optional[str] = None) -> str:
+		source = (preferred or self.DEFAULT_SOURCE).strip().lower()
+		if source not in self.SOURCES:
+			valid = ', '.join(sorted(self.SOURCES))
+			raise ValueError(f'Unsupported updater source: {preferred!r}. Expected one of: {valid}')
+		return source
+
+	def _buildContentsUrl(self, path: str) -> str:
+		url = self.API.format(owner=self.author, repo=self.repo, path=path)
+		if self.ref:
+			return f'{url}?ref={urllib.parse.quote(self.ref, safe="")}'
+		return url
+
+	def _baseUpdaterState(self) -> dict[str, Any]:
+		return {
+			'source': self.source,
+			'ref': self.ref or '',
+			'files': {},
+		}
+
+	def _loadUpdaterState(self) -> dict[str, Any]:
+		try:
+			with open(self.state_path, 'r', encoding='utf-8') as f:
+				return json.load(f)
+		except (FileNotFoundError, json.JSONDecodeError):
+			return {}
+
+	def _saveUpdaterState(self, state: dict[str, Any]) -> None:
+		try:
+			with open(self.state_path, 'w', encoding='utf-8') as f:
+				json.dump(state, f, indent=4, ensure_ascii=False)
+		except Exception as e:
+			logger.error('Failed to save updater state: %s', e)
+
+	def _stateMatchesSource(self, state: dict[str, Any]) -> bool:
+		return state.get('source') == self.source and state.get('ref', '') == (self.ref or '')
+
+	def _normalizeJson(self, filename: str, data: Any) -> Any:
+		if filename != 'MultiText.json' or not isinstance(data, list):
+			return data
+
+		return {
+			str(entry['Id']): entry.get('Content', '')
+			for entry in data
+			if isinstance(entry, dict) and entry.get('Id') is not None and 'Content' in entry
+		}
+
+	def _normalizeDownloadedFile(self, file_path: Path, filename: str) -> None:
+		try:
+			with open(file_path, 'r', encoding='utf-8') as f:
+				data = json.load(f)
+			normalized = self._normalizeJson(filename, data)
+			if normalized != data:
+				with open(file_path, 'w', encoding='utf-8') as f:
+					json.dump(normalized, f, indent=2, ensure_ascii=False)
+		except Exception as e:
+			self._update_failed = True
+			logger.error('Failed to normalize %s: %s', filename, e, exc_info=True)
 
 	def _getLanguage(self, preferred: Optional[str] = None) -> str:
 		self.makeFolder()
-		url = self.API.format(
-			owner=self.author,
-			repo=self.repo,
-			path='TextMap',
-		)
+		url = self._buildContentsUrl(self.source_config.language_root)
 		languages = self.loadJson('languages.json')
 
 		if not languages:
@@ -90,7 +190,8 @@ class BaseDataUpdater:
 		parts = code.split('-')
 		locale = Locale(parts[0], script=parts[1] if len(parts) > 1 else None)
 		try:
-			return locale.get_display_name().capitalize()
+			display_name = locale.get_display_name()
+			return display_name.capitalize() if display_name else code
 		except Exception:
 			return code
 
@@ -137,15 +238,15 @@ class BaseDataUpdater:
 	# I/O helpers
 	# ------------------------------------------------------------------
 
-	def loadJson(self, filename: str) -> dict:
+	def loadJson(self, filename: str) -> Any:
 		dir = Path('data') / self.lang if filename != 'languages.json' else Path('data')
 		try:
 			with open(dir / filename, 'r', encoding='utf-8') as f:
-				return json.load(f)
+				return self._normalizeJson(filename, json.load(f))
 		except (FileNotFoundError, json.JSONDecodeError):
 			return {}
 
-	def saveJson(self, data: dict, filename: str) -> None:
+	def saveJson(self, data: Any, filename: str) -> None:
 		dir = Path('data') / self.lang if filename != 'languages.json' else Path('data')
 		try:
 			with open(dir / filename, 'w', encoding='utf-8') as f:
@@ -159,47 +260,64 @@ class BaseDataUpdater:
 
 	def updateFiles(self) -> None:
 		"""Download remote files that have changed since the last run."""
+		self.updated = False
+		self._update_failed = False
+		source_changed = not self._stateMatchesSource(self.state)
+		next_state = self._baseUpdaterState()
+
+		if source_changed:
+			logger.info('Updater source changed to %s, refreshing cached source files', self.source)
+
 		for fileConfig in self.files:
-			url = self.API.format(
-				owner=self.author,
-				repo=self.repo,
-				path='/'.join(fileConfig.folder + [fileConfig.file]),
-			)
-			logger.info('Checking for updates on file: %s', fileConfig.file)
+			remote_path = fileConfig.remote_path(self.lang)
+			url = self._buildContentsUrl(remote_path)
+			local_name = fileConfig.local_name
+			logger.info('Checking for updates on file: %s', local_name)
 			try:
 				data = self.fetchFileData(url)
-				filePath = Path('data') / self.lang / fileConfig.file
+				filePath = Path('data') / self.lang / local_name
 
-				if not data:
-					logger.warning('No data received for %s', fileConfig.file)
+				if not isinstance(data, dict) or not data.get('download_url'):
+					logger.warning('No downloadable data received for %s', local_name)
+					self._update_failed = True
 					continue
 
-				currentSize = filePath.stat().st_size if filePath.is_file() else 0
+				previous = self.state.get('files', {}).get(local_name, {})
+				needs_download = (
+					source_changed
+					or not filePath.is_file()
+					or previous.get('sha') != data.get('sha')
+				)
 
-				if data.get('size', 0) != currentSize:
-					logger.info('Downloading updated version of %s...', fileConfig.file)
+				if needs_download:
+					logger.info('Downloading updated version of %s...', local_name)
 					urllib.request.urlretrieve(
 						data['download_url'],
 						filePath,
-						reporthook=lambda bn, bs, ts, _fn=fileConfig.file: (
+						reporthook=lambda bn, bs, ts, _fn=local_name: (
 							self._onProgress(_fn, (bn * bs / ts) * 100 if ts > 0 else 0)
 						),
 					)
+					self._normalizeDownloadedFile(filePath, local_name)
 					self.updated = True
-					logger.info('File updated: %s (%d bytes)', fileConfig.file, data.get('size', 0))
+					logger.info('File updated: %s (%d bytes)', local_name, data.get('size', 0))
 				else:
-					logger.info('%s is up to date', fileConfig.file)
+					logger.info('%s is up to date', local_name)
+
+				next_state['files'][local_name] = {
+					'sha': data.get('sha'),
+					'path': remote_path,
+				}
 			except Exception as e:
-				logger.error('Failed to process %s: %s', fileConfig.file, e)
+				self._update_failed = True
+				logger.error('Failed to process %s: %s', local_name, e)
+
+		if not self._update_failed:
+			self.state = next_state
+			self._saveUpdaterState(next_state)
 
 	def updateItems(self) -> None:
 		"""Generate items.json and weapons.json from downloaded data."""
-		dir = Path('data') / self.lang
-
-		if (dir / 'items.json').is_file():
-			logger.info('items.json already exists, skipping generation')
-			return
-
 		logger.info('Generating items.json and weapons.json...')
 		try:
 			infoText = self.loadJson('MultiText.json')
@@ -355,8 +473,11 @@ class BaseDataUpdater:
 	def run(self) -> None:
 		logger.info('Starting data update...')
 		logger.info('Using language: %s', self.lang)
+		logger.info('Using data source: %s (%s/%s)', self.source, self.author, self.repo)
 		self.updateFiles()
-		if self.updated:
+		if self._update_failed:
+			logger.warning('Skipping derived file regeneration because one or more source files failed to update')
+		elif self.updated:
 			logger.info('Files were updated, regenerating derived files...')
 			self.updateItems()
 			self.updateEchoStats()

@@ -42,6 +42,7 @@ class DataUpdaterThread(QThread):
         try:
             updater = _QtDataUpdater(
                 lang=cfg.get(cfg.gameLanguage),
+                source=cfg.get(cfg.dataSource),
                 progress_signal=self.updateProgress,
                 finished_signal=self.updateFinished,
             )
@@ -77,8 +78,8 @@ class AssetsUpdaterThread(QThread):
 class _QtDataUpdater(BaseDataUpdater):
     """Thin adapter: emits Qt signals for progress / finished."""
 
-    def __init__(self, lang, progress_signal, finished_signal):
-        super().__init__(lang=lang)
+    def __init__(self, lang, source, progress_signal, finished_signal):
+        super().__init__(lang=lang, source=source)
         self._progress = progress_signal
         self._finished = finished_signal
 
