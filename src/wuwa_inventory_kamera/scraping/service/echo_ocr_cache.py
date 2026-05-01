@@ -7,7 +7,7 @@ Persistent cache for OCR token lists derived from echo stat crops.
 The live echo workflow often sees identical stat-name and stat-value
 panels across sessions.  Re-running OCR on those crops wastes GPU time,
 so this module stores the raw OCR token lists keyed by a stable hash of
-the image bytes plus a cache-version tag.
+the text-only image signal plus a cache-version tag.
 
 The cache is intentionally narrow:
 
@@ -32,7 +32,12 @@ ImageOcrResult = list[tuple[str, float, np.ndarray]]
 class EchoOcrCache:
     """SQLite-backed persistent cache for echo stat OCR token lists."""
 
-    _CACHE_VERSION = 'echo-stat-v1'
+    _CACHE_VERSION = 'echo-stat-v2'
+    _TEXT_VALUE_FLOOR = 200
+    _TEXT_VALUE_MARGIN = 24
+    _TEXT_MAX_CHANNEL_SPREAD = 32
+    _FALLBACK_VALUE_FLOOR = 175
+    _FALLBACK_VALUE_MARGIN = 48
 
     def __init__(self, db_path: str | Path) -> None:
         self._db_path = Path(db_path)
@@ -122,6 +127,7 @@ class EchoOcrCache:
     @classmethod
     def _make_key(cls, crop_kind: str, image: np.ndarray) -> str:
         contiguous = np.ascontiguousarray(image)
+        normalized = cls._normalize_for_hash(contiguous)
         digest = hashlib.blake2b(digest_size=20)
         digest.update(cls._CACHE_VERSION.encode('ascii'))
         digest.update(b'|')
@@ -131,8 +137,63 @@ class EchoOcrCache:
         digest.update(b'|')
         digest.update(contiguous.dtype.str.encode('ascii'))
         digest.update(b'|')
-        digest.update(contiguous.tobytes())
+        digest.update(str(normalized.shape).encode('ascii'))
+        digest.update(b'|')
+        digest.update(normalized.dtype.str.encode('ascii'))
+        digest.update(b'|')
+        digest.update(normalized.tobytes())
         return digest.hexdigest()
+
+    @classmethod
+    def _normalize_for_hash(cls, image: np.ndarray) -> np.ndarray:
+        if image.ndim == 2:
+            return cls._normalize_plane(
+                image,
+                floor=cls._FALLBACK_VALUE_FLOOR,
+                margin=cls._FALLBACK_VALUE_MARGIN,
+            )
+
+        if image.ndim == 3 and image.shape[2] >= 3:
+            rgb = image[..., :3].astype(np.int16, copy=False)
+            darkest_channel = rgb.min(axis=2)
+            channel_spread = rgb.max(axis=2) - darkest_channel
+            threshold = cls._threshold_value(
+                darkest_channel,
+                floor=cls._TEXT_VALUE_FLOOR,
+                margin=cls._TEXT_VALUE_MARGIN,
+            )
+            mask = (darkest_channel >= threshold) & (
+                channel_spread <= cls._TEXT_MAX_CHANNEL_SPREAD
+            )
+            if np.any(mask):
+                return np.ascontiguousarray(np.where(mask, np.uint8(255), np.uint8(0)))
+
+            gray = ((77 * rgb[..., 0]) + (150 * rgb[..., 1]) + (29 * rgb[..., 2])) >> 8
+            return cls._normalize_plane(
+                gray,
+                floor=cls._FALLBACK_VALUE_FLOOR,
+                margin=cls._FALLBACK_VALUE_MARGIN,
+            )
+
+        return image
+
+    @classmethod
+    def _normalize_plane(
+        cls,
+        plane: np.ndarray,
+        *,
+        floor: int,
+        margin: int,
+    ) -> np.ndarray:
+        threshold = cls._threshold_value(plane, floor=floor, margin=margin)
+        binary = np.ascontiguousarray(np.where(plane >= threshold, np.uint8(255), np.uint8(0)))
+        if np.any(binary):
+            return binary
+        return np.ascontiguousarray(plane.astype(np.uint8, copy=False))
+
+    @staticmethod
+    def _threshold_value(plane: np.ndarray, *, floor: int, margin: int) -> int:
+        return max(floor, int(np.max(plane)) - margin)
 
     @staticmethod
     def _serialize(image_results: ImageOcrResult) -> str:
