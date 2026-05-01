@@ -155,7 +155,7 @@ COORDINATES = {
                 "page": Coordinates(16, 24)
             },
             "scroll": {
-                "page": Coordinates(y=-31.25),
+                "page": Coordinates(y=-32.25),
                 "characters": Coordinates(y=-56),
                 "sonata": Coordinates(y=70)
             },
