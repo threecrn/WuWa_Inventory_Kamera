@@ -127,6 +127,13 @@ def main() -> None:
         help='Enable windowed-mode capture (PrintWindow). '
              'Use when the game is not running fullscreen.',
     )
+    parser.add_argument(
+        '--echo-stat-cache', metavar='PATH', default=None,
+        help=(
+            'SQLite cache path for persistent echo stat-name/value OCR results. '
+            'When set, repeated echo scans can skip OCR for identical stat crops.'
+        ),
+    )
 
     args = parser.parse_args()
     _configure_logging(args.log_level)
@@ -142,6 +149,7 @@ def main() -> None:
         sort_order = SortOrder[args.sort_order.upper()]
 
     save_raw = Path(args.output_dir) if args.save_raw else None
+    echo_stat_cache_path = Path(args.echo_stat_cache) if args.echo_stat_cache else None
 
     def on_progress(step: str, scanned: int, total: int) -> None:
         pct = (scanned / total * 100) if total else 0
@@ -157,6 +165,7 @@ def main() -> None:
         inventory_key=args.inventory_key,
         on_progress=on_progress,
         windowed=args.windowed,
+        echo_stat_cache_path=echo_stat_cache_path,
     )
 
     logger.info('Starting scan — scrapers=%s provider=%s', args.scrapers, args.provider)

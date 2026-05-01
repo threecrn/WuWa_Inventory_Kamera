@@ -53,6 +53,7 @@ import numpy as np
 
 from ..ocr._rapidocr import RapidOcrBackend
 from ..ocr.batch import BatchOcr
+from .echo_ocr_cache import EchoOcrCache
 from .captures import (
     _Stop,
     CaptureType,
@@ -149,6 +150,7 @@ class OcrService:
         max_batch_size: int = 32,
         min_rarity: int = 1,
         min_level: int = 0,
+        echo_stat_cache_path: str | None = None,
         **backend_kwargs,
     ) -> None:
         if providers is None:
@@ -161,6 +163,10 @@ class OcrService:
         self._counter      = itertools.count()
         self._batch_timeout  = batch_timeout
         self._max_batch_size = max_batch_size
+        self._echo_stat_cache = (
+            EchoOcrCache(echo_stat_cache_path)
+            if echo_stat_cache_path is not None else None
+        )
 
         # Assemblers
         self._echo_asm        = EchoAssembler(min_rarity=min_rarity, min_level=min_level)
@@ -175,6 +181,8 @@ class OcrService:
         )
         self._thread.start()
         logger.info('OcrService started (providers=%s)', providers)
+        if self._echo_stat_cache is not None:
+            logger.info('Echo stat OCR cache enabled: %s', self._echo_stat_cache.path)
 
     # ------------------------------------------------------------------
     # Public API
@@ -221,12 +229,16 @@ class OcrService:
 
     def _run(self) -> None:
         """Main loop of the background service thread."""
-        while True:
-            batch = self._drain_batch()
-            if batch is None:
-                break
-            if batch:
-                self._process_batch(batch)
+        try:
+            while True:
+                batch = self._drain_batch()
+                if batch is None:
+                    break
+                if batch:
+                    self._process_batch(batch)
+        finally:
+            if self._echo_stat_cache is not None:
+                self._echo_stat_cache.close()
 
     def _drain_batch(self) -> list[_QueueItem] | None:
         """
@@ -382,8 +394,14 @@ class OcrService:
 
             card_results.append(raw_results[i])
 
-        name_results   = self._batch_ocr.ocr_images([c.stats_name   for c in captures])
-        value_results  = self._batch_ocr.ocr_images([c.stats_value  for c in captures])
+        name_results = self._ocr_images_with_cache(
+            'echo_stats_name',
+            [c.stats_name for c in captures],
+        )
+        value_results = self._ocr_images_with_cache(
+            'echo_stats_value',
+            [c.stats_value for c in captures],
+        )
 
         # Convert [[( text, conf, box ), ...], ...] → [[OcrResult, ...], ...]
         # OcrResult = (bbox_list, text, conf); box is (4,2) ndarray so convert.
@@ -410,6 +428,39 @@ class OcrService:
             except Exception as exc:
                 logger.exception('OcrService — echo %d assembly error', capture.echo_index)
                 item.future.set_exception(exc)
+
+    def _ocr_images_with_cache(
+        self,
+        crop_kind: str,
+        images: list[np.ndarray],
+    ) -> list[list[tuple[str, float, np.ndarray]]]:
+        """Run OCR for *images*, serving cached echo stat results when present."""
+        cache = self._echo_stat_cache
+        if cache is None or not images:
+            return self._batch_ocr.ocr_images(images)
+
+        keys, cached_results, miss_indices = cache.lookup_many(crop_kind, images)
+        if miss_indices:
+            miss_images = [images[idx] for idx in miss_indices]
+            miss_results = self._batch_ocr.ocr_images(miss_images)
+            cache.store_many(
+                crop_kind,
+                miss_images,
+                miss_results,
+                keys=[keys[idx] for idx in miss_indices],
+            )
+            for idx, image_results in zip(miss_indices, miss_results):
+                cached_results[idx] = image_results
+
+        hits = len(images) - len(miss_indices)
+        logger.debug(
+            'Echo OCR cache %s — hits=%d misses=%d total=%d',
+            crop_kind,
+            hits,
+            len(miss_indices),
+            len(images),
+        )
+        return [image_results or [] for image_results in cached_results]
 
     def _process_weapons(self, group: list[_QueueItem]) -> None:
         """Run batched OCR and assembly for a group of :class:`WeaponCapture` objects."""
