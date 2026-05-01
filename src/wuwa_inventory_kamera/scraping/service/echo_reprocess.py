@@ -22,7 +22,7 @@ def reprocess_echo_scans_with_service(
 ) -> list[dict]:
     """Process raw echo scans through the v2 OcrService pipeline."""
     from ...game.screen_info import ScreenInfo
-    from ..captures import EchoCapture
+    from .captures import EchoCapture
     from .ocr_service import OcrService
 
     echoes: list[dict] = []
