@@ -47,7 +47,7 @@ import queue
 import threading
 import time
 from collections import defaultdict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
@@ -97,7 +97,7 @@ def _filter_echo_name(bgr: np.ndarray) -> np.ndarray:
     import cv2
     hsv  = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv, _ECHO_NAME_HSV_LO, _ECHO_NAME_HSV_HI)
-    mono = np.where(mask[:, :, None] > 0, np.uint8(255), np.uint8(0))
+    mono = np.where(mask > 0, np.uint8(255), np.uint8(0))
     return cv2.cvtColor(mono, cv2.COLOR_GRAY2RGB)
 
 
@@ -306,15 +306,77 @@ class OcrService:
         Sonata detection is handled by the :class:`EchoAssembler` via
         icon template matching on ``capture.sonata_icon``, bypassing OCR.
         """
-        captures = [it.capture for it in group]
+        captures: list[EchoCapture] = [cast(EchoCapture, it.capture) for it in group]
 
-        # Use the colour-filtered echo name crop when available (new UI),
-        # otherwise fall back to the raw card crop (legacy path).
-        name_source = [
+        # Prefer the dedicated echoName ROI (new UI): try colour-filtered
+        # first, then raw echoName if detection returns no boxes.
+        # Legacy resolutions without echoName keep using card OCR.
+        name_source_filtered = [
             _filter_echo_name(c.echo_name) if c.echo_name is not None else c.card
             for c in captures
         ]
-        card_results   = self._batch_ocr.ocr_images(name_source)
+        name_source_raw = [
+            c.echo_name if c.echo_name is not None else c.card
+            for c in captures
+        ]
+
+        filtered_results = self._batch_ocr.ocr_images(name_source_filtered)
+        raw_results = self._batch_ocr.ocr_images(name_source_raw)
+
+        def _has_usable_text(results: list[tuple[str, float, np.ndarray]]) -> bool:
+            return any(text and any(ch.isalnum() for ch in text) for text, _conf, _box in results)
+
+        def _backend_to_batch(tokens) -> list[tuple[str, float, np.ndarray]]:
+            return [
+                (text, conf, np.asarray(bbox, dtype=np.float32))
+                for bbox, text, conf in tokens
+                if bbox is not None
+            ]
+
+        card_results: list[list[tuple[str, float, np.ndarray]]] = []
+        for i, c in enumerate(captures):
+            if _has_usable_text(filtered_results[i]):
+                card_results.append(filtered_results[i])
+                continue
+
+            # Fallback chain for new-UI echo names:
+            #   1) single-image recognize on filtered crop (matches nav script)
+            #   2) thorough recognize on filtered crop
+            #   3) batched OCR on raw echoName crop
+            if c.echo_name is not None:
+                single_results = _backend_to_batch(
+                    self._backend.recognize(name_source_filtered[i])
+                )
+                if _has_usable_text(single_results):
+                    logger.debug(
+                        'Echo %d — echoName recovered via single-image OCR fallback.',
+                        c.echo_index,
+                    )
+                    card_results.append(single_results)
+                    continue
+
+                thorough_results = _backend_to_batch(
+                    self._backend.thorough_recognize(name_source_filtered[i])
+                )
+                if _has_usable_text(thorough_results):
+                    logger.debug(
+                        'Echo %d — echoName recovered via thorough OCR fallback.',
+                        c.echo_index,
+                    )
+                    card_results.append(thorough_results)
+                    continue
+
+                if _has_usable_text(raw_results[i]):
+                    logger.debug(
+                        'Echo %d — echoName filtered OCR empty; '
+                        'falling back to raw echoName crop.',
+                        c.echo_index,
+                    )
+                    card_results.append(raw_results[i])
+                    continue
+
+            card_results.append(raw_results[i])
+
         name_results   = self._batch_ocr.ocr_images([c.stats_name   for c in captures])
         value_results  = self._batch_ocr.ocr_images([c.stats_value  for c in captures])
 
@@ -331,16 +393,17 @@ class OcrService:
         value_tok  = to_tokens(value_results)
 
         for i, item in enumerate(group):
+            capture = captures[i]
             try:
                 result = self._echo_asm.assemble(
-                    item.capture,
+                    capture,
                     card_tok[i],
                     name_tok[i],
                     value_tok[i],
                 )
                 item.future.set_result(result)
             except Exception as exc:
-                logger.exception('OcrService — echo %d assembly error', item.capture.echo_index)
+                logger.exception('OcrService — echo %d assembly error', capture.echo_index)
                 item.future.set_exception(exc)
 
     def _process_weapons(self, group: list[_QueueItem]) -> None:

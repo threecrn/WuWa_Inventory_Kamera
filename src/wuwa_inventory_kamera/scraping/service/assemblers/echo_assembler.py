@@ -234,7 +234,7 @@ class EchoAssembler:
             except ValueError:
                 level = 0
 
-        logger.debug('Echo %d — card lines: %s | name=%r level=%d', idx, card_lines, name, level)
+        logger.debug('Echo %d — name lines: %s | name=%r level=%d', idx, card_lines, name, level)
 
         # Name lookup: exact → fuzzy
         if name not in echoesID:
