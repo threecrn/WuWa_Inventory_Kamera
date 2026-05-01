@@ -31,6 +31,13 @@ def main():
         help='Language display name (e.g. English, Chinese). Leave empty to auto-detect.',
     )
     parser.add_argument(
+        '-s', '--source',
+        type=str.lower,
+        choices=sorted(BaseDataUpdater.SOURCES),
+        default=None,
+        help='Updater source to use. Defaults to dimbreath.',
+    )
+    parser.add_argument(
         '-v', '--verbose',
         action='store_true',
         help='Enable verbose output',
@@ -41,7 +48,7 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    updater = BaseDataUpdater(lang=args.lang)
+    updater = BaseDataUpdater(lang=args.lang, source=args.source)
     updater.run()
 
 

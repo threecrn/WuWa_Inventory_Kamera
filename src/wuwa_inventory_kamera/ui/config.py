@@ -98,6 +98,10 @@ class Config(QConfig):
     # Personalization
     exportFolder = ConfigItem("Folders", "Export", "export", FolderValidator())
     checkUpdateAtStartUp = ConfigItem("Update", "CheckUpdateAtStartUp", True, BoolValidator())
+    dataSource = OptionsConfigItem(
+        'Update', 'DataSource', 'Dimbreath',
+        OptionsValidator(['Dimbreath', 'Arikatsu']),
+    )
 
     # In-Game
     gameLanguage = OptionsConfigItem('InGame', 'Language', 'English', OptionsValidator(list(LANGUAGES)))

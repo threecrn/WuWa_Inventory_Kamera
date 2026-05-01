@@ -28,7 +28,7 @@ class DataUpdater(QObject, BaseDataUpdater):
 
 	def __init__(self):
 		QObject.__init__(self)
-		BaseDataUpdater.__init__(self, lang=cfg.get(cfg.gameLanguage))
+		BaseDataUpdater.__init__(self, lang=cfg.get(cfg.gameLanguage), source=cfg.get(cfg.dataSource))
 
 	# ------------------------------------------------------------------
 	# Lifecycle hooks → Qt signals
