@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import cv2
 import numpy as np
 
 from wuwa_inventory_kamera.scraping.service.echo_ocr_cache import EchoOcrCache
 from wuwa_inventory_kamera.scraping.service.ocr_service import OcrService
+
+
+_SCREENSHOT_DIR = Path(__file__).resolve().parents[1] / 'screenshots' / 'echo_cache_problem'
 
 
 def _image(seed: int) -> np.ndarray:
@@ -51,6 +57,13 @@ def _ocr_result(label: str):
             np.asarray([[0, 0], [5, 0], [5, 1], [0, 1]], dtype=np.float32),
         )
     ]
+
+
+def _problem_image(name: str) -> np.ndarray:
+    image = cv2.imread(str(_SCREENSHOT_DIR / name), cv2.IMREAD_COLOR)
+    if image is None:
+        raise FileNotFoundError(_SCREENSHOT_DIR / name)
+    return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
 
 class _FakeBatchOcr:
@@ -117,6 +130,22 @@ def test_echo_ocr_cache_ignores_background_animation(tmp_path):
     cache = EchoOcrCache(tmp_path / 'echo-cache.sqlite3')
     first = [_stat_image((53, 68, 80), (74, 92, 111), glyph='atk')]
     second = [_stat_image((113, 141, 157), (96, 118, 136), glyph='atk')]
+
+    try:
+        cache.store_many('echo_stats_name', first, [_ocr_result('cached-name')])
+        _keys, cached, misses = cache.lookup_many('echo_stats_name', second)
+    finally:
+        cache.close()
+
+    assert misses == []
+    assert cached[0] is not None
+    assert cached[0][0][0] == 'cached-name'
+
+
+def test_echo_ocr_cache_matches_real_stat_name_capture_pair(tmp_path):
+    cache = EchoOcrCache(tmp_path / 'echo-cache.sqlite3')
+    first = [_problem_image('echo_0000_name_a.png')]
+    second = [_problem_image('echo_0000_name_b.png')]
 
     try:
         cache.store_many('echo_stats_name', first, [_ocr_result('cached-name')])

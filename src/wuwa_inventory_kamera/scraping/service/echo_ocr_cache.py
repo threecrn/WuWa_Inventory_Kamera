@@ -24,6 +24,7 @@ import sqlite3
 import threading
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 ImageOcrResult = list[tuple[str, float, np.ndarray]]
@@ -38,6 +39,9 @@ class EchoOcrCache:
     _TEXT_MAX_CHANNEL_SPREAD = 32
     _FALLBACK_VALUE_FLOOR = 175
     _FALLBACK_VALUE_MARGIN = 48
+    _SIGNATURE_MAX_WIDTH = 64
+    _SIGNATURE_MAX_HEIGHT = 64
+    _BINARY_SIGNATURE_THRESHOLD = 32
 
     def __init__(self, db_path: str | Path) -> None:
         self._db_path = Path(db_path)
@@ -128,6 +132,7 @@ class EchoOcrCache:
     def _make_key(cls, crop_kind: str, image: np.ndarray) -> str:
         contiguous = np.ascontiguousarray(image)
         normalized = cls._normalize_for_hash(contiguous)
+        signature = cls._signature_for_hash(normalized)
         digest = hashlib.blake2b(digest_size=20)
         digest.update(cls._CACHE_VERSION.encode('ascii'))
         digest.update(b'|')
@@ -137,11 +142,11 @@ class EchoOcrCache:
         digest.update(b'|')
         digest.update(contiguous.dtype.str.encode('ascii'))
         digest.update(b'|')
-        digest.update(str(normalized.shape).encode('ascii'))
+        digest.update(str(signature.shape).encode('ascii'))
         digest.update(b'|')
-        digest.update(normalized.dtype.str.encode('ascii'))
+        digest.update(signature.dtype.str.encode('ascii'))
         digest.update(b'|')
-        digest.update(normalized.tobytes())
+        digest.update(signature.tobytes())
         return digest.hexdigest()
 
     @classmethod
@@ -190,6 +195,33 @@ class EchoOcrCache:
         if np.any(binary):
             return binary
         return np.ascontiguousarray(plane.astype(np.uint8, copy=False))
+
+    @classmethod
+    def _signature_for_hash(cls, image: np.ndarray) -> np.ndarray:
+        if image.ndim != 2:
+            return np.ascontiguousarray(image)
+
+        target_width = min(image.shape[1], cls._SIGNATURE_MAX_WIDTH)
+        target_height = min(image.shape[0], cls._SIGNATURE_MAX_HEIGHT)
+        if target_width == image.shape[1] and target_height == image.shape[0]:
+            return np.ascontiguousarray(image)
+
+        resized = cv2.resize(
+            image,
+            (target_width, target_height),
+            interpolation=cv2.INTER_AREA,
+        )
+        if cls._is_binary_mask(image):
+            resized = np.where(
+                resized >= cls._BINARY_SIGNATURE_THRESHOLD,
+                np.uint8(255),
+                np.uint8(0),
+            )
+        return np.ascontiguousarray(resized.astype(np.uint8, copy=False))
+
+    @staticmethod
+    def _is_binary_mask(image: np.ndarray) -> bool:
+        return bool(np.all((image == 0) | (image == 255)))
 
     @staticmethod
     def _threshold_value(plane: np.ndarray, *, floor: int, margin: int) -> int:
