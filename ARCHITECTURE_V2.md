@@ -8,8 +8,9 @@
 > `game/`, `scraping/ocr/`, and V1 scraper modules have been deleted; shared
 > processing and utility modules are now canonical under `src/` with thin
 > re-export shims kept for backward compatibility. The Qt UI layer, Qt config
-> (`ui.config`), `config/app_config`, and `updater/assets` have been ported to
-> `src/`; legacy top-level modules are now thin re-export shims.
+> (`ui.config`), `config/app_config`, `updater/assets`, and `updater/database`
+> have been ported to `src/`; legacy top-level modules are now thin re-export
+> shims. A full V1 reference backup is preserved in `scraping.restored/`.
 
 ---
 
@@ -26,7 +27,7 @@ game/
   __init__.py
   constants.py           — PROCESS_NAME, WINDOW_NAME
   input_controller.py    — Low-level mouse/keyboard/scroll (wraps win32api scancodes)
-  screen.py              — GameWindow, ScreenLayout, capture_full / capture_region
+  screen.py              — GameWindow, ScreenLayout, CaptureBackend, capture_full / capture_region
   screen_info.py         — ScreenInfo (migrated from legacy game/screenInfo.py)
   game_roi.py            — ROI definitions (migrated from legacy game/gameROI.py)
   navigation.py          — GameNavigator — tabs, sort, grid coords, scrolling, menu detection
@@ -50,7 +51,8 @@ game/
 
 ```python
 ctrl = InputController(monitor_index=1)
-ctrl.click(500, 300)                   # left-click relative to monitor
+ctrl = InputController(monitor_index=1, get_origin=lambda: gw.client_origin)  # windowed mode
+ctrl.click(500, 300)                   # left-click relative to monitor (or client area)
 ctrl.move(500, 300)                    # move cursor
 ctrl.scroll(3)                         # scroll (amount > 0 = down)
 ctrl.press_key('esc')                  # single key
@@ -65,13 +67,21 @@ for all keys, modifiers, and function keys.
 
 ```python
 gw = GameWindow()                      # auto-finds by WINDOW_NAME / PROCESS_NAME
+gw = GameWindow(windowed=True)         # windowed mode — client-area coords + PrintWindow capture
 gw.activate()                          # bring to foreground
 gw.found          # → bool
 gw.size            # → (logical_width, logical_height) after DPI scaling
 gw.dpi_scale       # → float
 gw.monitor_index   # → 1-based mss index
 gw.layout          # → ScreenLayout (wraps ScreenInfo for current resolution)
+gw.windowed        # → bool
+gw.client_origin   # → (x, y) — top-left of client area (windowed mode)
+gw.check_minimum_size()  # raises if client area below 1280×720 (windowed)
 ```
+
+**Capture backends:** `CaptureBackend.MSS` (fullscreen default) or
+`CaptureBackend.PRINTWINDOW` (windowed default — occlusion-immune Win32
+PrintWindow). The backend is chosen automatically based on `gw.windowed`.
 
 ### `GameNavigator`
 
@@ -320,6 +330,8 @@ orch = SessionOrchestrator(
     save_raw=Path('export'),
     inventory_key='b',
     on_progress=my_callback,   # (step: str, scanned: int, total: int)
+    max_batch_size=8,          # hard cap on captures per OcrService batch
+    windowed=False,            # windowed mode support
 )
 result = orch.run()
 # result = {'date': '...', 'echoes': [...], 'weapons': [...], ...}
@@ -327,12 +339,13 @@ result = orch.run()
 
 Run sequence:
 
-1. Find game window, activate, build `InputController` + `GameNavigator`
-2. Start `StopSignal` (Enter-key watcher)
-3. Open `OcrService` as context manager
-4. For each scraper: Esc → dispatch to the appropriate workflow
-5. Check `StopSignal` between scrapers; set `cancelled: True` if pressed
-6. Return structured result dict
+1. Find game window (with optional windowed-mode support), activate, build `InputController` + `GameNavigator`
+2. Verify game is on the main menu
+3. Start `StopSignal` (Enter-key watcher)
+4. Open `OcrService` as context manager
+5. For each scraper: Esc → dispatch to the appropriate workflow
+6. Check `StopSignal` between scrapers; set `cancelled: True` if pressed
+7. Return structured result dict
 
 **Implemented scrapers:** `echoes`, `weapons`, `devItems`, `resources` (the
 latter two reuse `WeaponWorkflow` with different `InventoryTab` values),
@@ -343,13 +356,14 @@ latter two reuse `WeaponWorkflow` with different `InventoryTab` values),
 
 ## CLI Tools
 
-Three console scripts registered in `pyproject.toml`:
+Four console scripts registered in `pyproject.toml`:
 
 ```toml
 [project.scripts]
 wuwa-scan      = "wuwa_inventory_kamera.cli.scan:main"
 wuwa-nav       = "wuwa_inventory_kamera.cli.nav:main"
 wuwa-reprocess = "wuwa_inventory_kamera.cli.reprocess:main"
+wuwa-app       = "wuwa_inventory_kamera.app:main"
 ```
 
 ### `wuwa-scan`
@@ -404,6 +418,18 @@ wuwa-reprocess --raw-dir export/2026-02-28_14-30-00/raw --extractor rapid_coord
 Options: `--session-id` or `--raw-dir`, `--service` (v2 batched GPU OCR via
 OcrService), `--extractor` (legacy path), `--provider`, `--use-bw`,
 `--min-rarity`, `--min-level`, `--output-dir`.
+
+### `wuwa-app`
+
+Qt application entry point — configures logging, creates `QApplication`,
+shows the loading screen, and runs the event loop:
+
+```
+wuwa-app
+```
+
+Delegates to `wuwa_inventory_kamera.app:main()`. The legacy root `main.py`
+and `app.py` are thin shims that forward here.
 
 ### `detect-sonata-icon`
 
@@ -497,7 +523,7 @@ src/wuwa_inventory_kamera/
     __init__.py
     constants.py            (PROCESS_NAME, WINDOW_NAME)
     input_controller.py     (InputController — win32api scancodes)
-    screen.py               (GameWindow, ScreenLayout, capture_full, capture_region)
+    screen.py               (GameWindow, ScreenLayout, CaptureBackend, capture_full, capture_region)
     screen_info.py          (ScreenInfo — migrated from legacy)
     game_roi.py             (ROI rectangles — migrated from legacy)
     navigation.py           (GameNavigator, InventoryTab, SortOrder, _nav_ocr)
@@ -559,9 +585,22 @@ src/wuwa_inventory_kamera/
     utils/
       __init__.py
       common.py             (isUserAdmin, itemsID, savingScraped)
+  ui/
+    __init__.py
+    config.py               (Config, cfg — QConfig-based UI config, ported from properties/config.py)
+    home.py                 (HomeInterface, LControlPanel, TControlPanel, ScanThread)
+    inventory.py            (InventoryInterface — echo/weapon/item/character result display)
+    loading.py              (LoadingScreen — startup splash + data update)
+    main_window.py          (MainWindow — FluentWindow shell, tab routing)
+    settings.py             (SettingsInterface — OCR provider, keybinds, language)
+    custom_widgets/
+      __init__.py
+      widget.py             (Shared custom widgets)
   updater/
     __init__.py
+    assets.py               (BaseAssetsUpdater — asset download logic, Qt-independent base)
     database.py             (BaseDataUpdater — data JSON update logic)
+  app.py                    (configure_logging, start, main — Qt application bootstrap)
 ```
 
 ### Remaining legacy top-level modules
@@ -592,20 +631,20 @@ game/                       [DELETED — superseded by src/.../game/]
 
 properties/
   app_config.py             (shim → src/.../config/app_config.py)
-  config.py                 (QConfig-based UI config, Qt-dependent — not yet ported)
+  config.py                 (shim → src/.../ui/config.py + src/.../config/app_config.py)
 
-ui/                         (Qt / PySide6-Fluent UI — ported to V2 under src/)
-  homeUI.py
-  inventoryUI.py
-  loadingUI.py
-  mainUI.py
-  settingsUI.py
+ui/                         (re-export shims — canonical code is in src/.../ui/)
+  homeUI.py                 (shim → src/.../ui/home.py)
+  inventoryUI.py            (shim → src/.../ui/inventory.py)
+  loadingUI.py              (shim → src/.../ui/loading.py)
+  mainUI.py                 (shim → src/.../ui/main_window.py)
+  settingsUI.py             (shim → src/.../ui/settings.py)
   custom_widgets/
-    widget.py
+    widget.py               (shim → src/.../ui/custom_widgets/widget.py)
 
 updater/
-  assetsUpdater.py          (asset download logic — not yet migrated to src/)
-  databaseUpdater.py        (shim → src/.../updater/database.py)
+  assetsUpdater.py          (re-exports BaseAssetsUpdater from src/; Qt AssetsUpdater subclass stays here)
+  databaseUpdater.py        (re-exports BaseDataUpdater from src/; Qt DataUpdater subclass stays here)
 
 cli/                        (legacy CLI scripts — NOT under src/)
   debug_ocr.py              (updated to use src/ imports; candidate for nav-script or removal)
@@ -617,8 +656,7 @@ nav-scripts/                (wuwa-nav session scripts — keep as-is)
   build-sonata-templates-from-filter.py
   scan-echoes.py
   scan-sonata-icons.py
-  session.py
-  set-sort.py
+  test-echo-workflow.py
 
 tools/                      (development / one-off tools — keep)
   check_printwindow/
@@ -627,8 +665,10 @@ tools/                      (development / one-off tools — keep)
   cli/dimbreath_wuthering_data/  (vendored game data, large)
   [DELETED] match_sonata_icon/  (integrated into src/.../scraping/matching/)
 
-app.py                      (Qt application bootstrap — not yet ported)
-main.py                     (entry point with log setup — not yet ported)
+scraping.restored/          (full V1 scraping codebase preserved as reference backup)
+
+app.py                      (shim → src/.../app.py — delegates to wuwa_inventory_kamera.app.start)
+main.py                     (shim → src/.../app.py — delegates to wuwa_inventory_kamera.app.main)
 [DELETED] batch_ocr.py      (superseded by src/.../scraping/ocr/batch.py)
 [DELETED] setup.py          (superseded by pyproject.toml)
 conftest.py                 (root — adds project root to sys.path; keep until no legacy imports remain)
@@ -705,6 +745,14 @@ class AchievementResult:
     achievement_name: str
     achievement_id:   int
     completed:        bool
+
+@dataclass
+class ShellCapture:
+    amount:         np.ndarray        # shell count text region (RGB)
+
+@dataclass
+class ShellResult:
+    amount:         int               # 0 when OCR failed
 
 CaptureType = EchoCapture | WeaponCapture | ItemCapture | CharCapture | AchievementCapture
 ```
@@ -844,9 +892,8 @@ scraping/ocr/
 - `scraping/processing/echoesProcessor.py` / `statsExtractor.py` — canonical
   copies moved to `src/.../scraping/processing/`; legacy paths are re-export shims.
 - `wuwa-reprocess` still supports the legacy `echoesProcessor` path via `--extractor`.
-- Character and achievement scrapers have V2 ports (`CharacterWorkflow`,
-  `AchievementWorkflow`). Shell scraper was **deleted** without a V2 port.
-  `SessionOrchestrator` logs a warning if shell is requested.
+- Character, achievement, and shell scrapers have V2 ports
+  (`CharacterWorkflow`, `AchievementWorkflow`, `ShellWorkflow`).
 - Disk saving is opt-in debug mode (`--save-raw`) rather than the default.
 
 ---
@@ -928,7 +975,6 @@ Located in `tests/`, run by `uv run pytest` (the `testpaths` default in
 |---|---|
 | `test_echoesValidator.py` | `validate_echo_stats`, `expected_sub_count` |
 | `test_ocrStats.py` | OCR stat value parsing |
-| `test_ocrSubstatNames.py` | Substat name fuzzy matching |
 | `data/` | Fixture data for test cases |
 
 ### Session integration tests (`session_tests/`)
@@ -963,10 +1009,12 @@ Every module still outside `src/wuwa_inventory_kamera/` needs to be moved in,
 replaced by a V2 equivalent, or explicitly deleted.  The table below groups
 modules by disposition and priority.
 
-> **Migration status (2026-04-28):** Phases 1–3 are complete. Phase 4 items
+> **Migration status (2026-05-01):** Phases 1–3 are complete. Phase 4 items
 > (top-level `cli/` scripts, root `conftest.py`) remain as candidates for
-> future cleanup. The Qt UI layer and `updater/assetsUpdater.py` are the only
-> substantial pieces not yet ported to `src/`.
+> future cleanup. All functional code — including the Qt UI layer,
+> `updater/assets`, `updater/database`, and all scanning workflows — has been
+> ported to `src/`. Legacy top-level modules (`ui/`, `properties/`, `updater/`,
+> `app.py`, `main.py`) are thin re-export shims or Qt-dependent subclasses.
 
 ### Phase 1 — Delete (no remaining callers or superseded) ✓ Done
 
@@ -1002,15 +1050,14 @@ shims that forward all public names to their canonical `src/` counterparts.
 | `scraping/utils/common.py` | `src/.../scraping/utils/common.py` | **Moved** — re-export shim kept |
 | `properties/app_config.py` | `src/.../config/app_config.py` | **Moved** — re-export shim kept |
 | `updater/databaseUpdater.py` | `src/.../updater/database.py` | **Moved** — re-export shim kept |
-| `updater/assetsUpdater.py` | `src/.../updater/assets.py` | **Moved** — re-export shim kept; Qt subclass stays in legacy |
+| `updater/assetsUpdater.py` | `src/.../updater/assets.py` | **Moved** — re-exports `BaseAssetsUpdater` from `src/`; Qt `AssetsUpdater` subclass stays in legacy |
 
 ### Phase 3 — Port or Remove (V1 scrapers + UI) ✓ Done
 
-V1 scrapers have been removed. Character and achievement scrapers have V2
-ports (`CharacterWorkflow`, `AchievementWorkflow`); shell scraper was deleted
-without a V2 port. The Qt UI layer has been ported to
-`src/wuwa_inventory_kamera/ui/` with the scan path rewritten to use
-`SessionOrchestrator` on a `QThread`.
+V1 scrapers have been removed. Character, achievement, and shell scrapers have
+V2 ports (`CharacterWorkflow`, `AchievementWorkflow`, `ShellWorkflow`). The
+Qt UI layer has been ported to `src/wuwa_inventory_kamera/ui/` with the scan
+path rewritten to use `SessionOrchestrator` on a `QThread`.
 
 | Module | Plan | Status |
 |---|---|---|
@@ -1019,7 +1066,7 @@ without a V2 port. The Qt UI layer has been ported to
 | `scraping/itemsScraper.py` | Remove — superseded by `WeaponWorkflow` (tab=RESOURCES) | **Deleted** |
 | `scraping/charactersScraper.py` | Port to `src/.../scraping/scanning/character_workflow.py` | **Done** — `CharacterWorkflow` implemented |
 | `scraping/achievementsScraper.py` | Port to `src/.../scraping/scanning/achievement_workflow.py` | **Done** — `AchievementWorkflow` implemented |
-| `scraping/shellScraper.py` | Port to `src/.../scraping/scanning/shell_workflow.py` | **Deleted** — V2 port not yet implemented |
+| `scraping/shellScraper.py` | Port to `src/.../scraping/scanning/shell_workflow.py` | **Done** — `ShellWorkflow` implemented |
 | `scraping/scraperManager.py` | Remove — replaced by `SessionOrchestrator` | **Deleted** |
 | `scraping/scraperExectuter.py` | Remove — replaced by `wuwa-scan` CLI | **Deleted** |
 | `ui/` (all) | Port — rewrite against V2 `SessionOrchestrator` | **Done** — shims re-export from `src/.../ui/` |
