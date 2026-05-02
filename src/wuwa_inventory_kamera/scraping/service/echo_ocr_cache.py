@@ -22,6 +22,7 @@ import hashlib
 import json
 import sqlite3
 import threading
+import time
 from pathlib import Path
 
 import cv2
@@ -56,10 +57,27 @@ class EchoOcrCache:
                 CREATE TABLE IF NOT EXISTS echo_ocr_cache (
                     cache_key   TEXT PRIMARY KEY,
                     crop_kind   TEXT NOT NULL,
-                    payload     TEXT NOT NULL
+                    payload     TEXT NOT NULL,
+                    hit_ts      INTEGER NOT NULL DEFAULT 0,
+                    hit_count   INTEGER NOT NULL DEFAULT 0
                 )
                 '''
             )
+            # Migrate existing databases that lack the new columns.
+            existing = {
+                row[1]
+                for row in self._conn.execute(
+                    'PRAGMA table_info(echo_ocr_cache)'
+                ).fetchall()
+            }
+            if 'hit_ts' not in existing:
+                self._conn.execute(
+                    'ALTER TABLE echo_ocr_cache ADD COLUMN hit_ts INTEGER NOT NULL DEFAULT 0'
+                )
+            if 'hit_count' not in existing:
+                self._conn.execute(
+                    'ALTER TABLE echo_ocr_cache ADD COLUMN hit_count INTEGER NOT NULL DEFAULT 0'
+                )
             self._conn.commit()
 
     @property
@@ -85,8 +103,10 @@ class EchoOcrCache:
         cached: list[ImageOcrResult | None] = [None] * len(images)
         misses: list[int] = []
 
+        now = int(time.time())
         with self._lock:
             cursor = self._conn.cursor()
+            hit_keys: list[str] = []
             for idx, key in enumerate(keys):
                 row = cursor.execute(
                     'SELECT payload FROM echo_ocr_cache WHERE cache_key = ?',
@@ -96,6 +116,17 @@ class EchoOcrCache:
                     misses.append(idx)
                     continue
                 cached[idx] = self._deserialize(row[0])
+                hit_keys.append(key)
+            if hit_keys:
+                self._conn.executemany(
+                    '''
+                    UPDATE echo_ocr_cache
+                    SET hit_ts = ?, hit_count = hit_count + 1
+                    WHERE cache_key = ?
+                    ''',
+                    [(now, k) for k in hit_keys],
+                )
+                self._conn.commit()
 
         return keys, cached, misses
 
@@ -114,19 +145,37 @@ class EchoOcrCache:
         if keys is None:
             keys = [self._make_key(crop_kind, image) for image in images]
 
+        now = int(time.time())
         rows = [
-            (key, crop_kind, self._serialize(image_results))
+            (key, crop_kind, self._serialize(image_results), now)
             for key, image_results in zip(keys, results)
         ]
         with self._lock:
             self._conn.executemany(
                 '''
-                INSERT OR REPLACE INTO echo_ocr_cache (cache_key, crop_kind, payload)
-                VALUES (?, ?, ?)
+                INSERT OR REPLACE INTO echo_ocr_cache
+                    (cache_key, crop_kind, payload, hit_ts, hit_count)
+                VALUES (?, ?, ?, ?, 0)
                 ''',
                 rows,
             )
             self._conn.commit()
+
+    def cleanup_older_than(self, days: int) -> int:
+        """Delete entries whose last-hit timestamp is older than *days* days.
+
+        Entries that were never hit (``hit_ts == 0``) are also removed.
+        Returns the number of rows deleted.
+        """
+        cutoff = int(time.time()) - days * 86400
+        with self._lock:
+            cursor = self._conn.execute(
+                'DELETE FROM echo_ocr_cache WHERE hit_ts < ?',
+                (cutoff,),
+            )
+            deleted = cursor.rowcount
+            self._conn.commit()
+        return deleted
 
     @classmethod
     def _make_key(cls, crop_kind: str, image: np.ndarray) -> str:

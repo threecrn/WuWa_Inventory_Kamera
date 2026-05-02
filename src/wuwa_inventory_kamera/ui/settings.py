@@ -7,6 +7,7 @@ Settings interface — theme, export folder, in-game settings, about.
 from __future__ import annotations
 
 import logging
+import sqlite3
 
 from PySide6.QtCore import Qt, Signal, QUrl
 from PySide6.QtGui import QDesktopServices, QFont
@@ -25,6 +26,7 @@ from .config import (
     cfg, alphabethList, maxLength,
     HELP_URL, FEEDBACK_URL, LANGUAGES,
 )
+from ..scraping.service.echo_ocr_cache import EchoOcrCache
 
 logger = logging.getLogger('SettingInterface')
 
@@ -142,6 +144,13 @@ class SettingInterface(ScrollArea):
             self.tr('SQLite file used to reuse stat-name/value OCR across repeated echo scans and service-mode reprocessing.'),
             parent=self.ocrGroup,
         )
+        self.cleanupCacheCard = PushSettingCard(
+            self.tr('Clean up'),
+            FIF.BROOM,
+            self.tr('Clean up OCR cache'),
+            self.tr('Remove cache entries that have not been matched in over two months.'),
+            self.ocrGroup,
+        )
 
         # Advanced
         self.advancedGroup = SettingCardGroup(self.tr('Advanced'), self.scrollWidget)
@@ -216,6 +225,7 @@ class SettingInterface(ScrollArea):
         self.ocrGroup.addSettingCard(self.ocrBackendCard)
         self.ocrGroup.addSettingCard(self.ocrBatchSizeCard)
         self.ocrGroup.addSettingCard(self.echoStatCachePathCard)
+        self.ocrGroup.addSettingCard(self.cleanupCacheCard)
         self.advancedGroup.addSettingCard(self.logLevelCard)
         self.advancedGroup.addSettingCard(self.saveRawCard)
         self.advancedGroup.addSettingCard(self.dataSourceCard)
@@ -246,6 +256,28 @@ class SettingInterface(ScrollArea):
             cfg.set(cfg.exportFolder, folder)
             self.exportFolderCard.setContent(folder)
 
+    def __onCleanupCacheClicked(self):
+        cache_path = cfg.get(cfg.echoStatCachePath)
+        try:
+            cache = EchoOcrCache(cache_path)
+            deleted = cache.cleanup_older_than(days=60)
+            cache.close()
+        except (OSError, sqlite3.Error) as exc:
+            logger.warning('OCR cache cleanup failed: %s', exc)
+            InfoBar.error(
+                self.tr('Cache cleanup failed'),
+                str(exc),
+                duration=4000,
+                parent=self.window(),
+            )
+            return
+        InfoBar.success(
+            self.tr('Cache cleaned'),
+            self.tr(f'{deleted} stale entries removed.'),
+            duration=3000,
+            parent=self.window(),
+        )
+
     def __onThemeChanged(self, theme: Theme):
         setTheme(theme)
 
@@ -254,6 +286,7 @@ class SettingInterface(ScrollArea):
         cfg.dataSource.valueChanged.connect(self.__showRestartTooltip)
         cfg.themeChanged.connect(self.__onThemeChanged)
         self.exportFolderCard.clicked.connect(self.__onExportFolderCardClicked)
+        self.cleanupCacheCard.clicked.connect(self.__onCleanupCacheClicked)
         self.feedbackCard.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl(FEEDBACK_URL))
         )
