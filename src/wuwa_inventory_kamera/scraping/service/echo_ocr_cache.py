@@ -113,7 +113,7 @@ class EchoOcrCache:
             hit_keys: list[str] = []
             for idx, key in enumerate(keys):
                 row = cursor.execute(
-                    'SELECT payload FROM echo_ocr_cache WHERE resoltion = ? and crop_kind = ? and cache_key = ?',
+                    'SELECT payload FROM echo_ocr_cache WHERE resolution = ? and crop_kind = ? and cache_key = ?',
                     (resolution, crop_kind, key),
                 ).fetchone()
                 if row is None:
@@ -126,7 +126,7 @@ class EchoOcrCache:
                     '''
                     UPDATE echo_ocr_cache
                     SET hit_ts = ?, hit_count = hit_count + 1
-                    WHERE resoltion = ? and crop_kind = ? and cache_key = ?
+                    WHERE resolution = ? and crop_kind = ? and cache_key = ?
                     ''',
                     [(now, resolution, crop_kind, k) for k in hit_keys],
                 )
@@ -160,7 +160,7 @@ class EchoOcrCache:
                 '''
                 INSERT OR REPLACE INTO echo_ocr_cache
                     (resolution, crop_kind, cache_key, payload, hit_ts, hit_count)
-                VALUES (?, ?, ?, ?, 0)
+                VALUES (?, ?, ?, ?, ?, 0)
                 ''',
                 rows,
             )
