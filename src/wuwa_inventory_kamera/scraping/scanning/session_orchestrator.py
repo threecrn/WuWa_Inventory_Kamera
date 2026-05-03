@@ -150,6 +150,7 @@ class SessionOrchestrator:
                 str(self.echo_stat_cache_path)
                 if self.echo_stat_cache_path is not None else None
             ),
+            resolution=f'{gw.layout.width}x{gw.layout.height}',
         ) as ocr_service:
 
             for scraper_name in self.scrapers:

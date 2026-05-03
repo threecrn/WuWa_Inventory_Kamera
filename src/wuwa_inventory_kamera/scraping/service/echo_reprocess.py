@@ -27,6 +27,10 @@ def reprocess_echo_scans_with_service(
 
     echoes: list[dict] = []
 
+    resolution = (
+        f'{scans[0].screen_width}x{scans[0].screen_height}'
+        if scans else None
+    )
     with OcrService(
         providers=providers,
         min_rarity=min_rarity,
@@ -35,6 +39,7 @@ def reprocess_echo_scans_with_service(
             str(echo_stat_cache_path)
             if echo_stat_cache_path is not None else None
         ),
+        resolution=resolution,
     ) as svc:
         futures = []
         for scan in scans:

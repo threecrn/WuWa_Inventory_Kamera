@@ -151,6 +151,7 @@ class OcrService:
         min_rarity: int = 1,
         min_level: int = 0,
         echo_stat_cache_path: str | None = None,
+        resolution: str | None = None,
         **backend_kwargs,
     ) -> None:
         if providers is None:
@@ -167,6 +168,7 @@ class OcrService:
             EchoOcrCache(echo_stat_cache_path)
             if echo_stat_cache_path is not None else None
         )
+        self._resolution = resolution
 
         # Assemblers
         self._echo_asm        = EchoAssembler(min_rarity=min_rarity, min_level=min_level)
@@ -436,17 +438,18 @@ class OcrService:
     ) -> list[list[tuple[str, float, np.ndarray]]]:
         """Run OCR for *images*, serving cached echo stat results when present."""
         cache = self._echo_stat_cache
-        if cache is None or not images:
+        if cache is None or not images or self._resolution is None:
             return self._batch_ocr.ocr_images(images)
 
-        keys, cached_results, miss_indices = cache.lookup_many(crop_kind, images)
+        keys, cached_results, miss_indices = cache.lookup_many(resolution=self._resolution, crop_kind=crop_kind, images=images)
         if miss_indices:
             miss_images = [images[idx] for idx in miss_indices]
             miss_results = self._batch_ocr.ocr_images(miss_images)
             cache.store_many(
-                crop_kind,
-                miss_images,
-                miss_results,
+                resolution=self._resolution,
+                crop_kind=crop_kind,
+                images=miss_images,
+                results=miss_results,
                 keys=[keys[idx] for idx in miss_indices],
             )
             for idx, image_results in zip(miss_indices, miss_results):

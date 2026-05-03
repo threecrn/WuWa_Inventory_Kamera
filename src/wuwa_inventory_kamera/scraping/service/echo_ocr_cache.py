@@ -55,11 +55,14 @@ class EchoOcrCache:
             self._conn.execute(
                 '''
                 CREATE TABLE IF NOT EXISTS echo_ocr_cache (
-                    cache_key   TEXT PRIMARY KEY,
+                    resolution  TEXT NOT NULL,
+                    cache_key   TEXT NOT NULL,
                     crop_kind   TEXT NOT NULL,
                     payload     TEXT NOT NULL,
                     hit_ts      INTEGER NOT NULL DEFAULT 0,
-                    hit_count   INTEGER NOT NULL DEFAULT 0
+                    hit_count   INTEGER NOT NULL DEFAULT 0,
+
+                    PRIMARY KEY (resolution, crop_kind, cache_key)
                 )
                 '''
             )
@@ -90,6 +93,7 @@ class EchoOcrCache:
 
     def lookup_many(
         self,
+        resolution: str,
         crop_kind: str,
         images: list[np.ndarray],
     ) -> tuple[list[str], list[ImageOcrResult | None], list[int]]:
@@ -109,8 +113,8 @@ class EchoOcrCache:
             hit_keys: list[str] = []
             for idx, key in enumerate(keys):
                 row = cursor.execute(
-                    'SELECT payload FROM echo_ocr_cache WHERE cache_key = ?',
-                    (key,),
+                    'SELECT payload FROM echo_ocr_cache WHERE resoltion = ? and crop_kind = ? and cache_key = ?',
+                    (resolution, crop_kind, key),
                 ).fetchone()
                 if row is None:
                     misses.append(idx)
@@ -122,9 +126,9 @@ class EchoOcrCache:
                     '''
                     UPDATE echo_ocr_cache
                     SET hit_ts = ?, hit_count = hit_count + 1
-                    WHERE cache_key = ?
+                    WHERE resoltion = ? and crop_kind = ? and cache_key = ?
                     ''',
-                    [(now, k) for k in hit_keys],
+                    [(now, resolution, crop_kind, k) for k in hit_keys],
                 )
                 self._conn.commit()
 
@@ -132,6 +136,7 @@ class EchoOcrCache:
 
     def store_many(
         self,
+        resolution: str,
         crop_kind: str,
         images: list[np.ndarray],
         results: list[ImageOcrResult],
@@ -147,14 +152,14 @@ class EchoOcrCache:
 
         now = int(time.time())
         rows = [
-            (key, crop_kind, self._serialize(image_results), now)
+            (resolution, crop_kind, key, self._serialize(image_results), now)
             for key, image_results in zip(keys, results)
         ]
         with self._lock:
             self._conn.executemany(
                 '''
                 INSERT OR REPLACE INTO echo_ocr_cache
-                    (cache_key, crop_kind, payload, hit_ts, hit_count)
+                    (resolution, crop_kind, cache_key, payload, hit_ts, hit_count)
                 VALUES (?, ?, ?, ?, 0)
                 ''',
                 rows,
