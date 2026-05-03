@@ -167,16 +167,18 @@ COORDINATES = {
             },
             "items": {
                 "start": Coordinates(205, 122, 151, 181),
+                "rarityColorPick": Coordinates(1313, 423), 
                 "info": Coordinates(1296, 114, 558, 278),
                 "description": Coordinates(1296, 114, 558, 820)
             },
             "weapons": {
                 "page": Coordinates(200, 50, 130, 40),
                 "start": Coordinates(205, 122, 151, 181),
+                "rarityColorPick": Coordinates(1313, 423), 
                 "name": Coordinates(1305, 116, 545, 55),
                 "value": Coordinates(1655, 320, 190, 40),
                 "level": Coordinates(1660, 235, 180, 45),
-                "rank": Coordinates(1300, 530, 115, 50),
+                #"rank": Coordinates(1300, 530, 115, 50),
                 # Sort dropdown — same button as echoes; 3 options at 72 px spacing.
                 # Options top→bottom: Sort by Rarity / Sort by Level / Sort by Amount.
                 "sort": {
@@ -453,7 +455,7 @@ COORDINATES = {
                 "page": Coordinates(18.3, 27.4)
             },
             "scroll": {
-                "page": Coordinates(y=-31.70),
+                "page": Coordinates(y=-32.25),
                 "characters": Coordinates(y=-56),
                 "sonata": Coordinates(y=70)
             },
@@ -465,12 +467,14 @@ COORDINATES = {
             },
             "items": {
                 "start": Coordinates(205.7, 118.9, 148.6, 185.1),
+                "rarityColorPick": Coordinates(1313, 482), 
                 "info": Coordinates(1298.3, 176.0, 554.3, 274.3),
                 "description": Coordinates(1298.3, 176.0, 554.3, 817.1)
             },
             "weapons": {
                 "page": Coordinates(200.0, 45.7, 148.6, 45.7),
                 "start": Coordinates(205.7, 118.9, 148.6, 185.1),
+                "rarityColorPick": Coordinates(1313, 482), 
                 "name": Coordinates(1302.9, 173.7, 548.6, 57.1),
                 "value": Coordinates(1634.3, 377.1, 217.1, 45.7),
                 "level": Coordinates(1640.0, 291.4, 205.7, 51.4),
@@ -487,25 +491,33 @@ COORDINATES = {
             "echoes": {
                 "page": Coordinates(200.0, 45.7, 148.6, 45.7),
                 "start": Coordinates(205.7, 118.9, 148.6, 185.1),
+                "rarityColorPick": Coordinates(1313, 482), 
+                "echoName": Coordinates(1316, 187, 544, 40), # measured
                 "echoCard": Coordinates(1298.3, 173.7, 555.4, 173.7),
-                "level": Coordinates(1777.0, 251.0, 58.1, 29.9),
-                "sonataIcon": Coordinates(1441.1, 377.1, 22.9, 22.9),
-                "sonataIconCircle": {
-                    "circle": Coordinates(12.55, 12.65),
-                    "radius": 11.5,
+                "level": Coordinates(1330, 260, 58, 30), # measured
+                "sonataIcon": {
+                    "radius": 14.0,
+                    "level_XX": { # if level is 10 or above, the sonata icon shifts slightly to the left to make room for the double digit level badge.
+                        "circle": Coordinates(14.0, 14.0),     # Circle parameters for the sonata icon (for matching).
+                        "icon": Coordinates(1396, 259, 28, 28), # NEW-UI: Sonata icon has moved to the echo card header.
+                    },
+                    "level_X":  { # if level is below 10, the sonata icon is slightly further to the right
+                        "circle": Coordinates(14.0, 14.0),     # Circle parameters for the sonata icon (for matching).
+                        "icon": Coordinates(1379, 259, 28, 28), # NEW-UI: Sonata icon has moved to the echo card header.
+                    },
                 },
                 "sonata": Coordinates(1297.1, 457.1, 555.4, 466.3),
                 "mouseMovement": Coordinates(1801.7, 760.6),
-                "fullStatsName": Coordinates(1371.4, 480.0, 365.7, 434.3),
-                "fullStatsValue": Coordinates(1725.7, 480.0, 114.3, 434.3),
+                "fullStatsName": Coordinates(1367, 521, 378, 398),  # measured
+                "fullStatsValue": Coordinates(1742, 521, 115, 398), # measured
                 "sort": {
-                    "button": Coordinates(430.9, 1069.7),
+                    "button": Coordinates(431, 1111), # measured
                     "items": [
-                        Coordinates(430.9, 701.7),   # 0 – Sort by Level
-                        Coordinates(430.9, 780.6),   # 1 – Sort by Rarity
-                        Coordinates(430.9, 861.7),   # 2 – Sort by Time Added
-                        Coordinates(430.9, 941.7),   # 3 – Sort by Tuning Status
-                        Coordinates(430.9, 1021.7),  # 4 – Show Discarded First
+                        Coordinates(430.9, 742),   # 0 – Sort by Level
+                        Coordinates(430.9, 821),   # 1 – Sort by Rarity
+                        Coordinates(430.9, 902),   # 2 – Sort by Time Added
+                        Coordinates(430.9, 982),   # 3 – Sort by Tuning Status
+                        Coordinates(430.9, 1062),  # 4 – Show Discarded First
                     ],
                 },
                 "filter": {
