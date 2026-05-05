@@ -8,7 +8,7 @@ Today, preprocessing logic (colour filtering, thresholding, signature generation
 
 Two additional constraints shape the design:
 
-* **Rarity-colored names** — in the new UI the name text of an echo, weapon, or item is tinted by rarity (gold R5, purple R4, blue R3, green R2). A single HSV range cannot cover all four; preprocessing for name regions must handle multiple color ranges simultaneously, or be rarity-context-aware.
+* **Rarity-colored names** — in the new UI the name text of an echo, weapon, or item is tinted by rarity (gold R5, purple R4, blue R3, green R2). Rarity is already detected before name OCR in the normal echo / weapon / item flow, so preprocessing should resolve a single per-rarity colour spec at runtime. OR-masking all rarity bands remains a fallback for bring-up or for flows where rarity metadata is missing.
 * **Blurred portrait backgrounds** — some UI panels (most notably the echo card header) use a blurred, matted freeze-frame of the current in-game scene as their background layer. This background is stable within a play session but changes between sessions, making a cross-session persistent cache mostly ineffective. An in-session in-memory cache is still useful because the same echo name may appear on many cards within a single scan batch.
 
 ---
@@ -27,14 +27,39 @@ class OcrRegionSpec:
     roi_key: str                     # matches game_roi.py region key path e.g. "echoes.echoName"
 
     # --- Preprocessing ---
-    color_space: Literal["hsv", "rgb", "gray"] = "gray"
-    # A list of (lo, hi) inclusive bounds in the chosen color space.
-    # Multiple ranges are OR-masked together, which handles multi-rarity name colors.
-    # None means skip color masking and go straight to threshold_mode.
+    # The colour space in which to evaluate text_color_ranges and
+    # background_color_ranges. Thresholding can still happen later on a
+    # grayscale / luminance projection of the original crop.
+    color_space: Literal["hsv", "rgb", "bgr", "gray"] = "gray"
+
+    # A list of (lo, hi) inclusive bounds in the chosen colour space.
+    # Exact mode is encoded as lo == hi, e.g.
+    #   ((166, 235, 247), (166, 235, 247))
+    # Multiple entries are OR-masked together.
+    # None means skip explicit text-colour masking and go straight to the
+    # threshold pipeline.
     text_color_ranges: list[tuple[tuple[int,int,int], tuple[int,int,int]]] | None = None
+
+    # Optional per-rarity replacement for text_color_ranges.
+    # When rarity is known upstream, preprocess() uses only the selected
+    # rarity entry instead of OR-ing all rarity bands together.
+    text_color_ranges_by_rarity: dict[int, list[tuple[tuple[int,int,int], tuple[int,int,int]]]] | None = None
+
+    # Optional reject-mask for known background hues.
+    # This is useful for white/off-white text on coloured panels: use HSV to
+    # aggressively zero the blue background, then threshold the remaining crop
+    # in grayscale.
+    background_color_ranges: list[tuple[tuple[int,int,int], tuple[int,int,int]]] | None = None
+
+    # invert=True means the text is darker than the background and should be inverted after masking to produce a white-on-black image for OCR. This is common for white or light-colored text on a dark background, which describes most of our crops except the rarity-tinted names. The echo name regions in particular are bright enough that a direct mask without inversion works well, and avoids amplifying background noise from the blurred portrait layer.
     invert: bool = False             # invert after masking (white text → black on white)
+
+    # Thresholding options for non-color-based crops (e.g. page counts, stat values) or as a post-color-mask cleanup step.
+    # "otsu" applies Otsu's method to automatically find a threshold; "floor" applies a fixed floor threshold; "none" skips thresholding.
     threshold_mode: Literal["otsu", "floor", "none"] = "none"
     floor_value: int = 100           # only used when threshold_mode == "floor"
+
+    # morphology options for post-threshold cleanup (e.g. closing small gaps in stat digits). "close" applies a closing operation with a 3x3 kernel; "none" applies no morphology.
     morphology: Literal["close", "none"] = "none"
     allowed_chars: str | None = None # forwarded to OCR engine (e.g. "0123456789.%")
 
@@ -62,8 +87,15 @@ class OcrRegionSpec:
     def preprocess(self, bgr: np.ndarray, rarity: int | None = None) -> np.ndarray:
         """Apply the declared pipeline, returning a cleaned image for OCR.
 
-        If *rarity* is supplied and *text_color_ranges* contains per-rarity
-        entries, only that rarity's range is applied instead of OR-ing all ranges.
+        If *rarity* is supplied and *text_color_ranges_by_rarity* has a match,
+        that override replaces the base text_color_ranges.
+
+        Processing order:
+        1. Resolve per-rarity overrides.
+        2. Build an optional reject-mask from background_color_ranges.
+        3. Either build a binary text-colour mask or run the threshold pipeline.
+
+        Exact mode uses a range whose low/high tuples are identical.
         """
         ...
 
@@ -76,9 +108,13 @@ class OcrRegionSpec:
 
 For name regions where the text color depends on item rarity:
 
-**Option A — Union mask (recommended default)**: `preprocess()` OR-combines all ranges in `text_color_ranges`. This requires no extra context from the caller and is robust when rarity detection might be delayed or unreliable.
+**Primary path — Rarity-context injection (recommended)**: the caller passes the already-resolved `rarity: int`. `preprocess()` looks up `text_color_ranges_by_rarity[rarity]` and uses only that list. For exact-match fills, each entry is encoded as `((b, g, r), (b, g, r))`. This keeps the mask tight and makes the preprocessed result more cacheable.
 
-**Option B — Rarity-context injection**: the caller passes the already-resolved `rarity: int` to `preprocess()`. The spec stores `text_color_ranges` as a 4-element list indexed by rarity, and only the matching range is applied. More precise, but couples preprocessing to the rarity-detection step.
+**Fallback path — Union mask**: if rarity is unavailable, `preprocess()` may fall back to the base `text_color_ranges` and OR all entries together. This is a compatibility / bring-up mode, not the preferred steady-state path.
+
+### White / Off-white text over coloured backgrounds
+
+For white text, HSV is still useful, but not as the primary text selector. White and off-white hues are too unstable in HSV at low saturation. Instead, use HSV to reject the known background hue range via `background_color_ranges`, then threshold the remaining crop in gray / RGB. In short: use HSV to suppress the blue panel, not to find the white text.
 
 ### Where It Lives
 
@@ -93,7 +129,7 @@ This keeps OCR concerns separate from the pure geometry in `game_roi.py`, while 
 | `OcrService._process_*` methods | Replace inline preprocessing with `spec.preprocess(crop)` |
 | `EchoOcrCache._make_key` | Delegate to `spec.make_signature(crop)` |
 | `imageToString` | Accept optional `OcrRegionSpec`; apply preprocessing before engine call |
-| Capture dataclasses | Add optional `region_spec` field (or resolve by crop-kind enum at service level) |
+| Capture dataclasses | Carry optional rarity metadata so the service can resolve per-rarity specs before preprocessing |
 
 ---
 
@@ -107,10 +143,12 @@ The echo card header (`echoCard`) renders on top of a blurred, matted freeze-fra
 
 | Crop | Text Colour | Background | Preprocessing | Cache tier |
 |------|-------------|------------|---------------|------------|
-| `echoName` | **Rarity-tinted** (gold/purple/blue/green) | Blurred in-game scene (dynamic) | Multi-range HSV union mask → binary | **transient** |
+| `echoName` | **Rarity-tinted** (gold/purple/blue/green) | Blurred in-game scene (dynamic) and echo portrait overlay | Rarity-resolved single-colour mask (exact `lo == hi`, or narrow range if calibration needs slack) → binary | **transient** |
 | `fullStatsName` | Near-white (darkest ch ≥ 200, spread ≤ 32) | Stable dark UI gradient | Floor threshold 100 | **persistent** |
 | `fullStatsValue` | Near-white | Stable dark UI gradient | Floor threshold 100 | **persistent** |
 | `level` | White digits | Semi-transparent dark (card header, dynamic bg) | Floor threshold 150 | **transient** |
+
+Preferred runtime mode for names is a per-rarity exact BGR match loaded from config. The broad HSV bands below remain useful as a calibration fallback and as a bring-up default before the exact fill colours have been measured.
 
 Approximate HSV ranges for each rarity text colour (cv2 H scale 0-180):
 
@@ -122,22 +160,16 @@ Approximate HSV ranges for each rarity text colour (cv2 H scale 0-180):
 | 2 | Green | 55 – 70 | 60 | 150 |
 
 ```python
-# All four rarity hue bands defined in one list — OR-masked at preprocessing time.
-_ECHO_NAME_RARITY_RANGES = [
-    # (lo_HSV, hi_HSV)
-    ((22,  60, 150), (32,  255, 255)),   # R5 gold
-    ((135, 60, 150), (150, 255, 255)),   # R4 purple
-    ((112, 60, 150), (125, 255, 255)),   # R3 blue
-    ((55,  60, 150), (70,  255, 255)),   # R2 green
-]
-
 ECHO_NAME = OcrRegionSpec(
     roi_key="echoes.echoName",
-    color_space="hsv",
-    text_color_ranges=_ECHO_NAME_RARITY_RANGES,
+    color_space="bgr",
+    text_color_ranges_by_rarity=CALIBRATED_ECHO_NAME_BGR_BY_RARITY,
     sig_from_preprocessed=True,   # sign the masked result, not the portrait background
     cache_mode="transient",        # background varies across sessions
 )
+
+# Example exact entry inside CALIBRATED_ECHO_NAME_BGR_BY_RARITY:
+#   5: [((166, 235, 247), (166, 235, 247))]
 
 ECHO_STATS_NAME = OcrRegionSpec(
     roi_key="echoes.fullStatsName",
@@ -178,7 +210,7 @@ The weapon name renders over the weapon's splash art (fixed per weapon identity)
 
 | Crop | Text Colour | Background | Preprocessing | Cache tier |
 |------|-------------|------------|---------------|------------|
-| `weapons.name` | **Rarity-tinted** (same four rarity colors) | Weapon splash art (fixed per weapon) | Multi-range HSV union mask | **persistent** (art is fixed per weapon identity) |
+| `weapons.name` | **Rarity-tinted** (same four rarity colors) | Weapon splash art (fixed per weapon) | Rarity-resolved single-colour mask (exact `lo == hi`, or narrow range if calibration needs slack) | **persistent** (art is fixed per weapon identity) |
 | `weapons.value` | White digits | Solid dark panel | Floor threshold 150 | **persistent** |
 | `weapons.level` | White, "Lv.XX/XX" | Solid dark panel | Floor threshold 150 | **persistent** |
 
@@ -187,8 +219,8 @@ The weapon name renders over the weapon's splash art (fixed per weapon identity)
 ```python
 WEAPON_NAME = OcrRegionSpec(
     roi_key="weapons.name",
-    color_space="hsv",
-    text_color_ranges=_ECHO_NAME_RARITY_RANGES,   # reuse the same four rarity bands
+    color_space="bgr",
+    text_color_ranges_by_rarity=CALIBRATED_NAME_BGR_BY_RARITY,
     sig_from_preprocessed=True,
     cache_mode="persistent",
 )
@@ -240,10 +272,25 @@ Character panels use a stable dark-gradient UI background.
 |------|-------------|------------|---------------|------------|
 | `resonatorName` | White | Stable dark gradient | Floor threshold 120 | **persistent** |
 | `resonatorLevel` | White digits | Stable dark | Floor threshold 150, digits | **persistent** |
-| `weaponName` | **Rarity-tinted** (four rarity bands) | Stable dark | Multi-range HSV mask | **persistent** |
+| `weaponName` | **Rarity-tinted** (four rarity bands) | Stable dark | Rarity-resolved single-colour mask (exact `lo == hi`, or narrow range if calibration needs slack) | **persistent** |
 | `weaponLevel` | White digits | Stable dark | Floor threshold 150, digits | **persistent** |
-| `weaponRank` | Gold/yellow (R5 band only) | Stable dark | HSV mask (H 22-32, S 60+, V 150+) | **persistent** |
+| `weaponRank` | Gold/yellow (R5 band only) | Stable dark | Exact or narrow calibrated colour mask | **persistent** |
 | `skillLevel` | White digits | Stable dark | Floor threshold 150, digits | **persistent** |
+
+For white / off-white text on coloured panels, background suppression happens before thresholding:
+
+```python
+WHITE_TEXT_ON_BLUE_PANEL = OcrRegionSpec(
+    roi_key="characters.resonatorName",
+    color_space="hsv",
+    background_color_ranges=[((98, 40, 30), (125, 255, 255))],
+    threshold_mode="floor",
+    floor_value=120,
+    cache_mode="persistent",
+)
+```
+
+Here `color_space="hsv"` is used only to suppress the blue background. The text itself is still recovered by thresholding a gray / luminance projection after those background pixels have been zeroed.
 
 ### Navigation / Page Counts
 
@@ -276,7 +323,95 @@ NAV_PAGE_COUNT = OcrRegionSpec(
 
 ---
 
-## Proposal 3 — Three-Tier Cache Architecture
+## Proposal 3 — Data Flow / Pipeline
+
+### Effective spec resolution
+
+1. The scanner produces a raw crop as `bgr: np.ndarray`, plus metadata such as `roi_key`, `crop_kind`, and optionally `rarity`.
+2. `OcrService` resolves the base `OcrRegionSpec` for that ROI.
+3. If `rarity` is present and `text_color_ranges_by_rarity` contains an entry, that entry becomes the effective `text_color_ranges` for this crop.
+4. Otherwise, the base `text_color_ranges` are used as-is.
+
+### OCR-input preprocessing path
+
+```python
+def preprocess_for_ocr(crop_bgr: np.ndarray, spec: OcrRegionSpec, rarity: int | None) -> np.ndarray:
+    rarity_ranges = spec.text_color_ranges_by_rarity or {}
+    effective_ranges = rarity_ranges.get(rarity, spec.text_color_ranges)
+    color_view = convert_color_space(crop_bgr, spec.color_space)
+
+    reject_mask = mask_from_ranges(color_view, spec.background_color_ranges)
+
+    if effective_ranges is not None:
+        include_mask = mask_from_ranges(color_view, effective_ranges)
+        mask = include_mask & ~reject_mask
+        plane = np.where(mask, 255, 0).astype(np.uint8)
+    else:
+        crop_bgr = zero_out_masked_pixels(crop_bgr, reject_mask)
+        plane = project_to_luminance(crop_bgr)
+        plane = apply_threshold(plane, spec.threshold_mode, spec.floor_value)
+
+    plane = apply_morphology(plane, spec.morphology)
+    if spec.invert:
+        plane = 255 - plane
+    return format_for_ocr_backend(plane)
+```
+
+Key points:
+
+1. **Exact mode** is not a separate switch. It is just a `text_color_ranges` entry whose `lo` and `hi` tuples are identical.
+2. **HSV for white text** is used through `background_color_ranges`, not by trying to directly mask "white" in HSV.
+3. The OCR engine always receives the post-processed binary / grayscale image produced by this path.
+
+### Signature-generation path
+
+```python
+def image_for_signature(crop_bgr: np.ndarray, spec: OcrRegionSpec, rarity: int | None) -> np.ndarray:
+    if spec.sig_from_preprocessed:
+        return preprocess_for_ocr(crop_bgr, spec, rarity)
+
+    # Raw-signature path: start from the raw crop, but it may still honour
+    # stable background-suppression ranges before the signature-specific
+    # normalization steps.
+    color_view = convert_color_space(crop_bgr, spec.color_space)
+    reject_mask = mask_from_ranges(color_view, spec.background_color_ranges)
+    normalized = suppress_background_for_signature(crop_bgr, reject_mask)
+    normalized = normalize_for_signature(
+        normalized,
+        floor=spec.sig_text_floor,
+        max_spread=spec.sig_max_spread,
+        downscale=spec.sig_downscale,
+    )
+    return normalized
+```
+
+Then:
+
+1. `spec.make_signature()` hashes the normalized bytes plus `roi_key`, `crop_kind`, and `spec_version`.
+2. The OCR call and the signature path therefore share the same resolved per-rarity colour config, but they may intentionally diverge on whether they use the fully preprocessed image or the raw-signature normalization path.
+
+### Worked examples
+
+**Exact rarity-coloured echo name**
+
+1. Raw `echoName` crop arrives as BGR.
+2. Rarity was already detected as 5.
+3. The effective `text_color_ranges` become `[((166, 235, 247), (166, 235, 247))]`.
+4. `preprocess()` builds a binary mask directly from that exact fill colour.
+5. OCR reads the binary mask.
+6. Because `sig_from_preprocessed = True`, the same binary mask becomes the signature source, making the crop highly cacheable.
+
+**White text on a blueish panel**
+
+1. Raw crop arrives as BGR.
+2. `background_color_ranges` suppress the blue panel in HSV.
+3. The remaining crop is projected to gray and thresholded.
+4. OCR reads the thresholded result.
+5. The signature either hashes that same preprocessed image (`sig_from_preprocessed = True`) or hashes a raw-normalized variant (`False`) depending on which is empirically more stable.
+
+---
+
+## Proposal 4 — Three-Tier Cache Architecture
 
 ### Tier Summary
 
@@ -303,7 +438,7 @@ For regions where `sig_from_preprocessed = True`, `make_signature()` calls `prep
 
 ---
 
-## Proposal 4 — Maintainability Strategy
+## Proposal 5 — Maintainability Strategy
 
 ### Problem
 
@@ -315,32 +450,43 @@ Game UI updates can shift colours (e.g. the echo name changed from turquoise to 
    - Each region's preprocessing params live in a human-readable config file.
    - The `OcrRegionSpec` registry is loaded at startup from this file.
    - Updating colour ranges after a game patch = editing one config value, no code changes.
-   - The `text_color_ranges` list makes it easy to add/remove rarity bands if the game changes a rarity's color scheme.
+   - Exact mode uses the same `text_color_ranges` structure as fuzzy mode: a single exact colour is represented by a range whose `lo` and `hi` arrays are identical.
+   - Per-rarity colour selection lives in `rarity_overrides` so the loader can merge a base region spec with the already-resolved rarity.
 
    ```toml
+   spec_version = "2.1-patch60"
+
    [echoes.echoName]
-   color_space = "hsv"
+   color_space = "bgr"
    cache_mode = "transient"
    sig_from_preprocessed = true
-   # One [[entry]] per rarity band; OR-masked at preprocessing time.
-   [[echoes.echoName.text_color_ranges]]
-   # rgb [247, 235, 166] -> hsv (188.9°, 32.8%, 96.9%)
-   #text_color = [188.9°, 84, 247]
-   lo = [22, 60, 150]   # R5 gold
-   hi = [32, 255, 255]
-   [[echoes.echoName.text_color_ranges]]
-   lo = [135, 60, 150]  # R4 purple
-   hi = [150, 255, 255]
-   [[echoes.echoName.text_color_ranges]]
-   lo = [112, 60, 150]  # R3 blue
-   hi = [125, 255, 255]
-   [[echoes.echoName.text_color_ranges]]
-   lo = [55, 60, 150]   # R2 green
-   hi = [70, 255, 255]
+   rarity_source = "capture.rarity"
+
+   [echoes.echoName.rarity_overrides."5"]
+   text_color_ranges = [
+       [[166, 235, 247], [166, 235, 247]],
+   ]
+
+   [echoes.echoName.rarity_overrides."4"]
+   # Repeat for 4 / 3 / 2 with the calibrated exact BGR fill colour.
+   text_color_ranges = [
+       [[145, 205, 235], [145, 205, 235]],
+   ]
+
+   [echoes.echoName.fallback]
+   # Optional bring-up fallback if rarity metadata is missing.
+   text_color_ranges = [
+       [[22, 60, 150], [32, 255, 255]],
+       [[135, 60, 150], [150, 255, 255]],
+       [[112, 60, 150], [125, 255, 255]],
+       [[55, 60, 150], [70, 255, 255]],
+   ]
+   color_space = "hsv"
 
    [echoes.level]
-   color_space = "rgb"
-   text_color = [194, 194, 182]
+   color_space = "gray"
+   threshold_mode = "floor"
+   floor_value = 150
    cache_mode = "transient"
 
    [echoes.fullStatsName]
@@ -350,6 +496,15 @@ Game UI updates can shift colours (e.g. the echo name changed from turquoise to 
    cache_mode = "persistent"
    sig_text_floor = 200
    sig_max_spread = 32
+
+   [characters.resonatorName]
+   color_space = "hsv"
+   background_color_ranges = [
+       [[98, 40, 30], [125, 255, 255]],
+   ]
+   threshold_mode = "floor"
+   floor_value = 120
+   cache_mode = "persistent"
    ```
 
 2. **Calibration CLI** (`cli/calibrate_ocr.py`):
@@ -367,7 +522,7 @@ Game UI updates can shift colours (e.g. the echo name changed from turquoise to 
 
 ---
 
-## Proposal 5 — Testing OCR Quality & Cache Efficiency
+## Proposal 6 — Testing OCR Quality & Cache Efficiency
 
 ### A. OCR Quality Testing
 
@@ -389,9 +544,9 @@ def test_ocr_accuracy(spec, sample_dir):
 
 @pytest.mark.parametrize("rarity", [2, 3, 4, 5])
 def test_echo_name_all_rarities(rarity, sample_dir):
-    """Verify that the union HSV mask extracts the name for every rarity tier."""
+    """Verify that the resolved per-rarity mask extracts the name for every rarity tier."""
     crop = cv2.imread(str(sample_dir / f"echoName_r{rarity}.png"))
-    processed = ECHO_NAME.preprocess(crop)
+    processed = ECHO_NAME.preprocess(crop, rarity=rarity)
     assert processed.max() > 0, f"No text pixels extracted for rarity {rarity}"
 ```
 
@@ -455,11 +610,11 @@ At the end of each scan session, emit a summary log distinguishing cache tiers:
 
 | Phase | Work | Effort |
 |-------|------|--------|
-| 1 | Create `OcrRegionSpec` dataclass with `text_color_ranges`, `cache_mode`, `sig_from_preprocessed` | S |
-| 2 | Implement `preprocess()` with union HSV mask + floor threshold modes | S |
+| 1 | Create `OcrRegionSpec` dataclass with `text_color_ranges`, `text_color_ranges_by_rarity`, `background_color_ranges`, `cache_mode`, `sig_from_preprocessed` | S |
+| 2 | Implement `preprocess()` with exact/range colour masks, background suppression, and floor/otsu threshold modes | S |
 | 3 | Implement `make_signature()` with raw vs. preprocessed branching | S |
 | 4 | Add transient cache dict to `OcrService`; implement two-tier lookup (transient → persistent → OCR) | M |
-| 5 | Define specs for echo regions; replace `_filter_echo_name` and `_ocr_images_with_cache` with spec-driven path | M |
+| 5 | Define specs for echo regions; replace `_filter_echo_name` and `_ocr_images_with_cache` with rarity-resolved spec-driven path | M |
 | 6 | Define specs for weapons, items, characters, shell | S |
 | 7 | Wire remaining `_process_*` methods through the spec-driven pipeline | M |
 | 8 | Extract spec params to TOML config + startup loader | S |
@@ -482,8 +637,8 @@ S = small (< 2h), M = medium (2-4h)
 3. Should the cache incorporate game-version / patch number in the key to auto-invalidate after major UI changes?  
    → Yes, via `spec_version` from the TOML. Avoids stale hits after colour shifts.
 
-4. Should the rarity-color ranges be validated against the `rarityColorPick` pixel that's already being sampled per echo/item?  
-   → Yes, as a calibration check. The calibration CLI (Phase 9) could compare the sampled rarity pixel's hue against the declared ranges and warn if it falls outside any band.
+4. Should the calibrated per-rarity exact colours be validated against the `rarityColorPick` pixel that's already being sampled per echo/item?  
+    → Yes, as a calibration check. The calibration CLI (Phase 9) could compare the sampled pixel against the configured exact / narrow range for that rarity and warn if it falls outside tolerance.
 
 5. Should `cache_mode = "transient"` regions eventually gain opt-in persistence once a reliable background-stripping preprocessing is confirmed?  
-   → Yes. If testing shows that `sig_from_preprocessed = True` with the HSV union mask consistently strips the portrait background, the echo name tier can be promoted to `"persistent"` with no other code changes.
+    → Yes. If testing shows that `sig_from_preprocessed = True` with the resolved per-rarity exact mask consistently strips the portrait background, the echo name tier can be promoted to `"persistent"` with no other code changes.
