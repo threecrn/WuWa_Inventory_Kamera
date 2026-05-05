@@ -53,6 +53,8 @@ import numpy as np
 
 from ..ocr._rapidocr import RapidOcrBackend
 from ..ocr.batch import BatchOcr
+from ..ocr.region_specs import OcrRegionSpec, get_spec
+from .ocr_cache import OcrCache
 from .echo_ocr_cache import EchoOcrCache
 from .captures import (
     _Stop,
@@ -83,21 +85,24 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Echo name colour-filter preprocessing
+# Spec-driven preprocessing helper
 # ---------------------------------------------------------------------------
 
-# The echo name in the new UI is a dull orange (HSV H≈25, S≈70, V≈80) on a busy portrait background.
-# Masking by hue before OCR isolates the text and discards the background.
-_ECHO_NAME_HSV_LO = np.array([20, 60, 80], dtype=np.uint8)
-_ECHO_NAME_HSV_HI = np.array([30, 255, 255], dtype=np.uint8)
+def _preprocess_with_spec(
+    bgr: np.ndarray,
+    roi_key: str,
+    rarity: int | None = None,
+) -> np.ndarray:
+    """Apply the OcrRegionSpec preprocessing for *roi_key*.
 
-def _filter_echo_name(bgr: np.ndarray) -> np.ndarray:
+    Falls back to the raw image (as RGB) if no spec is registered.
+    """
     import cv2
-    # Standard BGR directly to HSV mapping
-    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
-    mask = cv2.inRange(hsv, _ECHO_NAME_HSV_LO, _ECHO_NAME_HSV_HI)
-    mono = np.where(mask > 0, np.uint8(255), np.uint8(0))
-    return cv2.cvtColor(mono, cv2.COLOR_GRAY2RGB)
+    spec = get_spec(roi_key)
+    if spec is not None:
+        return spec.preprocess(bgr, rarity=rarity)
+    # No spec — return image as-is in RGB
+    return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
 
 # ---------------------------------------------------------------------------
 # Internal queue item wrapper
@@ -151,6 +156,7 @@ class OcrService:
         min_rarity: int = 1,
         min_level: int = 0,
         echo_stat_cache_path: str | None = None,
+        ocr_cache_path: str | None = None,
         resolution: str | None = None,
         **backend_kwargs,
     ) -> None:
@@ -164,10 +170,14 @@ class OcrService:
         self._counter      = itertools.count()
         self._batch_timeout  = batch_timeout
         self._max_batch_size = max_batch_size
+
+        # Legacy echo stat cache (kept for backward compat)
         self._echo_stat_cache = (
             EchoOcrCache(echo_stat_cache_path)
             if echo_stat_cache_path is not None else None
         )
+        # Generalized two-tier OCR cache
+        self._ocr_cache = OcrCache(db_path=ocr_cache_path)
         self._resolution = resolution
 
         # Assemblers
@@ -185,6 +195,8 @@ class OcrService:
         logger.info('OcrService started (providers=%s)', providers)
         if self._echo_stat_cache is not None:
             logger.info('Echo stat OCR cache enabled: %s', self._echo_stat_cache.path)
+        if self._ocr_cache.db_path is not None:
+            logger.info('Generalized OCR cache enabled: %s', self._ocr_cache.db_path)
 
     # ------------------------------------------------------------------
     # Public API
@@ -239,6 +251,10 @@ class OcrService:
                 if batch:
                     self._process_batch(batch)
         finally:
+            # Emit cache report
+            for line in self._ocr_cache.session_report():
+                logger.info(line)
+            self._ocr_cache.close()
             if self._echo_stat_cache is not None:
                 self._echo_stat_cache.close()
 
@@ -319,11 +335,11 @@ class OcrService:
         """
         captures: list[EchoCapture] = [cast(EchoCapture, it.capture) for it in group]
 
-        # Prefer the dedicated echoName ROI (new UI): try colour-filtered
-        # first, then raw echoName if detection returns no boxes.
-        # Legacy resolutions without echoName keep using card OCR.
+        # Prefer the dedicated echoName ROI (new UI): preprocess via spec,
+        # then try multiple OCR strategies in priority order.
         name_source_filtered = [
-            _filter_echo_name(c.echo_name) if c.echo_name is not None else c.card
+            _preprocess_with_spec(c.echo_name, 'echoes.echoName', rarity=c.detected_rarity)
+            if c.echo_name is not None else c.card
             for c in captures
         ]
         name_source_raw = [
@@ -436,7 +452,11 @@ class OcrService:
         crop_kind: str,
         images: list[np.ndarray],
     ) -> list[list[tuple[str, float, np.ndarray]]]:
-        """Run OCR for *images*, serving cached echo stat results when present."""
+        """Run OCR for *images*, serving cached echo stat results when present.
+
+        This is the legacy path that uses the old ``EchoOcrCache``.
+        New workflows should use :meth:`_ocr_with_spec` instead.
+        """
         cache = self._echo_stat_cache
         if cache is None or not images or self._resolution is None:
             return self._batch_ocr.ocr_images(images)
@@ -465,12 +485,58 @@ class OcrService:
         )
         return [image_results or [] for image_results in cached_results]
 
+    def _ocr_with_spec(
+        self,
+        roi_key: str,
+        images_bgr: list[np.ndarray],
+        rarity: int | None = None,
+    ) -> list[list[tuple[str, float, np.ndarray]]]:
+        """Spec-driven OCR with preprocessing, caching, and allowed_chars.
+
+        1. Looks up the :class:`OcrRegionSpec` for *roi_key*.
+        2. Checks the two-tier cache for each image.
+        3. Preprocesses cache misses via ``spec.preprocess()``.
+        4. Runs OCR on the preprocessed images.
+        5. Stores results in the appropriate cache tier(s).
+
+        Falls back to raw batch OCR if no spec is registered.
+        """
+        spec = get_spec(roi_key)
+        if spec is None or not images_bgr:
+            return self._batch_ocr.ocr_images(images_bgr)
+
+        # Check cache for all images
+        keys, cached_results, miss_indices = self._ocr_cache.lookup_many(
+            spec, images_bgr, rarity=rarity,
+        )
+
+        if miss_indices:
+            # Preprocess and OCR the misses
+            miss_preprocessed = [
+                spec.preprocess(images_bgr[idx], rarity=rarity)
+                for idx in miss_indices
+            ]
+            miss_results = self._batch_ocr.ocr_images(miss_preprocessed)
+
+            # Store in cache
+            self._ocr_cache.store_many(
+                spec,
+                [images_bgr[idx] for idx in miss_indices],
+                miss_results,
+                rarity=rarity,
+                keys=[keys[idx] for idx in miss_indices],
+            )
+            for idx, result in zip(miss_indices, miss_results):
+                cached_results[idx] = result
+
+        return [r or [] for r in cached_results]
+
     def _process_weapons(self, group: list[_QueueItem]) -> None:
         """Run batched OCR and assembly for a group of :class:`WeaponCapture` objects."""
         captures = [it.capture for it in group]
 
-        name_results  = self._batch_ocr.ocr_images([c.name  for c in captures])
-        value_results = self._batch_ocr.ocr_images([c.value for c in captures])
+        name_results  = self._ocr_with_spec('weapons.name', [c.name for c in captures])
+        value_results = self._ocr_with_spec('weapons.value', [c.value for c in captures])
 
         # Rank is optional — only batch images that are present
         rank_present = [i for i, c in enumerate(captures) if c.rank is not None]
@@ -502,7 +568,7 @@ class OcrService:
     def _process_items(self, group: list[_QueueItem]) -> None:
         """Run batched OCR and assembly for a group of :class:`ItemCapture` objects."""
         captures = [it.capture for it in group]
-        info_results = self._batch_ocr.ocr_images([c.info for c in captures])
+        info_results = self._ocr_with_spec('items.info', [c.info for c in captures])
 
         def to_tokens(image_results):
             return [(box.tolist(), text, conf) for text, conf, box in image_results]
@@ -541,7 +607,8 @@ class OcrService:
         for key in all_keys:
             images = [c.crops[key] for c in captures if key in c.crops]
             if images:
-                key_results[key] = self._batch_ocr.ocr_images(images)
+                roi_key = f'characters.{key}'
+                key_results[key] = self._ocr_with_spec(roi_key, images)
 
         def to_tokens(image_results):
             return [(box.tolist(), text, conf) for text, conf, box in image_results]
@@ -572,7 +639,9 @@ class OcrService:
     def _process_achievements(self, group: list[_QueueItem]) -> None:
         """Run batched OCR and assembly for a group of :class:`AchievementCapture` objects."""
         captures = [it.capture for it in group]
-        status_results = self._batch_ocr.ocr_images([c.status for c in captures])
+        status_results = self._ocr_with_spec(
+            'achievements.status', [c.status for c in captures],
+        )
 
         def to_tokens(image_results):
             return [(box.tolist(), text, conf) for text, conf, box in image_results]
@@ -594,7 +663,9 @@ class OcrService:
     def _process_shell(self, group: list[_QueueItem]) -> None:
         """Run batched OCR and assembly for a group of :class:`ShellCapture` objects."""
         captures = [it.capture for it in group]
-        amount_results = self._batch_ocr.ocr_images([c.amount for c in captures])
+        amount_results = self._ocr_with_spec(
+            'shell.amount', [c.amount for c in captures],
+        )
 
         def to_tokens(image_results):
             return [(box.tolist(), text, conf) for text, conf, box in image_results]

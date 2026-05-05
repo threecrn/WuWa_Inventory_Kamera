@@ -233,7 +233,7 @@ class SonataIconMatcher:
         Parameters
         ----------
         icon_bgr:
-            The cropped sonata icon (BGR, typically ~23×24 px).
+            The cropped sonata icon (BGR, 29×29 px on 1920x1080).
         cx, cy, r:
             Optional calibrated circle parameters (in icon-crop space).
             When ``None``, defaults to centred circle with ``r = min(h,w)/2 − 0.5``.
