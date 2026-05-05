@@ -324,6 +324,8 @@ Game UI updates can shift colours (e.g. the echo name changed from turquoise to 
    sig_from_preprocessed = true
    # One [[entry]] per rarity band; OR-masked at preprocessing time.
    [[echoes.echoName.text_color_ranges]]
+   # rgb [247, 235, 166] -> hsv (188.9°, 32.8%, 96.9%)
+   #text_color = [188.9°, 84, 247]
    lo = [22, 60, 150]   # R5 gold
    hi = [32, 255, 255]
    [[echoes.echoName.text_color_ranges]]
@@ -335,6 +337,11 @@ Game UI updates can shift colours (e.g. the echo name changed from turquoise to 
    [[echoes.echoName.text_color_ranges]]
    lo = [55, 60, 150]   # R2 green
    hi = [70, 255, 255]
+
+   [echoes.level]
+   color_space = "rgb"
+   text_color = [194, 194, 182]
+   cache_mode = "transient"
 
    [echoes.fullStatsName]
    color_space = "rgb"
