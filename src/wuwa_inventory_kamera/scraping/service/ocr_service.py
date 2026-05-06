@@ -47,10 +47,12 @@ import queue
 import threading
 import time
 from collections import defaultdict
+from difflib import get_close_matches
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
+from ..ocr import tokens_to_lines
 from ..ocr._rapidocr import RapidOcrBackend
 from ..ocr.batch import BatchOcr
 from ..ocr.region_specs import OcrRegionSpec, get_spec
@@ -84,6 +86,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_ECHO_NAME_FUZZY_CUTOFF = 0.75
+
 # ---------------------------------------------------------------------------
 # Spec-driven preprocessing helper
 # ---------------------------------------------------------------------------
@@ -103,6 +107,59 @@ def _preprocess_with_spec(
         return spec.preprocess(bgr, rarity=rarity)
     # No spec — return image as-is in RGB
     return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+
+
+def _echo_name_candidate_from_results(
+    results: list[tuple[str, float, np.ndarray]],
+) -> str:
+    """Normalize OCR tokens into the canonical echo-name lookup form."""
+    if not results:
+        return ""
+
+    # Convert (text, conf, box) -> (box, text, conf) for tokens_to_lines.
+    boxed_tokens = [
+        (box.tolist(), text, conf)
+        for text, conf, box in results
+        if box is not None and text
+    ]
+
+    if boxed_tokens:
+        lines = tokens_to_lines(boxed_tokens, divisor='', bannedChars=' +')
+        name = lines[0] if lines else ''
+    else:
+        # Fallback for OCR modes that do not provide boxes.
+        name = ''.join(text for text, _conf, _box in results if text)
+
+    name = name.lower().strip()
+    if name.startswith('phantom:'):
+        name = name[len('phantom:'):]
+    return name
+
+
+def _is_plausible_echo_name_results(
+    results: list[tuple[str, float, np.ndarray]],
+) -> bool:
+    """Return whether OCR tokens look like a known echo name."""
+    candidate = _echo_name_candidate_from_results(results)
+    if not candidate or not any(ch.isalnum() for ch in candidate):
+        return False
+
+    # Keep this lazy so OcrService startup stays lightweight.
+    from ..data import echoesID
+
+    if not echoesID:
+        # If data failed to load, avoid blocking OCR strategies.
+        return True
+
+    if candidate in echoesID:
+        return True
+
+    return bool(get_close_matches(
+        candidate,
+        list(echoesID.keys()),
+        n=1,
+        cutoff=_ECHO_NAME_FUZZY_CUTOFF,
+    ))
 
 # ---------------------------------------------------------------------------
 # Internal queue item wrapper
@@ -353,6 +410,23 @@ class OcrService:
         def _has_usable_text(results: list[tuple[str, float, np.ndarray]]) -> bool:
             return any(text and any(ch.isalnum() for ch in text) for text, _conf, _box in results)
 
+        def _accept_filtered_echo_name(
+            capture: EchoCapture,
+            results: list[tuple[str, float, np.ndarray]],
+            source: str,
+        ) -> bool:
+            if not _has_usable_text(results):
+                return False
+            if _is_plausible_echo_name_results(results):
+                return True
+            logger.debug(
+                'Echo %d — %s OCR rejected by echo-name guard: %r',
+                capture.echo_index,
+                source,
+                _echo_name_candidate_from_results(results),
+            )
+            return False
+
         def _backend_to_batch(tokens) -> list[tuple[str, float, np.ndarray]]:
             return [
                 (text, conf, np.asarray(bbox, dtype=np.float32))
@@ -391,19 +465,19 @@ class OcrService:
                 single_results = _backend_to_batch(
                     self._backend.recognize(name_source_filtered[i])
                 )
-                if _has_usable_text(single_results):
+                if _accept_filtered_echo_name(c, single_results, 'single filtered echoName'):
                     ocr_result = single_results
                 else:
                     thorough_results = _backend_to_batch(
                         self._backend.thorough_recognize(name_source_filtered[i])
                     )
-                    if _has_usable_text(thorough_results):
+                    if _accept_filtered_echo_name(c, thorough_results, 'thorough filtered echoName'):
                         logger.debug(
                             'Echo %d — echoName recovered via thorough OCR.',
                             c.echo_index,
                         )
                         ocr_result = thorough_results
-                    elif _has_usable_text(filtered_results[i]):
+                    elif _accept_filtered_echo_name(c, filtered_results[i], 'batch filtered echoName'):
                         logger.debug(
                             'Echo %d — echoName recovered via batch-OCR on filtered crop.',
                             c.echo_index,
