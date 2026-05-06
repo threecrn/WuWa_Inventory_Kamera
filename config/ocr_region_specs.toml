@@ -4,7 +4,7 @@
 # Colour ranges use [[lo, lo, lo], [hi, hi, hi]] notation.
 # Exact mode: lo == hi, e.g. [[166, 235, 247], [166, 235, 247]].
 
-spec_version = "2.1-patch60"
+spec_version = "3.3-new-ui"
 
 # =====================================================================
 # Echo workflow
@@ -12,7 +12,7 @@ spec_version = "2.1-patch60"
 
 [echoes.echoName]
 color_space = "bgr"
-cache_mode = "transient"
+cache_mode = "persistent"
 sig_from_preprocessed = true
 
 # Per-rarity exact BGR fill colours.
