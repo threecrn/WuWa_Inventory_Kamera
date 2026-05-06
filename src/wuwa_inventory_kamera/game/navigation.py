@@ -36,6 +36,7 @@ Usage::
 from __future__ import annotations
 
 import enum
+import functools
 import logging
 import string
 import time
@@ -90,15 +91,33 @@ CELLS_PER_PAGE = GRID_ROWS * GRID_COLS  # 24
 # Minimal inline OCR helper (for navigation-only reads)
 # ---------------------------------------------------------------------------
 
+
+@functools.lru_cache(maxsize=1)
+def _nav_cpu_backend():
+    """Create and cache a CPU-only OCR backend for navigation reads."""
+    from ..scraping.ocr import get_backend
+
+    return get_backend(
+        'rapidocr',
+        onnx_providers=['CPUExecutionProvider'],
+        fallback_text_score=None,
+    )
+
+
 def _nav_ocr(image: np.ndarray, allowed: str | None = None) -> str:
     """
     Quick inline OCR used only for navigation control (page counts, etc.).
 
-    This does NOT use the batched OcrService — it's a lightweight single
-    call via the OCR registry default backend.
+    This does NOT use the batched OcrService — it routes through a cached
+    CPU-only backend so navigation reads do not allocate DirectML VRAM.
     """
     from ..scraping.ocr import imageToString
-    return imageToString(image, allowedChars=allowed)
+
+    return imageToString(
+        image,
+        allowedChars=allowed,
+        backend=_nav_cpu_backend(),
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -45,6 +45,7 @@ from ...game.navigation import (
     InventoryTab,
     SortOrder,
     CELLS_PER_PAGE,
+    _nav_ocr,
 )
 from ...game.screen import capture_full, capture_region
 from .grid_navigator import GridNavigator
@@ -285,11 +286,9 @@ class EchoWorkflow:
 
         Returns the integer level, or ``None`` if OCR failed to find digits.
         """
-        from ...scraping.ocr import imageToString
-
         roi = self.nav.layout.echoes.level
         crop = capture_region(self.nav.gw, roi)
-        text = imageToString(crop, allowedChars='0123456789')
+        text = _nav_ocr(crop, allowed='0123456789')
         text = text.strip()
         if text.isdigit():
             return int(text)
@@ -360,12 +359,11 @@ class EchoWorkflow:
 
         if hasattr(si_raw, 'level_X'):
             # New-UI nested structure — pick variant based on digit count.
-            from ...scraping.ocr import imageToString
             level_crop = full[
                 int(ei.level.y) : int(ei.level.y + ei.level.h),
                 int(ei.level.x) : int(ei.level.x + ei.level.w),
             ]
-            level_text = imageToString(level_crop, allowedChars='0123456789').strip()
+            level_text = _nav_ocr(level_crop, allowed='0123456789').strip()
             two_digits = len(level_text) == 2
             si_slot = si_raw.level_XX if two_digits else si_raw.level_X
             logger.debug(
