@@ -1,0 +1,225 @@
+# OCR Region Specs — preprocessing & cache-signature configuration
+#
+# Each section defines an OcrRegionSpec by its ROI key path.
+# Colour ranges use [[lo, lo, lo], [hi, hi, hi]] notation.
+# Exact mode: lo == hi, e.g. [[166, 235, 247], [166, 235, 247]].
+
+spec_version = "2.1-patch60"
+
+# =====================================================================
+# Echo workflow
+# =====================================================================
+
+[echoes.echoName]
+color_space = "bgr"
+cache_mode = "transient"
+sig_from_preprocessed = true
+
+# Per-rarity exact BGR fill colours.
+# These are calibrated exact-match values; adjust after a game patch.
+[echoes.echoName.rarity_overrides."5"]
+text_color_ranges = [
+    [[166, 235, 247], [166, 235, 247]],
+]
+
+[echoes.echoName.rarity_overrides."4"]
+text_color_ranges = [
+    [[185, 135, 200], [185, 135, 200]],
+]
+
+[echoes.echoName.rarity_overrides."3"]
+text_color_ranges = [
+    [[220, 180, 120], [220, 180, 120]],
+]
+
+[echoes.echoName.rarity_overrides."2"]
+text_color_ranges = [
+    [[130, 210, 140], [130, 210, 140]],
+]
+
+# Fallback: broad HSV bands when rarity metadata is unavailable.
+[echoes.echoName.fallback]
+color_space = "hsv"
+text_color_ranges = [
+    [[20, 60, 150], [32, 255, 255]],
+    [[135, 60, 150], [150, 255, 255]],
+    [[112, 60, 150], [125, 255, 255]],
+    [[55, 60, 150], [70, 255, 255]],
+]
+
+[echoes.fullStatsName]
+color_space = "rgb"
+threshold_mode = "floor"
+floor_value = 100
+cache_mode = "persistent"
+sig_text_floor = 200
+sig_max_spread = 32
+
+[echoes.fullStatsValue]
+color_space = "rgb"
+threshold_mode = "floor"
+floor_value = 100
+allowed_chars = "0123456789.%+"
+cache_mode = "persistent"
+sig_text_floor = 200
+sig_max_spread = 32
+
+[echoes.level]
+color_space = "gray"
+threshold_mode = "floor"
+floor_value = 150
+allowed_chars = "0123456789"
+sig_from_preprocessed = true
+cache_mode = "transient"
+
+# =====================================================================
+# Weapon workflow
+# =====================================================================
+
+[weapons.name]
+color_space = "bgr"
+cache_mode = "persistent"
+sig_from_preprocessed = true
+
+[weapons.name.rarity_overrides."5"]
+text_color_ranges = [
+    [[166, 235, 247], [166, 235, 247]],
+]
+
+[weapons.name.rarity_overrides."4"]
+text_color_ranges = [
+    [[185, 135, 200], [185, 135, 200]],
+]
+
+[weapons.name.rarity_overrides."3"]
+text_color_ranges = [
+    [[220, 180, 120], [220, 180, 120]],
+]
+
+[weapons.name.rarity_overrides."2"]
+text_color_ranges = [
+    [[130, 210, 140], [130, 210, 140]],
+]
+
+[weapons.value]
+color_space = "gray"
+threshold_mode = "floor"
+floor_value = 150
+allowed_chars = "0123456789"
+cache_mode = "persistent"
+
+[weapons.level]
+color_space = "gray"
+threshold_mode = "floor"
+floor_value = 150
+allowed_chars = "0123456789Lv./"
+cache_mode = "persistent"
+
+# =====================================================================
+# Item workflow
+# =====================================================================
+
+[items.info]
+color_space = "gray"
+threshold_mode = "floor"
+floor_value = 100
+cache_mode = "persistent"
+
+# =====================================================================
+# Character workflow
+# =====================================================================
+
+[characters.resonatorName]
+color_space = "hsv"
+threshold_mode = "floor"
+floor_value = 120
+cache_mode = "persistent"
+background_color_ranges = [
+    [[98, 40, 30], [125, 255, 255]],
+]
+
+[characters.resonatorLevel]
+color_space = "gray"
+threshold_mode = "floor"
+floor_value = 150
+allowed_chars = "0123456789"
+cache_mode = "persistent"
+
+[characters.weaponName]
+color_space = "bgr"
+cache_mode = "persistent"
+sig_from_preprocessed = true
+
+[characters.weaponName.rarity_overrides."5"]
+text_color_ranges = [
+    [[166, 235, 247], [166, 235, 247]],
+]
+
+[characters.weaponName.rarity_overrides."4"]
+text_color_ranges = [
+    [[185, 135, 200], [185, 135, 200]],
+]
+
+[characters.weaponName.rarity_overrides."3"]
+text_color_ranges = [
+    [[220, 180, 120], [220, 180, 120]],
+]
+
+[characters.weaponName.rarity_overrides."2"]
+text_color_ranges = [
+    [[130, 210, 140], [130, 210, 140]],
+]
+
+[characters.weaponLevel]
+color_space = "gray"
+threshold_mode = "floor"
+floor_value = 150
+allowed_chars = "0123456789"
+cache_mode = "persistent"
+
+[characters.weaponRank]
+color_space = "bgr"
+cache_mode = "persistent"
+sig_from_preprocessed = true
+text_color_ranges = [
+    [[40, 200, 230], [60, 255, 255]],
+]
+
+[characters.skillLevel]
+color_space = "gray"
+threshold_mode = "floor"
+floor_value = 150
+allowed_chars = "0123456789"
+cache_mode = "persistent"
+
+# =====================================================================
+# Navigation / Page counts
+# =====================================================================
+
+[nav.pageCount]
+color_space = "gray"
+threshold_mode = "floor"
+floor_value = 150
+allowed_chars = "0123456789/"
+cache_mode = "none"
+
+# =====================================================================
+# Achievement workflow
+# =====================================================================
+
+[achievements.status]
+color_space = "gray"
+threshold_mode = "floor"
+floor_value = 100
+cache_mode = "none"
+
+# =====================================================================
+# Shell (currency) workflow
+# =====================================================================
+
+[shell.amount]
+color_space = "gray"
+threshold_mode = "floor"
+floor_value = 150
+allowed_chars = "0123456789"
+cache_mode = "persistent"
