@@ -17,6 +17,7 @@ dependencies = [
     "PyYAML",
     "onnxruntime-directml",
     "babel",
+    "onnxruntime-directml; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]
@@ -50,10 +51,13 @@ packages = ["src/wuwa_inventory_kamera"]
 testpaths = ["tests"]
 
 [tool.uv]
+environments = ["sys_platform == 'linux'", "sys_platform == 'win32'"]
+
 # rapidocr-onnxruntime transitively requires plain `onnxruntime`, but we use
 # onnxruntime-directml (which provides the same runtime + DirectML EP on Windows).
 # This override marks plain onnxruntime as only needed on sys_platform=='never',
 # so uv never installs it and onnxruntime-directml remains the sole provider.
 override-dependencies = [
-    "onnxruntime ; sys_platform == 'never'",
+    "onnxruntime-directml; sys_platform != 'win32' and sys_platform == 'never'",
+    "onnxruntime; sys_platform == 'win32' and sys_platform == 'never'",
 ]
