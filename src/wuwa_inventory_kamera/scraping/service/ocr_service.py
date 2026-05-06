@@ -404,6 +404,11 @@ class OcrService:
             for c in captures
         ]
 
+        _echo_name_spec = get_spec('echoes.echoName')
+        _echo_name_single_line = bool(
+            _echo_name_spec is not None and _echo_name_spec.single_line
+        )
+
         filtered_results = self._batch_ocr.ocr_images(name_source_filtered)
         raw_results = self._batch_ocr.ocr_images(name_source_raw)
 
@@ -427,14 +432,26 @@ class OcrService:
             )
             return False
 
-        def _backend_to_batch(tokens) -> list[tuple[str, float, np.ndarray]]:
-            return [
-                (text, conf, np.asarray(bbox, dtype=np.float32))
-                for bbox, text, conf in tokens
-                if bbox is not None
-            ]
+        def _backend_to_batch(
+            tokens,
+            *,
+            image: np.ndarray | None = None,
+        ) -> list[tuple[str, float, np.ndarray]]:
+            h = int(image.shape[0]) if image is not None else 1
+            w = int(image.shape[1]) if image is not None else 1
+            fallback_box = np.asarray(
+                [[0, 0], [max(w - 1, 0), 0], [max(w - 1, 0), max(h - 1, 0)], [0, max(h - 1, 0)]],
+                dtype=np.float32,
+            )
 
-        _echo_name_spec = get_spec('echoes.echoName')
+            return [
+                (
+                    text,
+                    float(conf),
+                    np.asarray(bbox, dtype=np.float32) if bbox is not None else fallback_box,
+                )
+                for bbox, text, conf in tokens
+            ]
 
         card_results: list[list[tuple[str, float, np.ndarray]]] = []
         for i, c in enumerate(captures):
@@ -462,15 +479,31 @@ class OcrService:
             ocr_result: list[tuple[str, float, np.ndarray]] | None = None
 
             if c.echo_name is not None:
-                single_results = _backend_to_batch(
-                    self._backend.recognize(name_source_filtered[i])
-                )
+                if _echo_name_single_line:
+                    single_results = _backend_to_batch(
+                        self._backend.recognize_single_line(name_source_filtered[i]),
+                        image=name_source_filtered[i],
+                    )
+                else:
+                    single_results = _backend_to_batch(
+                        self._backend.recognize(name_source_filtered[i]),
+                        image=name_source_filtered[i],
+                    )
+
                 if _accept_filtered_echo_name(c, single_results, 'single filtered echoName'):
                     ocr_result = single_results
                 else:
-                    thorough_results = _backend_to_batch(
-                        self._backend.thorough_recognize(name_source_filtered[i])
-                    )
+                    if _echo_name_single_line:
+                        thorough_results = _backend_to_batch(
+                            self._backend.recognize(name_source_filtered[i]),
+                            image=name_source_filtered[i],
+                        )
+                    else:
+                        thorough_results = _backend_to_batch(
+                            self._backend.thorough_recognize(name_source_filtered[i]),
+                            image=name_source_filtered[i],
+                        )
+
                     if _accept_filtered_echo_name(c, thorough_results, 'thorough filtered echoName'):
                         logger.debug(
                             'Echo %d — echoName recovered via thorough OCR.',

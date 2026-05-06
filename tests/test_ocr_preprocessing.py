@@ -92,6 +92,22 @@ def test_morphology_close_bridges_small_gap() -> None:
     assert processed[3, 3] > 0
 
 
+def test_single_line_repair_bridges_tiny_horizontal_hole() -> None:
+    spec = OcrRegionSpec(
+        roi_key="echoes.echoName",
+        color_space="bgr",
+        text_color_ranges=[((255, 255, 255), (255, 255, 255))],
+        single_line=True,
+    )
+    image = np.zeros((6, 10, 3), dtype=np.uint8)
+    image[3, 2] = np.asarray([255, 255, 255], dtype=np.uint8)
+    image[3, 4] = np.asarray([255, 255, 255], dtype=np.uint8)
+
+    processed = _gray_from_rgb(spec.preprocess(image))
+
+    assert processed[3, 3] > 0
+
+
 def test_invert_flips_thresholded_foreground_and_background() -> None:
     spec = OcrRegionSpec(
         roi_key="echoes.level",
@@ -149,6 +165,7 @@ def test_load_specs_from_toml_parses_rarity_and_fallback_color_space(tmp_path: P
                 '[echoes.echoName]',
                 'color_space = "bgr"',
                 'sig_from_preprocessed = true',
+                'single_line = true',
                 '',
                 '[echoes.echoName.rarity_overrides."5"]',
                 'text_color_ranges = [',
@@ -175,6 +192,7 @@ def test_load_specs_from_toml_parses_rarity_and_fallback_color_space(tmp_path: P
     echo_name = specs["echoes.echoName"]
     assert echo_name.spec_version == "test-spec"
     assert echo_name.color_space == "bgr"
+    assert echo_name.single_line is True
     assert echo_name.fallback_color_space == "hsv"
     assert echo_name.text_color_ranges == [((20, 60, 150), (32, 255, 255))]
     assert echo_name.text_color_ranges_by_rarity == {5: [((5, 5, 250), (5, 5, 250))]}

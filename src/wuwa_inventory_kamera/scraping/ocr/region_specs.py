@@ -53,6 +53,11 @@ class OcrRegionSpec:
 
     invert: bool = False
 
+    # Regions that are guaranteed to contain one text line can opt into a
+    # tiny horizontal close pass to repair anti-aliased pinholes in thin
+    # glyphs before OCR.
+    single_line: bool = False
+
     threshold_mode: Literal["otsu", "floor", "none"] = "none"
     floor_value: int = 100
 
@@ -131,6 +136,9 @@ class OcrRegionSpec:
                 bgr = _zero_masked(bgr, reject_mask)
             plane = _to_gray(bgr)
             plane = _apply_threshold(plane, self.threshold_mode, self.floor_value)
+
+        if self.single_line:
+            plane = _repair_single_line_glyphs(plane)
 
         plane = _apply_morphology(plane, self.morphology)
         if self.invert:
@@ -275,6 +283,12 @@ def _apply_morphology(plane: np.ndarray, mode: str) -> np.ndarray:
     raise ValueError(f"Unknown morphology: {mode!r}")
 
 
+def _repair_single_line_glyphs(plane: np.ndarray) -> np.ndarray:
+    """Bridge tiny horizontal gaps common in shrunk single-line text."""
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 1))
+    return cv2.morphologyEx(plane, cv2.MORPH_CLOSE, kernel)
+
+
 def _format_for_ocr(plane: np.ndarray) -> np.ndarray:
     """Convert a single-channel image to 3-channel RGB for the OCR backend."""
     if plane.ndim == 2:
@@ -401,7 +415,7 @@ def _parse_section(
         "floor_value", "morphology", "allowed_chars", "cache_mode",
         "sig_text_floor", "sig_max_spread", "sig_downscale",
         "sig_from_preprocessed", "invert", "background_color_ranges",
-        "rarity_source", "rarity_overrides", "fallback",
+        "rarity_source", "rarity_overrides", "fallback", "single_line",
     }
     has_spec_keys = any(k in spec_keys for k in section)
     has_sub_tables = any(
@@ -429,7 +443,7 @@ def _build_spec(
     for simple_key in (
         "color_space", "threshold_mode", "floor_value", "morphology",
         "allowed_chars", "cache_mode", "sig_text_floor", "sig_max_spread",
-        "sig_from_preprocessed", "invert",
+        "sig_from_preprocessed", "invert", "single_line",
     ):
         if simple_key in data:
             kwargs[simple_key] = data[simple_key]

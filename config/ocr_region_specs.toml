@@ -14,6 +14,7 @@ spec_version = "3.3-new-ui"
 color_space = "bgr"
 cache_mode = "persistent"
 sig_from_preprocessed = true
+single_line = true
 
 # Per-rarity exact BGR fill colours.
 # These are calibrated exact-match values; adjust after a game patch.
