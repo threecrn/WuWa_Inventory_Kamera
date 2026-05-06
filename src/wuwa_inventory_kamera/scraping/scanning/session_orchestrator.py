@@ -86,6 +86,7 @@ class SessionOrchestrator:
         *,
         windowed: bool = False,
         echo_stat_cache_path: Path | None = None,
+        ocr_cache_path: Path | None = None,
     ) -> None:
         self.scrapers = scrapers
         self.ocr_providers = ocr_providers
@@ -98,6 +99,7 @@ class SessionOrchestrator:
         self.max_batch_size = max_batch_size
         self.windowed = windowed
         self.echo_stat_cache_path = echo_stat_cache_path
+        self.ocr_cache_path = ocr_cache_path
 
     def run(self) -> dict[str, Any]:
         """
@@ -149,6 +151,10 @@ class SessionOrchestrator:
             echo_stat_cache_path=(
                 str(self.echo_stat_cache_path)
                 if self.echo_stat_cache_path is not None else None
+            ),
+            ocr_cache_path=(
+                str(self.ocr_cache_path)
+                if self.ocr_cache_path is not None else None
             ),
             resolution=f'{gw.layout.width}x{gw.layout.height}',
         ) as ocr_service:

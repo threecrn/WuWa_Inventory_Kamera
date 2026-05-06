@@ -64,6 +64,9 @@ class OcrCache:
         self._hits_transient: dict[str, int] = {}
         self._hits_persistent: dict[str, int] = {}
         self._misses: dict[str, int] = {}
+        # Per-roi_key OCR latency samples (seconds per call) — populated by
+        # record_ocr_latency() to support time-saved estimates in session_report.
+        self._ocr_latency_samples: dict[str, list[float]] = {}
 
         if self._db_path is not None:
             self._db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -218,8 +221,23 @@ class OcrCache:
                 self._conn.close()
             self._conn = None
 
+    def record_ocr_latency(self, roi_key: str, elapsed_sec: float) -> None:
+        """Record a single OCR-call latency sample for *roi_key*.
+
+        Called by :class:`OcrService` after each batch of OCR misses so that
+        :meth:`session_report` can estimate time saved by cache hits.
+        """
+        samples = self._ocr_latency_samples.setdefault(roi_key, [])
+        samples.append(elapsed_sec)
+
     def session_report(self) -> list[str]:
-        """Return per-roi_key cache report lines."""
+        """Return per-roi_key cache report lines.
+
+        Each line shows transient hits, persistent hits, miss count,
+        hit-rate percentage, estimated time saved, and the cache tier.
+        """
+        from ..ocr.region_specs import get_spec
+
         all_keys = sorted(
             set(self._hits_transient) | set(self._hits_persistent) | set(self._misses)
         )
@@ -228,18 +246,35 @@ class OcrCache:
             t_hits = self._hits_transient.get(key, 0)
             p_hits = self._hits_persistent.get(key, 0)
             m = self._misses.get(key, 0)
+            total = t_hits + p_hits + m
+            hit_rate = (t_hits + p_hits) / total * 100 if total else 0.0
+
+            # Estimate time saved from recorded latency samples
+            samples = self._ocr_latency_samples.get(key, [])
+            if samples and (t_hits + p_hits) > 0:
+                avg_sec = sum(samples) / len(samples)
+                saved_sec = avg_sec * (t_hits + p_hits)
+                time_str = f" — saved ~{saved_sec:.1f}s"
+            else:
+                time_str = ""
+
+            # Cache tier label from the spec registry
+            spec = get_spec(key)
+            tier_label = f"  [{spec.cache_mode}]" if spec is not None else ""
+
             lines.append(
                 f"[CacheReport] {key}: "
                 f"{t_hits} transient-hits / {p_hits} persistent-hits / "
-                f"{m} misses"
+                f"{m} misses  ({hit_rate:.0f}% hit){time_str}{tier_label}"
             )
         return lines
 
     def reset_counters(self) -> None:
-        """Reset session hit/miss counters."""
+        """Reset session hit/miss counters and latency samples."""
         self._hits_transient.clear()
         self._hits_persistent.clear()
         self._misses.clear()
+        self._ocr_latency_samples.clear()
 
     def cleanup_older_than(self, days: int) -> int:
         """Delete persistent entries older than *days* days."""

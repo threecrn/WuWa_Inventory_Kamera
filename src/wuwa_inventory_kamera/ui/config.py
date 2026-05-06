@@ -30,6 +30,7 @@ from ..config.app_config import (
     app_config,
     basePATH,
     default_echo_stat_cache_path,
+    default_ocr_cache_path,
     INVENTORY, FAILED,
     PROCESS_NAME, WINDOW_NAME,
 )
@@ -147,6 +148,10 @@ class Config(QConfig):
     echoStatCachePath = ConfigItem(
         'OCR', 'EchoStatCachePath', default_echo_stat_cache_path(),
         PathValidator(default_echo_stat_cache_path()),
+    )
+    ocrCachePath = ConfigItem(
+        'OCR', 'OcrCachePath', default_ocr_cache_path(),
+        PathValidator(default_ocr_cache_path()),
     )
 
     # Window mode

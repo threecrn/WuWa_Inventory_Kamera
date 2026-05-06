@@ -44,6 +44,11 @@ def default_echo_stat_cache_path(export_folder: str | Path = 'export') -> str:
     """Return the default SQLite path for the persistent echo stat OCR cache."""
     return str(Path(export_folder) / 'echo-stat-ocr.sqlite3')
 
+
+def default_ocr_cache_path(export_folder: str | Path = 'export') -> str:
+    """Return the default SQLite path for the generalized OCR cache."""
+    return str(Path(export_folder) / 'ocr-cache.sqlite3')
+
 # ---------------------------------------------------------------------------
 # AppConfig singleton
 # ---------------------------------------------------------------------------
@@ -59,6 +64,7 @@ class AppConfig:
     def __init__(self) -> None:
         self.exportFolder: str = 'export'
         self.echoStatCachePath: str = default_echo_stat_cache_path(self.exportFolder)
+        self.ocrCachePath: str = default_ocr_cache_path(self.exportFolder)
         self.gameLanguage: str = 'English'
         self.inventoryKeybind: str = 'B'
         self.resonatorKeybind: str = 'C'
@@ -114,6 +120,9 @@ class AppConfig:
         self.echoStatCachePath = default_echo_stat_cache_path(self.exportFolder)
         if 'EchoStatCachePath' in ocr:
             self.echoStatCachePath = str(ocr['EchoStatCachePath'])
+        self.ocrCachePath = default_ocr_cache_path(self.exportFolder)
+        if 'OcrCachePath' in ocr:
+            self.ocrCachePath = str(ocr['OcrCachePath'])
 
         update = data.get('Update', {})
         if 'CheckUpdateAtStartUp' in update:
@@ -199,6 +208,7 @@ class AppConfig:
         self.scanAchievements = qcfg_obj.scanAchievements.value
 
         self.echoStatCachePath = get(qcfg_obj.echoStatCachePath)
+        self.ocrCachePath = get(qcfg_obj.ocrCachePath)
         self.logLevel  = get(qcfg_obj.logLevel)
         self.saveRaw   = get(qcfg_obj.saveRaw)
         self.windowed  = get(qcfg_obj.windowed)

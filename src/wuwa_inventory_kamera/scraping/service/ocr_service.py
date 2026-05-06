@@ -412,12 +412,12 @@ class OcrService:
 
             card_results.append(raw_results[i])
 
-        name_results = self._ocr_images_with_cache(
-            'echo_stats_name',
+        name_results = self._ocr_with_spec(
+            'echoes.fullStatsName',
             [c.stats_name for c in captures],
         )
-        value_results = self._ocr_images_with_cache(
-            'echo_stats_value',
+        value_results = self._ocr_with_spec(
+            'echoes.fullStatsValue',
             [c.stats_value for c in captures],
         )
 
@@ -485,6 +485,29 @@ class OcrService:
         )
         return [image_results or [] for image_results in cached_results]
 
+    @staticmethod
+    def _filter_allowed_chars(
+        results: list[list[tuple[str, float, np.ndarray]]],
+        allowed_chars: str | None,
+    ) -> list[list[tuple[str, float, np.ndarray]]]:
+        """Strip characters outside *allowed_chars* from every token.
+
+        Tokens that become empty after stripping are dropped.  When
+        *allowed_chars* is ``None`` the results are returned unchanged.
+        """
+        if not allowed_chars:
+            return results
+        charset = frozenset(allowed_chars)
+        filtered = []
+        for image_tokens in results:
+            cleaned_tokens = []
+            for text, conf, box in image_tokens:
+                cleaned = ''.join(c for c in text if c in charset)
+                if cleaned:
+                    cleaned_tokens.append((cleaned, conf, box))
+            filtered.append(cleaned_tokens)
+        return filtered
+
     def _ocr_with_spec(
         self,
         roi_key: str,
@@ -498,6 +521,7 @@ class OcrService:
         3. Preprocesses cache misses via ``spec.preprocess()``.
         4. Runs OCR on the preprocessed images.
         5. Stores results in the appropriate cache tier(s).
+        6. Applies ``allowed_chars`` post-filtering on the final results.
 
         Falls back to raw batch OCR if no spec is registered.
         """
@@ -516,9 +540,17 @@ class OcrService:
                 spec.preprocess(images_bgr[idx], rarity=rarity)
                 for idx in miss_indices
             ]
+            t0 = time.monotonic()
             miss_results = self._batch_ocr.ocr_images(miss_preprocessed)
+            elapsed_sec = time.monotonic() - t0
 
-            # Store in cache
+            # Record latency for session report
+            if miss_indices:
+                per_call = elapsed_sec / len(miss_indices)
+                for _ in miss_indices:
+                    self._ocr_cache.record_ocr_latency(roi_key, per_call)
+
+            # Store raw (unfiltered) results in cache
             self._ocr_cache.store_many(
                 spec,
                 [images_bgr[idx] for idx in miss_indices],
@@ -529,7 +561,8 @@ class OcrService:
             for idx, result in zip(miss_indices, miss_results):
                 cached_results[idx] = result
 
-        return [r or [] for r in cached_results]
+        raw_results = [r or [] for r in cached_results]
+        return self._filter_allowed_chars(raw_results, spec.allowed_chars)
 
     def _process_weapons(self, group: list[_QueueItem]) -> None:
         """Run batched OCR and assembly for a group of :class:`WeaponCapture` objects."""

@@ -630,54 +630,29 @@ S = small (< 2h), M = medium (2-4h)
 
 ### Summary
 
-Phases 1–8 are substantially complete. Phases 9–10 are not yet started. Phase 11 is partially done.
+Phases 1–8 and 11 are complete. Phases 9–10 are not yet started.
 
 ### Phase-by-Phase Status
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 1 — `OcrRegionSpec` dataclass | **Done** | `src/wuwa_inventory_kamera/scraping/ocr/region_specs.py` — full dataclass with all planned fields |
-| 2 — `preprocess()` | **Done** | Color-space conversion, include/reject masks, threshold, morphology, invert, output formatting all present |
+| 1 — `OcrRegionSpec` dataclass | **Done** | `src/wuwa_inventory_kamera/scraping/ocr/region_specs.py` — full dataclass with all planned fields including `fallback_color_space` |
+| 2 — `preprocess()` | **Done** | Color-space conversion, include/reject masks, threshold, morphology, invert, output formatting; rarity vs. fallback path uses correct color space via `fallback_color_space` |
 | 3 — `make_signature()` | **Done** | `sig_from_preprocessed` branching implemented; signature includes `spec_version` + `roi_key` |
-| 4 — Transient cache in `OcrService` | **Done** | `OcrCache` in `scraping/service/ocr_cache.py`; transient dict + optional SQLite tier; two-tier lookup implemented |
-| 5 — Echo region specs | **Partial** | Specs defined in `config/ocr_region_specs.toml`; echo name wired via `_preprocess_with_spec`; echo stats name/value **still use the legacy `EchoOcrCache` + `_ocr_images_with_cache` path** |
+| 4 — Transient + persistent cache wired | **Done** | `OcrCache` in `scraping/service/ocr_cache.py`; `OcrCachePath` added to `AppConfig`, `config.json`, Qt config, `SessionOrchestrator`, and `OcrService`; all non-echo-stat persistent specs now hit SQLite |
+| 5 — Echo region specs fully wired | **Done** | `echoes.fullStatsName` and `echoes.fullStatsValue` now use `_ocr_with_spec`; `_ocr_images_with_cache` legacy calls removed from `_process_echoes` |
 | 6 — Weapon / item / character / shell specs | **Done** | All defined in TOML and wired via `_ocr_with_spec` in `OcrService` |
-| 7 — Wire `_process_*` methods | **Partial** | Weapons, items, characters, achievements, shell use `_ocr_with_spec`; echo stats remain on the legacy path |
-| 8 — TOML config + startup loader | **Done** | `config/ocr_region_specs.toml`; `load_specs_from_toml` / `get_spec` / `reload_specs` in `region_specs.py` |
+| 7 — Wire `_process_*` methods | **Done** | All `_process_*` methods use `_ocr_with_spec`; echo stats fully migrated |
+| 8 — TOML config + startup loader | **Done** | `config/ocr_region_specs.toml`; `load_specs_from_toml` / `get_spec` / `reload_specs` in `region_specs.py`; `fallback_color_space` correctly loaded from fallback section |
 | 9 — Calibration CLI | **Not started** | `cli/calibrate_ocr.py` and `cli/compare_ocr.py` from the plan do not exist; `cli/debug_ocr.py` covers diagnostics but not interactive calibration or A/B accuracy comparison |
 | 10 — Regression test corpus + CI | **Not started** | No `test_ocr_preprocessing.py`; no per-region-spec unit tests; no rarity-tier sample corpus; existing `session_tests/test_stats_extractors.py` covers extractor regression but not spec preprocessing |
-| 11 — Cache hit-rate logging | **Partial** | `OcrCache.session_report()` emits transient/persistent/miss counts on shutdown; hit-rate percentage not computed; legacy echo cache still logs separately; no single unified report matching the plan format |
+| 11 — Cache hit-rate logging | **Done** | `OcrCache.session_report()` now emits hit-rate percentage, tier label, and estimated time saved (from `record_ocr_latency()` samples recorded by `_ocr_with_spec`) |
 
 ### Known Gaps and Open Tasks
 
-#### Echo stats path not migrated (Phase 5 / Phase 7)
+#### `echoes.echoName` cache tier (monitor)
 
-`_process_echoes` in `ocr_service.py` still calls `_ocr_images_with_cache` using the legacy `EchoOcrCache`. The spec-driven `_ocr_with_spec` path is only used for echo name preprocessing (via `_preprocess_with_spec`), not for stats name / value reads. Migration requires:
-
-1. Replace `_ocr_images_with_cache` calls for `fullStatsName` and `fullStatsValue` crops with `_ocr_with_spec`.
-2. Confirm the `ECHO_STATS_NAME` / `ECHO_STATS_VALUE` TOML specs produce equivalent or better accuracy than the current `EchoOcrCache` normalization.
-3. Retire `EchoOcrCache` once the new path is validated or keep as a reference baseline.
-
-#### Generalized persistent cache not wired (Phase 4 / runtime)
-
-`OcrService.__init__` accepts an `ocr_cache_path` parameter for the SQLite tier of `OcrCache`, but:
-- `session_orchestrator.py` does not pass it.
-- `config/config.json` has no `OcrCachePath` key (only `EchoStatCachePath`).
-- As a result, all non-echo-stat regions that specify `cache_mode = "persistent"` in the TOML are silently degraded to transient-only.
-
-To complete: add `OcrCachePath` to `AppConfig` / `config.json`, pass it through the orchestrator, and update the `OcrService` constructor call.
-
-#### `echoes.echoName` cache tier mismatch
-
-The plan recommends `cache_mode = "transient"` for `echoes.echoName` because its background is a session-varying blurred game screenshot. The current TOML sets it to `"persistent"`. This is safe only if `sig_from_preprocessed = true` reliably strips the portrait background before hashing — which should be confirmed empirically before relying on persistent hits.
-
-#### `fallback_cs` unused in TOML loader
-
-In `region_specs.py`, the loader reads a `color_space` key from the `[echoes.echoName.fallback]` section into `fallback_cs` but never applies it; the fallback `OcrRegionSpec` is constructed using the parent spec's `color_space`. This means fallback ranges for echo names are evaluated in BGR, which may be intentional but should be documented or fixed.
-
-#### `allowed_chars` not forwarded to OCR engine in `_ocr_with_spec`
-
-`OcrRegionSpec.allowed_chars` is declared and loaded from TOML but `_ocr_with_spec` in `ocr_service.py` does not pass it to the OCR engine call. The field has no effect at runtime.
+The plan recommends `cache_mode = "transient"` for `echoes.echoName` because its background is a session-varying blurred game screenshot. The current TOML sets it to `"persistent"`. This is safe if `sig_from_preprocessed = true` reliably strips the portrait background before hashing — which should be confirmed empirically before relying on persistent hits.
 
 #### Phase 9 — Calibration CLI
 
@@ -693,15 +668,7 @@ There are no unit tests for:
 - `OcrRegionSpec.make_signature()` stability (same text ± jitter → same key).
 - `load_specs_from_toml()` round-trip (TOML → spec → expected field values).
 - Rarity-aware path: correct range selection when `rarity` is provided vs. fallback when it is not.
-
-`session_tests/test_stats_extractors.py` provides extractor-level regression against captured sessions but requires an external `--session-dir` corpus and does not cover the new spec-driven preprocessing path.
-
-#### Phase 11 — Cache report format
-
-`OcrCache.session_report()` currently logs raw counts (`transient_hits`, `persistent_hits`, `misses`) per `roi_key`. Missing relative to the plan format:
-- Hit-rate percentage.
-- Estimated time saved (requires per-call timing hooks).
-- Clear labeling of the cache tier in the report line.
+- `fallback_color_space`: verify that fallback HSV ranges are evaluated in HSV when rarity is absent.
 
 ---
 

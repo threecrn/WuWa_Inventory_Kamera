@@ -141,8 +141,10 @@ def main() -> None:
     try:
         from ..config.app_config import app_config
         default_echo_stat_cache = Path(app_config.echoStatCachePath)
+        default_ocr_cache = Path(app_config.ocrCachePath)
     except Exception:
         default_echo_stat_cache = None
+        default_ocr_cache = None
 
     # Delayed imports so --help is fast
     from ..game.navigation import SortOrder
@@ -175,6 +177,7 @@ def main() -> None:
         on_progress=on_progress,
         windowed=args.windowed,
         echo_stat_cache_path=echo_stat_cache_path,
+        ocr_cache_path=default_ocr_cache,
     )
 
     logger.info('Starting scan — scrapers=%s provider=%s', args.scrapers, args.provider)

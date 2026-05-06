@@ -71,6 +71,14 @@ class OcrRegionSpec:
     # ---- Version tag (incorporated into cache keys) ----
     spec_version: str = ""
 
+    # ---- Fallback colour-space override ----
+    # When a TOML ``fallback`` section uses a different ``color_space`` than
+    # the parent spec, that colour space is stored here.  It is used ONLY
+    # when evaluating the base ``text_color_ranges`` (i.e. when rarity is
+    # unknown or has no matching override).  Per-rarity overrides always use
+    # the parent ``color_space``.
+    fallback_color_space: str | None = None
+
     # ------------------------------------------------------------------
     # Preprocessing
     # ------------------------------------------------------------------
@@ -97,8 +105,19 @@ class OcrRegionSpec:
             A single-channel (H, W) uint8 image ready for the OCR engine
             (converted to 3-channel RGB by ``format_for_ocr``).
         """
-        effective_ranges = self._resolve_text_ranges(rarity)
-        color_view = _convert_color_space(bgr, self.color_space)
+        used_rarity_override = (
+            rarity is not None
+            and self.text_color_ranges_by_rarity is not None
+            and rarity in self.text_color_ranges_by_rarity
+        )
+        if used_rarity_override:
+            effective_ranges = self.text_color_ranges_by_rarity[rarity]  # type: ignore[index]
+            effective_cs = self.color_space
+        else:
+            effective_ranges = self.text_color_ranges
+            effective_cs = self.fallback_color_space or self.color_space
+
+        color_view = _convert_color_space(bgr, effective_cs)
 
         reject_mask = _mask_from_ranges(color_view, self.background_color_ranges)
 
@@ -443,13 +462,16 @@ def _build_spec(
         if "text_color_ranges" in fallback:
             # Only set base ranges if not already set
             if "text_color_ranges" not in kwargs:
-                fallback_cs = fallback.get("color_space", kwargs.get("color_space", "gray"))
-                # The fallback may use a different color space; store it as
-                # the base ranges.  The caller decides whether to use rarity
-                # overrides or the base.
                 kwargs["text_color_ranges"] = _parse_color_ranges(
                     fallback["text_color_ranges"]
                 )
+                # If the fallback uses a different color space, record it so
+                # that preprocess() evaluates these ranges in the correct
+                # space (e.g. HSV bands) rather than the parent's space (BGR).
+                fallback_cs = fallback.get("color_space")
+                parent_cs = kwargs.get("color_space", "gray")
+                if fallback_cs and fallback_cs != parent_cs:
+                    kwargs["fallback_color_space"] = fallback_cs
 
     return OcrRegionSpec(**kwargs)
 

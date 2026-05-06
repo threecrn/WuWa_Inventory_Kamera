@@ -64,6 +64,7 @@ class ScanThread(QThread):
         inventory_key: str,
         export_folder: str,
         echo_stat_cache_path: str | None,
+        ocr_cache_path: str | None = None,
         save_raw: bool = False,
         max_batch_size: int = 8,
         windowed: bool = False,
@@ -76,6 +77,7 @@ class ScanThread(QThread):
         self._inventory_key = inventory_key
         self._export_folder = export_folder
         self._echo_stat_cache_path = echo_stat_cache_path
+        self._ocr_cache_path = ocr_cache_path
         self._save_raw = save_raw
         self._max_batch_size = max_batch_size
         self._windowed = windowed
@@ -99,6 +101,10 @@ class ScanThread(QThread):
                 echo_stat_cache_path=(
                     Path(self._echo_stat_cache_path)
                     if self._echo_stat_cache_path else None
+                ),
+                ocr_cache_path=(
+                    Path(self._ocr_cache_path)
+                    if self._ocr_cache_path else None
                 ),
             )
             result = orch.run()
@@ -450,6 +456,7 @@ class LControlPanel(QFrame):
             inventory_key=cfg.get(cfg.inventoryKeybind).lower(),
             export_folder=cfg.get(cfg.exportFolder),
             echo_stat_cache_path=cfg.get(cfg.echoStatCachePath),
+            ocr_cache_path=cfg.get(cfg.ocrCachePath),
             save_raw=cfg.saveRaw.value,
             max_batch_size=cfg.ocrBatchSize.value,
             windowed=cfg.windowed.value,
