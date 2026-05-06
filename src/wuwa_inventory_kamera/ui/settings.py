@@ -27,6 +27,7 @@ from .config import (
     HELP_URL, FEEDBACK_URL, LANGUAGES,
 )
 from ..scraping.service.echo_ocr_cache import EchoOcrCache
+from ..scraping.service.ocr_cache import OcrCache
 
 logger = logging.getLogger('SettingInterface')
 
@@ -144,6 +145,13 @@ class SettingInterface(ScrollArea):
             self.tr('SQLite file used to reuse stat-name/value OCR across repeated echo scans and service-mode reprocessing.'),
             parent=self.ocrGroup,
         )
+        self.ocrCachePathCard = FieldSettingCard(
+            cfg.ocrCachePath,
+            FIF.SAVE,
+            self.tr('OCR cache path'),
+            self.tr('SQLite file for the generalized per-region OCR cache (echo names, weapons, items, characters, …).'),
+            parent=self.ocrGroup,
+        )
         self.cleanupCacheCard = PushSettingCard(
             self.tr('Clean up'),
             FIF.BROOM,
@@ -225,6 +233,7 @@ class SettingInterface(ScrollArea):
         self.ocrGroup.addSettingCard(self.ocrBackendCard)
         self.ocrGroup.addSettingCard(self.ocrBatchSizeCard)
         self.ocrGroup.addSettingCard(self.echoStatCachePathCard)
+        self.ocrGroup.addSettingCard(self.ocrCachePathCard)
         self.ocrGroup.addSettingCard(self.cleanupCacheCard)
         self.advancedGroup.addSettingCard(self.logLevelCard)
         self.advancedGroup.addSettingCard(self.saveRawCard)
@@ -257,23 +266,39 @@ class SettingInterface(ScrollArea):
             self.exportFolderCard.setContent(folder)
 
     def __onCleanupCacheClicked(self):
-        cache_path = cfg.get(cfg.echoStatCachePath)
+        total_deleted = 0
+        errors: list[str] = []
+
+        # Legacy echo-stat cache
         try:
-            cache = EchoOcrCache(cache_path)
-            deleted = cache.cleanup_older_than(days=60)
+            cache = EchoOcrCache(cfg.get(cfg.echoStatCachePath))
+            total_deleted += cache.cleanup_older_than(days=60)
             cache.close()
         except (OSError, sqlite3.Error) as exc:
+            logger.warning('Echo stat cache cleanup failed: %s', exc)
+            errors.append(str(exc))
+
+        # Generalized OCR cache
+        try:
+            ocr_cache = OcrCache(db_path=cfg.get(cfg.ocrCachePath))
+            total_deleted += ocr_cache.cleanup_older_than(days=60)
+            ocr_cache.close()
+        except (OSError, sqlite3.Error) as exc:
             logger.warning('OCR cache cleanup failed: %s', exc)
+            errors.append(str(exc))
+
+        if errors:
             InfoBar.error(
                 self.tr('Cache cleanup failed'),
-                str(exc),
+                '\n'.join(errors),
                 duration=4000,
                 parent=self.window(),
             )
             return
+
         InfoBar.success(
             self.tr('Cache cleaned'),
-            self.tr(f'{deleted} stale entries removed.'),
+            self.tr(f'{total_deleted} stale entries removed.'),
             duration=3000,
             parent=self.window(),
         )

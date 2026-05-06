@@ -360,8 +360,24 @@ class OcrService:
                 if bbox is not None
             ]
 
+        _echo_name_spec = get_spec('echoes.echoName')
+
         card_results: list[list[tuple[str, float, np.ndarray]]] = []
         for i, c in enumerate(captures):
+            # Source image used for cache keying (raw BGR, same as what the
+            # spec's make_signature() expects).
+            _cache_src = c.echo_name if c.echo_name is not None else c.card
+
+            # ---- Cache lookup (transient + persistent) ----
+            if _echo_name_spec is not None:
+                _cached = self._ocr_cache.lookup(
+                    _echo_name_spec, _cache_src, rarity=c.detected_rarity
+                )
+                if _cached is not None:
+                    card_results.append(_cached)
+                    continue
+
+            # ---- Multi-strategy OCR ----
             # New-UI path: captures with a dedicated echoName ROI use
             # single-image backend.recognize as the PRIMARY method.  This
             # matches the nav-script (imageToString on the filtered crop) and
@@ -369,48 +385,51 @@ class OcrService:
             # text_rec) on the binary white-on-black filtered image frequently
             # produces spurious single-character results that pass
             # _has_usable_text and silently block the reliable fallback.
+            ocr_result: list[tuple[str, float, np.ndarray]] | None = None
+
             if c.echo_name is not None:
                 single_results = _backend_to_batch(
                     self._backend.recognize(name_source_filtered[i])
                 )
                 if _has_usable_text(single_results):
-                    card_results.append(single_results)
-                    continue
-
-                thorough_results = _backend_to_batch(
-                    self._backend.thorough_recognize(name_source_filtered[i])
-                )
-                if _has_usable_text(thorough_results):
-                    logger.debug(
-                        'Echo %d — echoName recovered via thorough OCR.',
-                        c.echo_index,
+                    ocr_result = single_results
+                else:
+                    thorough_results = _backend_to_batch(
+                        self._backend.thorough_recognize(name_source_filtered[i])
                     )
-                    card_results.append(thorough_results)
-                    continue
-
-                # Late fallback: batch OCR on filtered image, then raw crop.
-                if _has_usable_text(filtered_results[i]):
-                    logger.debug(
-                        'Echo %d — echoName recovered via batch-OCR on filtered crop.',
-                        c.echo_index,
-                    )
-                    card_results.append(filtered_results[i])
-                    continue
-
-                if _has_usable_text(raw_results[i]):
-                    logger.debug(
-                        'Echo %d — echoName recovered via raw echoName crop.',
-                        c.echo_index,
-                    )
-                    card_results.append(raw_results[i])
-                    continue
-
-            # Legacy path (no echoName ROI): use batch OCR on card crop.
+                    if _has_usable_text(thorough_results):
+                        logger.debug(
+                            'Echo %d — echoName recovered via thorough OCR.',
+                            c.echo_index,
+                        )
+                        ocr_result = thorough_results
+                    elif _has_usable_text(filtered_results[i]):
+                        logger.debug(
+                            'Echo %d — echoName recovered via batch-OCR on filtered crop.',
+                            c.echo_index,
+                        )
+                        ocr_result = filtered_results[i]
+                    elif _has_usable_text(raw_results[i]):
+                        logger.debug(
+                            'Echo %d — echoName recovered via raw echoName crop.',
+                            c.echo_index,
+                        )
+                        ocr_result = raw_results[i]
             elif _has_usable_text(filtered_results[i]):
-                card_results.append(filtered_results[i])
-                continue
+                # Legacy path (no echoName ROI): use batch OCR on card crop.
+                ocr_result = filtered_results[i]
 
-            card_results.append(raw_results[i])
+            if ocr_result is None:
+                ocr_result = raw_results[i]
+
+            # ---- Cache store ----
+            if _echo_name_spec is not None and ocr_result:
+                self._ocr_cache.store(
+                    _echo_name_spec, _cache_src, ocr_result,
+                    rarity=c.detected_rarity,
+                )
+
+            card_results.append(ocr_result)
 
         name_results = self._ocr_with_spec(
             'echoes.fullStatsName',
