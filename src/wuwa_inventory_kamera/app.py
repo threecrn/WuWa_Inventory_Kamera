@@ -84,3 +84,8 @@ def main() -> None:
     except Exception:
         logger.critical("Main application crashed", exc_info=True)
     logger.info("Application closed")
+
+
+if __name__ == "__main__":
+    # Allow running the package module directly with `python -m wuwa_inventory_kamera.app`
+    main()
