@@ -39,13 +39,13 @@ from pathlib import Path
 from typing import Callable
 
 import numpy as np
+import cv2
 
 from ...game.navigation import (
     GameNavigator,
     InventoryTab,
     SortOrder,
     CELLS_PER_PAGE,
-    _nav_ocr,
 )
 from ...game.screen import capture_full, capture_region
 from .grid_navigator import GridNavigator
@@ -280,15 +280,15 @@ class EchoWorkflow:
         Synchronously OCR just the level number from the currently selected
         echo panel without touching the OcrService queue.
 
-        Uses the same lightweight ``imageToString`` path as ``_nav_ocr`` in
-        :mod:`~...game.navigation` — a single recognition forward pass on the
-        CPU backend — so it adds < 100 ms to the scan per page checked.
+        Uses the CPU backend via :meth:`~...service.ocr_service.OcrService.ocr_adhoc_text`
+        with the ``echoes.level`` spec, so results are cached and the call
+        adds < 100 ms to the scan per page checked.
 
         Returns the integer level, or ``None`` if OCR failed to find digits.
         """
         roi = self.nav.layout.echoes.level
         crop = capture_region(self.nav.gw, roi)
-        text = _nav_ocr(crop, allowed='0123456789')
+        text = self.ocr.ocr_adhoc_text(crop, 'echoes.level')
         text = text.strip()
         if text.isdigit():
             return int(text)
@@ -363,7 +363,7 @@ class EchoWorkflow:
                 int(ei.level.y) : int(ei.level.y + ei.level.h),
                 int(ei.level.x) : int(ei.level.x + ei.level.w),
             ]
-            level_text = _nav_ocr(level_crop, allowed='0123456789').strip()
+            level_text = self.ocr.ocr_adhoc_text(level_crop, 'echoes.level').strip()
             two_digits = len(level_text) == 2
             si_slot = si_raw.level_XX if two_digits else si_raw.level_X
             logger.debug(

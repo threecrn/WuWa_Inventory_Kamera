@@ -174,13 +174,11 @@ def reprocess_echo_scans_with_service(
             sonata_icon_r: float | None = None
             detected_level: int | None = None
             if hasattr(si_raw, 'level_X'):
-                from ..ocr import imageToString as _ocr_str
-
                 level_crop = scan.full_screenshot[
                     int(si.level.y): int(si.level.y + si.level.h),
                     int(si.level.x): int(si.level.x + si.level.w),
                 ]
-                level_text = _ocr_str(level_crop, allowedChars='0123456789').strip()
+                level_text = svc.ocr_adhoc_text(level_crop, 'echoes.level').strip()
                 two_digits = len(level_text) == 2
                 si_slot = si_raw.level_XX if two_digits else si_raw.level_X
                 icon_roi = si_slot.icon
