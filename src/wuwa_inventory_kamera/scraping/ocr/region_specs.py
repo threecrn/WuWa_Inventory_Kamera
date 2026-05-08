@@ -191,7 +191,11 @@ class OcrRegionSpec:
             # signature hashing.
             if preprocessed.ndim == 3:
                 preprocessed = cv2.cvtColor(preprocessed, cv2.COLOR_RGB2GRAY)
-            return _downscale(preprocessed, self.sig_downscale)
+            # If preprocessing collapses to a constant image, hashing it will
+            # make unrelated crops collide in the OCR cache. Fall back to a
+            # normalized raw-image signature in that case.
+            if np.ptp(preprocessed) != 0:
+                return _downscale(preprocessed, self.sig_downscale)
 
         # Raw-signature path
         color_view = _convert_color_space(bgr, self.color_space)
@@ -416,6 +420,7 @@ def _parse_section(
         "sig_text_floor", "sig_max_spread", "sig_downscale",
         "sig_from_preprocessed", "invert", "background_color_ranges",
         "rarity_source", "rarity_overrides", "fallback", "single_line",
+        "spec_version",
     }
     has_spec_keys = any(k in spec_keys for k in section)
     has_sub_tables = any(
@@ -438,7 +443,10 @@ def _build_spec(
     spec_version: str,
 ) -> OcrRegionSpec:
     """Construct an OcrRegionSpec from a parsed TOML section."""
-    kwargs: dict = {"roi_key": roi_key, "spec_version": spec_version}
+    kwargs: dict = {
+        "roi_key": roi_key,
+        "spec_version": data.get("spec_version", spec_version),
+    }
 
     for simple_key in (
         "color_space", "threshold_mode", "floor_value", "morphology",

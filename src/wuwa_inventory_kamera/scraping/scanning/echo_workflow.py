@@ -398,10 +398,11 @@ class EchoWorkflow:
         echo_name: np.ndarray | None = None
         if hasattr(ei, 'echoName'):
             en = ei.echoName
-            echo_name = full[
+            echo_name_rgb = full[
                 int(en.y) : int(en.y + en.h),
                 int(en.x) : int(en.x + en.w),
             ]
+            echo_name = cv2.cvtColor(echo_name_rgb, cv2.COLOR_RGB2BGR)
 
         # Optionally save raw images
         if self.save_raw:

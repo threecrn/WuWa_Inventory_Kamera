@@ -155,6 +155,21 @@ def test_signature_stable_across_minor_shift() -> None:
     assert spec.make_signature(base) == spec.make_signature(shifted)
 
 
+def test_signature_falls_back_to_raw_image_when_preprocessed_plane_is_constant() -> None:
+    spec = OcrRegionSpec(
+        roi_key="echoes.echoName",
+        color_space="bgr",
+        text_color_ranges=[((5, 5, 250), (5, 5, 250))],
+        sig_from_preprocessed=True,
+    )
+    image_a = np.zeros((24, 24, 3), dtype=np.uint8)
+    image_b = np.zeros((24, 24, 3), dtype=np.uint8)
+    image_a[4:12, 4:12] = np.asarray([255, 255, 255], dtype=np.uint8)
+    image_b[12:20, 12:20] = np.asarray([255, 255, 255], dtype=np.uint8)
+
+    assert spec.make_signature(image_a) != spec.make_signature(image_b)
+
+
 def test_load_specs_from_toml_parses_rarity_and_fallback_color_space(tmp_path: Path) -> None:
     config_path = tmp_path / "ocr_region_specs.toml"
     config_path.write_text(
@@ -163,6 +178,7 @@ def test_load_specs_from_toml_parses_rarity_and_fallback_color_space(tmp_path: P
                 'spec_version = "test-spec"',
                 '',
                 '[echoes.echoName]',
+                'spec_version = "echo-name-spec"',
                 'color_space = "bgr"',
                 'sig_from_preprocessed = true',
                 'single_line = true',
@@ -190,7 +206,7 @@ def test_load_specs_from_toml_parses_rarity_and_fallback_color_space(tmp_path: P
     specs = load_specs_from_toml(str(config_path))
 
     echo_name = specs["echoes.echoName"]
-    assert echo_name.spec_version == "test-spec"
+    assert echo_name.spec_version == "echo-name-spec"
     assert echo_name.color_space == "bgr"
     assert echo_name.single_line is True
     assert echo_name.fallback_color_space == "hsv"
@@ -198,6 +214,7 @@ def test_load_specs_from_toml_parses_rarity_and_fallback_color_space(tmp_path: P
     assert echo_name.text_color_ranges_by_rarity == {5: [((5, 5, 250), (5, 5, 250))]}
 
     stats_value = specs["echoes.fullStatsValue"]
+    assert stats_value.spec_version == "test-spec"
     assert stats_value.threshold_mode == "floor"
     assert stats_value.floor_value == 100
     assert stats_value.sig_downscale == (32, 16)

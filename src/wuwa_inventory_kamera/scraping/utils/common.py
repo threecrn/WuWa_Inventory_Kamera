@@ -227,12 +227,12 @@ def loadRawScans(base_path: Path) -> list:
             continue
 
         optional_sonata_path = sonata_path if sonata_path.exists() else None
-        if optional_sonata_path is None:
-            _raw_logger.debug(
-                "Raw scan %s has no sonata.png — sonata will be derived "
-                "from full.png via icon matching during processing.",
-                echo_dir.name,
-            )
+        #if optional_sonata_path is None:
+        #    _raw_logger.debug(
+        #        "Raw scan %s has no sonata.png — sonata will be derived "
+        #        "from full.png via icon matching during processing.",
+        #        echo_dir.name,
+        #    )
 
         with open(meta_path, 'r', encoding='utf-8') as f:
             meta = json.load(f)

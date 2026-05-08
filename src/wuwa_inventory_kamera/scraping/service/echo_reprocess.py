@@ -9,6 +9,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import cv2
+
 logger = logging.getLogger('wuwa.echo_reprocess')
 
 
@@ -105,6 +107,15 @@ def reprocess_echo_scans_with_service(
                 int(icon_roi.x): int(icon_roi.x + icon_roi.w),
             ]
 
+            echo_name = None
+            if hasattr(si, 'echoName'):
+                en = si.echoName
+                echo_name_rgb = scan.full_screenshot[
+                    int(en.y): int(en.y + en.h),
+                    int(en.x): int(en.x + en.w),
+                ]
+                echo_name = cv2.cvtColor(echo_name_rgb, cv2.COLOR_RGB2BGR)
+
             detected_rarity: int | None = None
             if hasattr(si, 'rarityColorPick'):
                 from ..scanning.echo_workflow import _rarity_from_bgr_pixel
@@ -117,6 +128,7 @@ def reprocess_echo_scans_with_service(
             capture = EchoCapture(
                 echo_index=scan.index,
                 card=card,
+                echo_name=echo_name,
                 sonata_icon=sonata_icon,
                 sonata_icon_cx=sonata_icon_cx,
                 sonata_icon_cy=sonata_icon_cy,
@@ -131,9 +143,14 @@ def reprocess_echo_scans_with_service(
 
         for scan_index, future in futures:
             try:
-                result = future.result(timeout=60)
+                result = future.result()
             except Exception as exc:
-                logger.error('Scan %d — service error: %s', scan_index, exc)
+                logger.exception(
+                    'Scan %d — service error (%s): %r',
+                    scan_index,
+                    type(exc).__name__,
+                    exc,
+                )
                 continue
             if result.data is not None:
                 echoes.append(result.data)
