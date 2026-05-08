@@ -185,6 +185,7 @@ def _run_service(
         max_batch_size=max_batch_size,
         echo_stat_cache_path=echo_stat_cache_path,
         ocr_cache_path=ocr_cache_path,
+        raw_base=raw_dir,
     )
 
 

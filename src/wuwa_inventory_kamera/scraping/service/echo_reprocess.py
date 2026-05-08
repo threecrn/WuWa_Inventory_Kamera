@@ -10,8 +10,102 @@ import logging
 from pathlib import Path
 
 import cv2
+import numpy as np
 
 logger = logging.getLogger('wuwa.echo_reprocess')
+
+
+_DEBUG_REGION_SPECS: tuple[tuple[str, str, str], ...] = (
+    ('echoes.echoName', 'echo_name', 'bgr'),
+    ('echoes.fullStatsName', 'stats_name', 'rgb'),
+    ('echoes.fullStatsValue', 'stats_value', 'rgb'),
+)
+
+
+def _resolve_debug_dir(scan, raw_base: str | Path | None) -> Path | None:
+    full_path = getattr(scan, 'full_path', None)
+    if full_path is not None:
+        return Path(full_path).parent / 'debug'
+    if raw_base is not None:
+        return Path(raw_base) / f'echo_{scan.index:04d}' / 'debug'
+    return None
+
+
+def _to_bgr(image: np.ndarray, *, source_space: str) -> np.ndarray:
+    if image.ndim == 2 or source_space == 'bgr':
+        return image.copy()
+    if source_space == 'rgb':
+        return cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    raise ValueError(f'Unsupported source_space: {source_space!r}')
+
+
+def _to_debug_image(image: np.ndarray) -> np.ndarray:
+    if image.ndim == 2:
+        return image
+    return cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+
+def _write_region_debug_artifacts(
+    debug_dir: Path,
+    *,
+    basename: str,
+    roi_key: str,
+    raw_bgr: np.ndarray,
+    rarity: int | None,
+) -> None:
+    from ..ocr.region_specs import get_spec
+
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(debug_dir / f'{basename}.png'), raw_bgr)
+
+    spec = get_spec(roi_key)
+    if spec is None:
+        return
+
+    preprocessed = spec.preprocess(raw_bgr, rarity=rarity)
+    signature = spec._image_for_signature(raw_bgr, rarity)
+
+    cv2.imwrite(
+        str(debug_dir / f'{basename}_preprocessed.png'),
+        _to_debug_image(preprocessed),
+    )
+    cv2.imwrite(str(debug_dir / f'{basename}_signature.png'), signature)
+
+
+def _write_echo_debug_artifacts(
+    scan,
+    *,
+    raw_base: str | Path | None,
+    detected_rarity: int | None,
+    echo_name: np.ndarray | None,
+    stats_name: np.ndarray,
+    stats_value: np.ndarray,
+) -> None:
+    debug_dir = _resolve_debug_dir(scan, raw_base)
+    if debug_dir is None:
+        logger.warning(
+            'Scan %d — write_debug requested but no raw directory could be resolved.',
+            scan.index,
+        )
+        return
+
+    region_images: dict[str, np.ndarray | None] = {
+        'echo_name': echo_name,
+        'stats_name': stats_name,
+        'stats_value': stats_value,
+    }
+
+    for roi_key, basename, source_space in _DEBUG_REGION_SPECS:
+        raw_image = region_images[basename]
+        if raw_image is None:
+            continue
+        _write_region_debug_artifacts(
+            debug_dir,
+            basename=basename,
+            roi_key=roi_key,
+            raw_bgr=_to_bgr(raw_image, source_space=source_space),
+            rarity=detected_rarity,
+        )
 
 
 def reprocess_echo_scans_with_service(
@@ -23,6 +117,7 @@ def reprocess_echo_scans_with_service(
     max_batch_size: int = 8,
     echo_stat_cache_path: str | Path | None = None,
     ocr_cache_path: str | Path | None = None,
+    raw_base: str | Path | None = None,
 ) -> list[dict]:
     """Process raw echo scans through the v2 OcrService pipeline."""
     from ...game.screen_info import ScreenInfo
@@ -125,6 +220,16 @@ def reprocess_echo_scans_with_service(
                 rcp = si.rarityColorPick
                 detected_rarity = _rarity_from_bgr_pixel(
                     scan.full_screenshot[int(rcp.y), int(rcp.x)][::-1]
+                )
+
+            if write_debug:
+                _write_echo_debug_artifacts(
+                    scan,
+                    raw_base=raw_base,
+                    detected_rarity=detected_rarity,
+                    echo_name=echo_name,
+                    stats_name=stats_name,
+                    stats_value=stats_value,
                 )
 
             capture = EchoCapture(

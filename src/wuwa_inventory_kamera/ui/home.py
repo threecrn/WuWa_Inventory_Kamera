@@ -581,6 +581,7 @@ class LControlPanel(QFrame):
                 write_debug=True,
                 echo_stat_cache_path=cfg.get(cfg.echoStatCachePath),
                 ocr_cache_path=cfg.get(cfg.ocrCachePath),
+                raw_base=raw_base,
             )
             savingScraped(
                 {'echoes_wuwainventorykamera.json': (echoes, list)},
