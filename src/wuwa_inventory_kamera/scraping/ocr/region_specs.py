@@ -90,7 +90,7 @@ class OcrRegionSpec:
     # ---- Signature parameters ----
     sig_text_floor: int = 200
     sig_max_spread: int = 32
-    sig_downscale: tuple[int, int] = (64, 64)
+    sig_downscale: tuple[int, int] = (512, 256)
     sig_from_preprocessed: bool = False
 
     # Optional signature-only preprocessing recipe.  If present, this takes

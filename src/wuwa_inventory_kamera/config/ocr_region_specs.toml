@@ -4,23 +4,27 @@
 # Colour ranges use [[lo, lo, lo], [hi, hi, hi]] notation.
 # Exact mode: lo == hi, e.g. [[166, 235, 247], [166, 235, 247]].
 
-spec_version = "3.3-new-ui"
+spec_version = "3.3-new-ui-v2"
 
 # =====================================================================
 # Echo workflow
 # =====================================================================
 
 [echoes.echoName]
-spec_version = "3.3-new-ui-echo-name-v4"
+#spec_version = "3.3-new-ui-v2echo-name-v4"
 color_space = "hsv"
 cache_mode = "persistent"
 single_line = true
-text_color_ranges = [
-    [[20, 60, 150], [32, 255, 255]],
-    [[135, 60, 150], [150, 255, 255]],
-    [[112, 60, 150], [125, 255, 255]],
-    [[55, 60, 150], [70, 255, 255]],
-]
+sig_downscale = [1024, 64]
+
+[echoes.echoName.rarity_overrides."5"]
+text_color_ranges = [[[20, 60, 150], [32, 255, 255]]]
+[echoes.echoName.rarity_overrides."4"]
+text_color_ranges = [[[135, 60, 150], [150, 255, 255]]]
+[echoes.echoName.rarity_overrides."3"]
+text_color_ranges = [[[112, 60, 150], [125, 255, 255]]]
+[echoes.echoName.rarity_overrides."2"]
+text_color_ranges = [[[55, 60, 150], [70, 255, 255]]]
 
 # Exact-match signature recipe for cache keying.
 [echoes.echoName.signature]
@@ -51,6 +55,7 @@ color_space = "rgb"
 threshold_mode = "floor"
 floor_value = 100
 cache_mode = "persistent"
+sig_downscale = [512, 512]
 sig_text_floor = 200
 sig_max_spread = 32
 
@@ -60,6 +65,7 @@ threshold_mode = "floor"
 floor_value = 100
 allowed_chars = "0123456789.%+"
 cache_mode = "persistent"
+sig_downscale = [256, 512]
 sig_text_floor = 200
 sig_max_spread = 32
 
