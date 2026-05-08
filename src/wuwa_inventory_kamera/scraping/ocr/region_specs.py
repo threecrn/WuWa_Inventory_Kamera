@@ -37,6 +37,22 @@ ColorRangeList = list[ColorRange]
 
 
 @dataclass(frozen=True, slots=True)
+class SignaturePreprocessSpec:
+    """Optional preprocessing overrides used only for signature hashing."""
+
+    color_space: Literal["hsv", "rgb", "bgr", "gray"] | None = None
+    text_color_ranges: ColorRangeList | None = None
+    text_color_ranges_by_rarity: dict[int, ColorRangeList] | None = None
+    background_color_ranges: ColorRangeList | None = None
+    invert: bool | None = None
+    single_line: bool | None = None
+    threshold_mode: Literal["otsu", "floor", "none"] | None = None
+    floor_value: int | None = None
+    morphology: Literal["close", "none"] | None = None
+    fallback_color_space: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class OcrRegionSpec:
     """Declares how to preprocess and fingerprint a specific OCR region."""
 
@@ -72,6 +88,11 @@ class OcrRegionSpec:
     sig_max_spread: int = 32
     sig_downscale: tuple[int, int] = (64, 64)
     sig_from_preprocessed: bool = False
+
+    # Optional signature-only preprocessing recipe.  If present, this takes
+    # precedence over sig_from_preprocessed and is used to derive the image
+    # hashed for cache keying.
+    signature_preprocess: SignaturePreprocessSpec | None = None
 
     # ---- Version tag (incorporated into cache keys) ----
     spec_version: str = ""
@@ -110,24 +131,56 @@ class OcrRegionSpec:
             A single-channel (H, W) uint8 image ready for the OCR engine
             (converted to 3-channel RGB by ``format_for_ocr``).
         """
+        plane = self._preprocess_plane(
+            bgr,
+            rarity,
+            color_space=self.color_space,
+            text_color_ranges=self.text_color_ranges,
+            text_color_ranges_by_rarity=self.text_color_ranges_by_rarity,
+            background_color_ranges=self.background_color_ranges,
+            invert=self.invert,
+            single_line=self.single_line,
+            threshold_mode=self.threshold_mode,
+            floor_value=self.floor_value,
+            morphology=self.morphology,
+            fallback_color_space=self.fallback_color_space,
+        )
+        return _format_for_ocr(plane)
+
+    def _preprocess_plane(
+        self,
+        bgr: np.ndarray,
+        rarity: int | None,
+        *,
+        color_space: Literal["hsv", "rgb", "bgr", "gray"],
+        text_color_ranges: ColorRangeList | None,
+        text_color_ranges_by_rarity: dict[int, ColorRangeList] | None,
+        background_color_ranges: ColorRangeList | None,
+        invert: bool,
+        single_line: bool,
+        threshold_mode: Literal["otsu", "floor", "none"],
+        floor_value: int,
+        morphology: Literal["close", "none"],
+        fallback_color_space: str | None,
+    ) -> np.ndarray:
         used_rarity_override = (
             rarity is not None
-            and self.text_color_ranges_by_rarity is not None
-            and rarity in self.text_color_ranges_by_rarity
+            and text_color_ranges_by_rarity is not None
+            and rarity in text_color_ranges_by_rarity
         )
         if used_rarity_override:
-            effective_ranges = self.text_color_ranges_by_rarity[rarity]  # type: ignore[index]
-            effective_cs = self.color_space
+            effective_ranges = text_color_ranges_by_rarity[rarity]  # type: ignore[index]
+            effective_cs = color_space
         else:
-            effective_ranges = self.text_color_ranges
-            effective_cs = self.fallback_color_space or self.color_space
+            effective_ranges = text_color_ranges
+            effective_cs = fallback_color_space or color_space
 
         color_view = _convert_color_space(bgr, effective_cs)
-
-        reject_mask = _mask_from_ranges(color_view, self.background_color_ranges)
+        reject_mask = _mask_from_ranges(color_view, background_color_ranges)
 
         if effective_ranges is not None:
             include_mask = _mask_from_ranges(color_view, effective_ranges)
+            assert include_mask is not None
             if reject_mask is not None:
                 include_mask = include_mask & ~reject_mask
             plane = np.where(include_mask, np.uint8(255), np.uint8(0))
@@ -135,16 +188,65 @@ class OcrRegionSpec:
             if reject_mask is not None:
                 bgr = _zero_masked(bgr, reject_mask)
             plane = _to_gray(bgr)
-            plane = _apply_threshold(plane, self.threshold_mode, self.floor_value)
+            plane = _apply_threshold(plane, threshold_mode, floor_value)
 
-        if self.single_line:
+        if single_line:
             plane = _repair_single_line_glyphs(plane)
 
-        plane = _apply_morphology(plane, self.morphology)
-        if self.invert:
+        plane = _apply_morphology(plane, morphology)
+        if invert:
             plane = np.bitwise_not(plane)
+        return plane
 
-        return _format_for_ocr(plane)
+    def _preprocess_for_signature(
+        self,
+        bgr: np.ndarray,
+        rarity: int | None,
+    ) -> np.ndarray:
+        if self.signature_preprocess is None:
+            preprocessed = self.preprocess(bgr, rarity)
+            if preprocessed.ndim == 3:
+                return cv2.cvtColor(preprocessed, cv2.COLOR_RGB2GRAY)
+            return preprocessed
+
+        sig = self.signature_preprocess
+        plane = self._preprocess_plane(
+            bgr,
+            rarity,
+            color_space=sig.color_space or self.color_space,
+            text_color_ranges=(
+                sig.text_color_ranges
+                if sig.text_color_ranges is not None
+                else self.text_color_ranges
+            ),
+            text_color_ranges_by_rarity=(
+                sig.text_color_ranges_by_rarity
+                if sig.text_color_ranges_by_rarity is not None
+                else self.text_color_ranges_by_rarity
+            ),
+            background_color_ranges=(
+                sig.background_color_ranges
+                if sig.background_color_ranges is not None
+                else self.background_color_ranges
+            ),
+            invert=sig.invert if sig.invert is not None else self.invert,
+            single_line=(
+                sig.single_line if sig.single_line is not None else self.single_line
+            ),
+            threshold_mode=(
+                sig.threshold_mode
+                if sig.threshold_mode is not None
+                else self.threshold_mode
+            ),
+            floor_value=sig.floor_value if sig.floor_value is not None else self.floor_value,
+            morphology=sig.morphology if sig.morphology is not None else self.morphology,
+            fallback_color_space=(
+                sig.fallback_color_space
+                if sig.fallback_color_space is not None
+                else self.fallback_color_space
+            ),
+        )
+        return plane
 
     # ------------------------------------------------------------------
     # Signature generation
@@ -185,12 +287,8 @@ class OcrRegionSpec:
         bgr: np.ndarray,
         rarity: int | None,
     ) -> np.ndarray:
-        if self.sig_from_preprocessed:
-            preprocessed = self.preprocess(bgr, rarity)
-            # preprocess returns RGB; convert back to single-channel for
-            # signature hashing.
-            if preprocessed.ndim == 3:
-                preprocessed = cv2.cvtColor(preprocessed, cv2.COLOR_RGB2GRAY)
+        if self.signature_preprocess is not None or self.sig_from_preprocessed:
+            preprocessed = self._preprocess_for_signature(bgr, rarity)
             # If preprocessing collapses to a constant image, hashing it will
             # make unrelated crops collide in the OCR cache. Fall back to a
             # normalized raw-image signature in that case.
@@ -420,11 +518,12 @@ def _parse_section(
         "sig_text_floor", "sig_max_spread", "sig_downscale",
         "sig_from_preprocessed", "invert", "background_color_ranges",
         "rarity_source", "rarity_overrides", "fallback", "single_line",
+        "signature",
         "spec_version",
     }
     has_spec_keys = any(k in spec_keys for k in section)
     has_sub_tables = any(
-        isinstance(v, dict) and k not in {"rarity_overrides", "fallback"}
+        isinstance(v, dict) and k not in {"rarity_overrides", "fallback", "signature"}
         for k, v in section.items()
     )
 
@@ -433,7 +532,7 @@ def _parse_section(
         out[prefix] = spec
     if has_sub_tables:
         for k, v in section.items():
-            if isinstance(v, dict) and k not in {"rarity_overrides", "fallback"}:
+            if isinstance(v, dict) and k not in {"rarity_overrides", "fallback", "signature"}:
                 _parse_section(f"{prefix}.{k}", v, spec_version, out)
 
 
@@ -495,7 +594,56 @@ def _build_spec(
                 if fallback_cs and fallback_cs != parent_cs:
                     kwargs["fallback_color_space"] = fallback_cs
 
+    if "signature" in data and isinstance(data["signature"], dict):
+        signature = _build_signature_preprocess(data["signature"])
+        if signature is not None:
+            kwargs["signature_preprocess"] = signature
+
     return OcrRegionSpec(**kwargs)
+
+
+def _build_signature_preprocess(data: dict) -> SignaturePreprocessSpec | None:
+    kwargs: dict = {}
+
+    for simple_key in (
+        "color_space", "threshold_mode", "floor_value", "morphology",
+        "invert", "single_line",
+    ):
+        if simple_key in data:
+            kwargs[simple_key] = data[simple_key]
+
+    if "text_color_ranges" in data:
+        kwargs["text_color_ranges"] = _parse_color_ranges(data["text_color_ranges"])
+
+    if "background_color_ranges" in data:
+        kwargs["background_color_ranges"] = _parse_color_ranges(
+            data["background_color_ranges"]
+        )
+
+    if "rarity_overrides" in data:
+        by_rarity: dict[int, ColorRangeList] = {}
+        for rarity_str, rarity_data in data["rarity_overrides"].items():
+            rarity_int = int(rarity_str)
+            if "text_color_ranges" in rarity_data:
+                by_rarity[rarity_int] = _parse_color_ranges(
+                    rarity_data["text_color_ranges"]
+                )
+        if by_rarity:
+            kwargs["text_color_ranges_by_rarity"] = by_rarity
+
+    if "fallback" in data and isinstance(data["fallback"], dict):
+        fallback = data["fallback"]
+        if "text_color_ranges" in fallback and "text_color_ranges" not in kwargs:
+            kwargs["text_color_ranges"] = _parse_color_ranges(
+                fallback["text_color_ranges"]
+            )
+        fallback_cs = fallback.get("color_space")
+        if fallback_cs is not None:
+            kwargs["fallback_color_space"] = fallback_cs
+
+    if not kwargs:
+        return None
+    return SignaturePreprocessSpec(**kwargs)
 
 
 def _parse_color_ranges(raw: list) -> ColorRangeList:

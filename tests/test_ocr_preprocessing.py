@@ -5,7 +5,11 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from wuwa_inventory_kamera.scraping.ocr.region_specs import OcrRegionSpec, load_specs_from_toml
+from wuwa_inventory_kamera.scraping.ocr.region_specs import (
+    OcrRegionSpec,
+    SignaturePreprocessSpec,
+    load_specs_from_toml,
+)
 from wuwa_inventory_kamera.scraping.service.ocr_cache import OcrCache
 
 
@@ -16,7 +20,7 @@ def _gray_from_rgb(image: np.ndarray) -> np.ndarray:
 def _bgr_from_hsv(h: int, s: int, v: int) -> tuple[int, int, int]:
     pixel = np.array([[[h, s, v]]], dtype=np.uint8)
     converted = cv2.cvtColor(pixel, cv2.COLOR_HSV2BGR)[0, 0]
-    return tuple(int(value) for value in converted.tolist())
+    return int(converted[0]), int(converted[1]), int(converted[2])
 
 
 def _bbox() -> np.ndarray:
@@ -170,6 +174,28 @@ def test_signature_falls_back_to_raw_image_when_preprocessed_plane_is_constant()
     assert spec.make_signature(image_a) != spec.make_signature(image_b)
 
 
+def test_signature_can_use_separate_preprocess_spec() -> None:
+    spec = OcrRegionSpec(
+        roi_key="echoes.echoName",
+        color_space="bgr",
+        text_color_ranges=[((5, 5, 250), (5, 5, 250))],
+        sig_from_preprocessed=True,
+        signature_preprocess=SignaturePreprocessSpec(
+            color_space="bgr",
+            text_color_ranges=[((7, 240, 7), (7, 240, 7))],
+        ),
+    )
+    image_a = np.zeros((10, 10, 3), dtype=np.uint8)
+    image_b = np.zeros((10, 10, 3), dtype=np.uint8)
+    image_a[2:8, 2:8] = np.asarray([7, 240, 7], dtype=np.uint8)
+    image_b[2:8, 2:8] = np.asarray([7, 240, 7], dtype=np.uint8)
+    # Different OCR-target pixels should not affect signature when a
+    # separate signature-preprocess recipe is configured.
+    image_a[0, 0] = np.asarray([5, 5, 250], dtype=np.uint8)
+
+    assert spec.make_signature(image_a) == spec.make_signature(image_b)
+
+
 def test_load_specs_from_toml_parses_rarity_and_fallback_color_space(tmp_path: Path) -> None:
     config_path = tmp_path / "ocr_region_specs.toml"
     config_path.write_text(
@@ -194,6 +220,11 @@ def test_load_specs_from_toml_parses_rarity_and_fallback_color_space(tmp_path: P
                 '    [[20, 60, 150], [32, 255, 255]],',
                 ']',
                 '',
+                '[echoes.echoName.signature]',
+                'color_space = "gray"',
+                'threshold_mode = "floor"',
+                'floor_value = 150',
+                '',
                 '[echoes.fullStatsValue]',
                 'threshold_mode = "floor"',
                 'floor_value = 100',
@@ -212,6 +243,10 @@ def test_load_specs_from_toml_parses_rarity_and_fallback_color_space(tmp_path: P
     assert echo_name.fallback_color_space == "hsv"
     assert echo_name.text_color_ranges == [((20, 60, 150), (32, 255, 255))]
     assert echo_name.text_color_ranges_by_rarity == {5: [((5, 5, 250), (5, 5, 250))]}
+    assert echo_name.signature_preprocess is not None
+    assert echo_name.signature_preprocess.color_space == "gray"
+    assert echo_name.signature_preprocess.threshold_mode == "floor"
+    assert echo_name.signature_preprocess.floor_value == 150
 
     stats_value = specs["echoes.fullStatsValue"]
     assert stats_value.spec_version == "test-spec"
