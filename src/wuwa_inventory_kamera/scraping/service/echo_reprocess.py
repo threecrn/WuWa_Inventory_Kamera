@@ -19,6 +19,7 @@ def reprocess_echo_scans_with_service(
     min_level: int,
     write_debug: bool,
     echo_stat_cache_path: str | Path | None = None,
+    ocr_cache_path: str | Path | None = None,
 ) -> list[dict]:
     """Process raw echo scans through the v2 OcrService pipeline."""
     from ...game.screen_info import ScreenInfo
@@ -38,6 +39,10 @@ def reprocess_echo_scans_with_service(
         echo_stat_cache_path=(
             str(echo_stat_cache_path)
             if echo_stat_cache_path is not None else None
+        ),
+        ocr_cache_path=(
+            str(ocr_cache_path)
+            if ocr_cache_path is not None else None
         ),
         resolution=resolution,
     ) as svc:

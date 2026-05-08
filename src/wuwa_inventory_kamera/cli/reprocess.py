@@ -161,6 +161,7 @@ def _run_service(
     min_level: int,
     write_debug: bool,
     echo_stat_cache_path: Path | None,
+    ocr_cache_path: Path | None,
 ) -> list[dict]:
     """
     Process *scans* using the new
@@ -180,6 +181,7 @@ def _run_service(
         min_level=min_level,
         write_debug=write_debug,
         echo_stat_cache_path=echo_stat_cache_path,
+        ocr_cache_path=ocr_cache_path,
     )
 
 
@@ -301,6 +303,13 @@ def main() -> None:
             'Defaults to the configured app cache path when available.'
         ),
     )
+    parser.add_argument(
+        '--ocr-cache', metavar='PATH', default=None,
+        help=(
+            'SQLite cache path for the generalized OCR cache used by region specs. '
+            'Defaults to the configured app cache path when available.'
+        ),
+    )
 
     # ── Mode selection ─────────────────────────────────────────────────────
     mode = parser.add_argument_group('processing mode (mutually exclusive with legacy options)')
@@ -360,10 +369,12 @@ def main() -> None:
         from ..config.app_config import app_config
         export_folder: str = app_config.exportFolder
         default_echo_stat_cache = Path(app_config.echoStatCachePath)
+        default_ocr_cache = Path(app_config.ocrCachePath)
     except Exception:
         app_config = None  # type: ignore[assignment]
         export_folder = 'export'
         default_echo_stat_cache = None
+        default_ocr_cache = None
 
     if app_config is not None:
         if args.min_rarity is not None:
@@ -374,6 +385,7 @@ def main() -> None:
     min_rarity: int = (app_config.echoMinRarity if app_config else 1) if args.min_rarity is None else args.min_rarity
     min_level:  int = (app_config.echoMinLevel  if app_config else 0) if args.min_level  is None else args.min_level
     echo_stat_cache_path = Path(args.echo_stat_cache) if args.echo_stat_cache else default_echo_stat_cache
+    ocr_cache_path = Path(args.ocr_cache) if args.ocr_cache else default_ocr_cache
 
     export_dir = Path(args.export_dir) if args.export_dir else Path(export_folder)
 
@@ -468,6 +480,7 @@ def main() -> None:
             min_level=min_level,
             write_debug=args.write_debug,
             echo_stat_cache_path=echo_stat_cache_path,
+            ocr_cache_path=ocr_cache_path,
         )
     else:
         # Parse extractor params JSON
