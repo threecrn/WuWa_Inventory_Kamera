@@ -308,6 +308,14 @@ class OcrService:
         self._backend = RapidOcrBackend(onnx_providers=providers, **backend_kwargs)
         self._batch_ocr = BatchOcr(self._backend)
 
+        # Lightweight CPU backend for ad-hoc, low-latency reads (e.g. level
+        # number).  Kept separate from the DML batch backend so ad-hoc calls
+        # never block the scan loop on a GPU forward pass.
+        self._cpu_backend = RapidOcrBackend(
+            onnx_providers=['CPUExecutionProvider'],
+            fallback_text_score=None,
+        )
+
         self._queue:       queue.Queue[_QueueItem | _Stop] = queue.Queue()
         self._counter      = itertools.count()
         self._batch_timeout  = batch_timeout
@@ -357,6 +365,88 @@ class OcrService:
         uid = next(self._counter)
         self._queue.put(_QueueItem(capture, uid, fut))
         return fut
+
+    def ocr_adhoc(
+        self,
+        image_bgr: np.ndarray,
+        roi_key: str,
+        rarity: int | None = None,
+    ) -> list[tuple[str, float, np.ndarray]]:
+        """
+        Ad-hoc single-image OCR without queuing.
+
+        Checks the generalized OCR cache before running OCR.  On a cache
+        miss, uses the CPU backend for low latency — suitable for inline
+        navigation reads (e.g. echo level) that must complete before the
+        next scan step.  Thread-safe; may be called from any thread.
+
+        Returns the same ``(text, conf, box)`` token list as
+        :meth:`_ocr_with_spec`.
+        """
+        import cv2 as _cv2
+
+        spec = get_spec(roi_key)
+
+        # Cache lookup
+        if spec is not None:
+            cached = self._ocr_cache.lookup(spec, image_bgr, rarity=rarity)
+            if cached is not None:
+                return self._filter_allowed_chars([cached], spec.allowed_chars)[0]
+
+        # Preprocess
+        if spec is not None:
+            preprocessed = spec.preprocess(image_bgr, rarity=rarity)
+        else:
+            preprocessed = _cv2.cvtColor(image_bgr, _cv2.COLOR_BGR2RGB)
+
+        # OCR via CPU backend
+        t0 = time.monotonic()
+        if spec is not None and spec.single_line:
+            raw = self._cpu_backend.recognize_single_line(preprocessed)
+        else:
+            raw = self._cpu_backend.recognize(preprocessed)
+        elapsed = time.monotonic() - t0
+        if spec is not None:
+            self._ocr_cache.record_ocr_latency(roi_key, elapsed)
+
+        # Convert (bbox, text, conf) → (text, conf, box)
+        h = int(image_bgr.shape[0])
+        w = int(image_bgr.shape[1])
+        fallback_box = np.asarray(
+            [[0, 0], [max(w - 1, 0), 0], [max(w - 1, 0), max(h - 1, 0)], [0, max(h - 1, 0)]],
+            dtype=np.float32,
+        )
+        tokens: list[tuple[str, float, np.ndarray]] = [
+            (
+                text,
+                float(conf),
+                np.asarray(bbox, dtype=np.float32) if bbox is not None else fallback_box,
+            )
+            for bbox, text, conf in raw
+        ]
+
+        # Cache store
+        if spec is not None:
+            self._ocr_cache.store(spec, image_bgr, tokens, rarity=rarity)
+
+        allowed = spec.allowed_chars if spec is not None else None
+        return self._filter_allowed_chars([tokens], allowed)[0]
+
+    def ocr_adhoc_text(
+        self,
+        image_bgr: np.ndarray,
+        roi_key: str,
+        rarity: int | None = None,
+    ) -> str:
+        """
+        Ad-hoc OCR returning a plain text string.
+
+        Convenience wrapper around :meth:`ocr_adhoc` that joins all token
+        texts into a single string (no separator).  Suitable for numeric
+        reads such as the echo level digit(s).
+        """
+        tokens = self.ocr_adhoc(image_bgr, roi_key, rarity=rarity)
+        return ''.join(text for text, _conf, _box in tokens)
 
     def shutdown(self, wait: bool = True) -> None:
         """

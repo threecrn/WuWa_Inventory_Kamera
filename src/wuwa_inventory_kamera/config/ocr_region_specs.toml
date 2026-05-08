@@ -74,8 +74,13 @@ color_space = "gray"
 threshold_mode = "floor"
 floor_value = 150
 allowed_chars = "0123456789"
-sig_from_preprocessed = true
 cache_mode = "transient"
+#sig_from_preprocessed = true
+[echoes.level.signature]
+color_space = "bgr"
+text_color_ranges = [
+    [[197, 185, 173], [197, 185, 173]],
+]
 
 # =====================================================================
 # Weapon workflow
