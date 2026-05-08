@@ -30,7 +30,8 @@ class _FakeOcrService:
     instances: list['_FakeOcrService'] = []
 
     def __init__(self, *args, **kwargs) -> None:
-        _ = args, kwargs
+        self.args = args
+        self.kwargs = kwargs
         self.submitted = []
 
     def __enter__(self) -> '_FakeOcrService':
@@ -91,8 +92,35 @@ def test_reprocess_reconstructs_echo_name_crop(monkeypatch) -> None:
 
     assert result == []
     assert _FakeFuture.last_timeout is None
+    assert _FakeOcrService.instances[0].kwargs['max_batch_size'] == 8
     capture = _FakeOcrService.instances[0].submitted[0]
     np.testing.assert_array_equal(
         capture.echo_name,
         cv2.cvtColor(image[2:4, 2:4], cv2.COLOR_RGB2BGR),
     )
+
+
+def test_reprocess_allows_custom_batch_size(monkeypatch) -> None:
+    screen_info_module = ModuleType('wuwa_inventory_kamera.game.screen_info')
+    screen_info_module.ScreenInfo = _FakeScreenInfo
+    monkeypatch.setitem(sys.modules, 'wuwa_inventory_kamera.game.screen_info', screen_info_module)
+
+    ocr_service_module = ModuleType('wuwa_inventory_kamera.scraping.service.ocr_service')
+    ocr_service_module.OcrService = _FakeOcrService
+    monkeypatch.setitem(sys.modules, 'wuwa_inventory_kamera.scraping.service.ocr_service', ocr_service_module)
+
+    _FakeOcrService.instances.clear()
+    _FakeFuture.last_timeout = object()
+    image = np.arange(6 * 6 * 3, dtype=np.uint8).reshape(6, 6, 3)
+    scan = _FakeScan(image)
+
+    reprocess_echo_scans_with_service(
+        scans=[scan],
+        providers=['CPUExecutionProvider'],
+        min_rarity=5,
+        min_level=21,
+        write_debug=False,
+        max_batch_size=4,
+    )
+
+    assert _FakeOcrService.instances[0].kwargs['max_batch_size'] == 4

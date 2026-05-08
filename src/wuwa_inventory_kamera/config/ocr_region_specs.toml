@@ -11,42 +11,39 @@ spec_version = "3.3-new-ui"
 # =====================================================================
 
 [echoes.echoName]
-spec_version = "3.3-new-ui-echo-name-v3"
-color_space = "bgr"
-cache_mode = "persistent"
-sig_from_preprocessed = true
-single_line = true
-
-# Per-rarity exact BGR fill colours.
-# These are calibrated exact-match values; adjust after a game patch.
-[echoes.echoName.rarity_overrides."5"]
-text_color_ranges = [
-    [[166, 235, 247], [166, 235, 247]],
-]
-
-[echoes.echoName.rarity_overrides."4"]
-text_color_ranges = [
-    [[185, 135, 200], [185, 135, 200]],
-]
-
-[echoes.echoName.rarity_overrides."3"]
-text_color_ranges = [
-    [[220, 180, 120], [220, 180, 120]],
-]
-
-[echoes.echoName.rarity_overrides."2"]
-text_color_ranges = [
-    [[130, 210, 140], [130, 210, 140]],
-]
-
-# Fallback: broad HSV bands when rarity metadata is unavailable.
-[echoes.echoName.fallback]
+spec_version = "3.3-new-ui-echo-name-v4"
 color_space = "hsv"
+cache_mode = "persistent"
+single_line = true
 text_color_ranges = [
     [[20, 60, 150], [32, 255, 255]],
     [[135, 60, 150], [150, 255, 255]],
     [[112, 60, 150], [125, 255, 255]],
     [[55, 60, 150], [70, 255, 255]],
+]
+
+# Exact-match signature recipe for cache keying.
+[echoes.echoName.signature]
+color_space = "bgr"
+
+[echoes.echoName.signature.rarity_overrides."5"]
+text_color_ranges = [
+    [[166, 235, 247], [166, 235, 247]],
+]
+
+[echoes.echoName.signature.rarity_overrides."4"]
+text_color_ranges = [
+    [[185, 135, 200], [185, 135, 200]],
+]
+
+[echoes.echoName.signature.rarity_overrides."3"]
+text_color_ranges = [
+    [[220, 180, 120], [220, 180, 120]],
+]
+
+[echoes.echoName.signature.rarity_overrides."2"]
+text_color_ranges = [
+    [[130, 210, 140], [130, 210, 140]],
 ]
 
 [echoes.fullStatsName]

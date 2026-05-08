@@ -20,6 +20,7 @@ OcrService path (batched GPU OCR, v2)::
 
     wuwa-reprocess --raw-dir ./raw --service
     wuwa-reprocess --raw-dir ./raw --service --provider dml
+    wuwa-reprocess --raw-dir ./raw --service --max-batch-size 8
 
 Legacy extractor path (original behaviour, default)::
 
@@ -160,6 +161,7 @@ def _run_service(
     min_rarity: int,
     min_level: int,
     write_debug: bool,
+    max_batch_size: int,
     echo_stat_cache_path: Path | None,
     ocr_cache_path: Path | None,
 ) -> list[dict]:
@@ -180,6 +182,7 @@ def _run_service(
         min_rarity=min_rarity,
         min_level=min_level,
         write_debug=write_debug,
+        max_batch_size=max_batch_size,
         echo_stat_cache_path=echo_stat_cache_path,
         ocr_cache_path=ocr_cache_path,
     )
@@ -320,6 +323,13 @@ def main() -> None:
             'Ignores --extractor / --use-bw / --extractor-params / --workers.'
         ),
     )
+    mode.add_argument(
+        '--max-batch-size', type=int, default=8, metavar='N',
+        help=(
+            'Maximum captures drained per OCR batch in --service mode '
+            '(default: 8).'
+        ),
+    )
 
     # ── Legacy extractor options ───────────────────────────────────────────
     legacy = parser.add_argument_group('legacy extractor options (ignored when --service is set)')
@@ -361,6 +371,10 @@ def main() -> None:
 
     args = parser.parse_args()
     _configure_logging(args.log_level)
+
+    if args.max_batch_size < 1:
+        logger.error('--max-batch-size must be >= 1.')
+        sys.exit(1)
 
     # Import project config (from the existing non-src package for now)
     # This is intentionally kept as a lazy import so that the module can be
@@ -472,13 +486,18 @@ def main() -> None:
     # ── Process ────────────────────────────────────────────────────────────
     if args.service:
         providers = _PROVIDER_MAP[args.provider] if args.provider else _auto_providers()
-        logger.info('Mode      : OcrService (v2)  providers=%s', providers)
+        logger.info(
+            'Mode      : OcrService (v2)  providers=%s  max_batch_size=%d',
+            providers,
+            args.max_batch_size,
+        )
         echoes = _run_service(
             scans, raw_dir, session_id,
             providers=providers,
             min_rarity=min_rarity,
             min_level=min_level,
             write_debug=args.write_debug,
+            max_batch_size=args.max_batch_size,
             echo_stat_cache_path=echo_stat_cache_path,
             ocr_cache_path=ocr_cache_path,
         )

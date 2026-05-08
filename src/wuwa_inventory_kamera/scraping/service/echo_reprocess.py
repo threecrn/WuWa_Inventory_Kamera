@@ -20,6 +20,7 @@ def reprocess_echo_scans_with_service(
     min_rarity: int,
     min_level: int,
     write_debug: bool,
+    max_batch_size: int = 8,
     echo_stat_cache_path: str | Path | None = None,
     ocr_cache_path: str | Path | None = None,
 ) -> list[dict]:
@@ -38,6 +39,7 @@ def reprocess_echo_scans_with_service(
         providers=providers,
         min_rarity=min_rarity,
         min_level=min_level,
+        max_batch_size=max_batch_size,
         echo_stat_cache_path=(
             str(echo_stat_cache_path)
             if echo_stat_cache_path is not None else None
