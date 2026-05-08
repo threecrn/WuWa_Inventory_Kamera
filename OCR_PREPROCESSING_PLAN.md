@@ -446,7 +446,7 @@ Game UI updates can shift colours (e.g. the echo name changed from turquoise to 
 
 ### Solution: External Spec Table + Visual Calibration Tool
 
-1. **JSON/TOML spec file** (`config/ocr_region_specs.toml`):
+1. **JSON/TOML spec file** (`src/wuwa_inventory_kamera/config/ocr_region_specs.toml`):
    - Each region's preprocessing params live in a human-readable config file.
    - The `OcrRegionSpec` registry is loaded at startup from this file.
    - Updating colour ranges after a game patch = editing one config value, no code changes.
@@ -643,7 +643,7 @@ Phases 1–8 and 11 are complete. Phases 9–10 are not yet started.
 | 5 — Echo region specs fully wired | **Done** | `echoes.fullStatsName` and `echoes.fullStatsValue` now use `_ocr_with_spec`; `_ocr_images_with_cache` legacy calls removed from `_process_echoes` |
 | 6 — Weapon / item / character / shell specs | **Done** | All defined in TOML and wired via `_ocr_with_spec` in `OcrService` |
 | 7 — Wire `_process_*` methods | **Done** | All `_process_*` methods use `_ocr_with_spec`; echo stats fully migrated |
-| 8 — TOML config + startup loader | **Done** | `config/ocr_region_specs.toml`; `load_specs_from_toml` / `get_spec` / `reload_specs` in `region_specs.py`; `fallback_color_space` correctly loaded from fallback section |
+| 8 — TOML config + startup loader | **Done** | `src/wuwa_inventory_kamera/config/ocr_region_specs.toml`; `load_specs_from_toml` / `get_spec` / `reload_specs` in `region_specs.py`; `fallback_color_space` correctly loaded from fallback section |
 | 9 — Calibration CLI | **Not started** | `cli/calibrate_ocr.py` and `cli/compare_ocr.py` from the plan do not exist; `cli/debug_ocr.py` covers diagnostics but not interactive calibration or A/B accuracy comparison |
 | 10 — Regression test corpus + CI | **Not started** | No `test_ocr_preprocessing.py`; no per-region-spec unit tests; no rarity-tier sample corpus; existing `session_tests/test_stats_extractors.py` covers extractor regression but not spec preprocessing |
 | 11 — Cache hit-rate logging | **Done** | `OcrCache.session_report()` now emits hit-rate percentage, tier label, and estimated time saved (from `record_ocr_latency()` samples recorded by `_ocr_with_spec`) |

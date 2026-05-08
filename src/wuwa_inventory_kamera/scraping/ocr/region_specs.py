@@ -14,21 +14,25 @@ Each :class:`OcrRegionSpec` describes:
 * **cache tier** — none / transient / persistent;
 * **signature parameters** — how to fingerprint a crop for cache keying.
 
-The spec registry is loaded from ``config/ocr_region_specs.toml`` at
-startup so that colour calibration changes after a game patch require
-only a config edit, not a code change.
+The spec registry is loaded from the package-owned
+``src/wuwa_inventory_kamera/config/ocr_region_specs.toml`` at startup so
+that colour calibration changes after a game patch require only a file
+edit, not a code change.
 """
 from __future__ import annotations
 
 import hashlib
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal
 
 import cv2
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_SPECS_PATH = Path(__file__).resolve().parents[2] / "config" / "ocr_region_specs.toml"
 
 # Type aliases for colour ranges: list of (lo, hi) inclusive bounds.
 # Each bound is a 3-tuple (or 1-tuple for gray).  Exact mode is lo == hi.
@@ -464,14 +468,19 @@ def _threshold_plane(
 # TOML config loader
 # ======================================================================
 
-def load_specs_from_toml(path: str | None = None) -> dict[str, OcrRegionSpec]:
+def default_specs_path() -> Path:
+    """Return the packaged default OCR region-spec TOML path."""
+    return DEFAULT_SPECS_PATH
+
+
+def load_specs_from_toml(path: str | Path | None = None) -> dict[str, OcrRegionSpec]:
     """Load an ``OcrRegionSpec`` registry from a TOML file.
 
     Parameters
     ----------
     path:
-        Path to the TOML config.  If ``None``, uses the default
-        ``config/ocr_region_specs.toml`` relative to the repo root.
+        Path to the TOML config.  If ``None``, uses the packaged default
+        ``src/wuwa_inventory_kamera/config/ocr_region_specs.toml``.
 
     Returns
     -------
@@ -479,12 +488,9 @@ def load_specs_from_toml(path: str | None = None) -> dict[str, OcrRegionSpec]:
         Mapping from ``roi_key`` to its spec.
     """
     import tomllib
-    from pathlib import Path
 
     if path is None:
-        path = str(
-            Path(__file__).resolve().parents[4] / "config" / "ocr_region_specs.toml"
-        )
+        path = default_specs_path()
 
     with open(path, "rb") as f:
         raw = tomllib.load(f)

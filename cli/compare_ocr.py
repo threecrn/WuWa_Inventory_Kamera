@@ -45,7 +45,7 @@ for _path in (_PROJECT_ROOT, _SRC_ROOT):
         sys.path.insert(0, str(_path))
 
 from wuwa_inventory_kamera.scraping.ocr import get_backend, tokens_to_string  # noqa: E402
-from wuwa_inventory_kamera.scraping.ocr.region_specs import load_specs_from_toml  # noqa: E402
+from wuwa_inventory_kamera.scraping.ocr.region_specs import default_specs_path, load_specs_from_toml  # noqa: E402
 
 logger = logging.getLogger("wuwa.compare_ocr")
 
@@ -70,7 +70,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--config",
-        default=str(_PROJECT_ROOT / "config" / "ocr_region_specs.toml"),
+        default=str(default_specs_path()),
         help="Path to OCR region spec TOML.",
     )
     parser.add_argument("--spec", required=True, help="ROI key, e.g. echoes.fullStatsValue")

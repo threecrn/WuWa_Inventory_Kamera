@@ -1,4 +1,4 @@
-# OCR Region Specs — preprocessing & cache-signature configuration
+# OCR Region Specs - preprocessing & cache-signature configuration
 #
 # Each section defines an OcrRegionSpec by its ROI key path.
 # Colour ranges use [[lo, lo, lo], [hi, hi, hi]] notation.

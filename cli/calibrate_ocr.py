@@ -3,7 +3,7 @@ calibrate_ocr.py — OCR region-spec calibration helper
 =====================================================
 
 Developer-facing tool for inspecting OCR preprocessing, sampling colour
-values from crops, and updating ``config/ocr_region_specs.toml``.
+values from crops, and updating ``src/wuwa_inventory_kamera/config/ocr_region_specs.toml``.
 
 The tool operates on already-cropped images. Typical workflow:
 
@@ -67,6 +67,7 @@ for _path in (_PROJECT_ROOT, _SRC_ROOT):
 
 from wuwa_inventory_kamera.scraping.ocr import get_backend, tokens_to_string  # noqa: E402
 from wuwa_inventory_kamera.scraping.ocr.region_specs import (  # noqa: E402
+    default_specs_path,
     OcrRegionSpec,
     load_specs_from_toml,
 )
@@ -125,7 +126,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--config",
-        default=str(_PROJECT_ROOT / "config" / "ocr_region_specs.toml"),
+        default=str(default_specs_path()),
         help="Path to OCR region spec TOML.",
     )
     parser.add_argument(
