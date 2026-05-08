@@ -15,15 +15,16 @@ dependencies = [
     "opencv-python",
     "rapidocr-onnxruntime",
     "PyYAML",
-    "onnxruntime-directml",
     "babel",
     "onnxruntime-directml; sys_platform == 'win32'",
+    #"onnxruntime-directml",
 ]
 
 [project.optional-dependencies]
 # Full application (UI + game capture)
 app = [
     "PySide6-Fluent-Widgets>=1.8.7",
+    "PySide6",
     "mss>=10.1.0",
     "PyWinCtl>=0.4.1",
     "PyMonCtl>=0.92",
@@ -58,6 +59,6 @@ environments = ["sys_platform == 'linux'", "sys_platform == 'win32'"]
 # This override marks plain onnxruntime as only needed on sys_platform=='never',
 # so uv never installs it and onnxruntime-directml remains the sole provider.
 override-dependencies = [
-    "onnxruntime-directml; sys_platform != 'win32' and sys_platform == 'never'",
+    #"onnxruntime-directml; sys_platform != 'win32' and sys_platform == 'never'",
     "onnxruntime; sys_platform == 'win32' and sys_platform == 'never'",
 ]

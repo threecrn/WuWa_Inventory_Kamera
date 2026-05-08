@@ -409,9 +409,6 @@ class OcrService:
             _echo_name_spec is not None and _echo_name_spec.single_line
         )
 
-        filtered_results = self._batch_ocr.ocr_images(name_source_filtered)
-        raw_results = self._batch_ocr.ocr_images(name_source_raw)
-
         def _has_usable_text(results: list[tuple[str, float, np.ndarray]]) -> bool:
             return any(text and any(ch.isalnum() for ch in text) for text, _conf, _box in results)
 
@@ -453,7 +450,8 @@ class OcrService:
                 for bbox, text, conf in tokens
             ]
 
-        card_results: list[list[tuple[str, float, np.ndarray]]] = []
+        card_results: list[list[tuple[str, float, np.ndarray]] | None] = [None] * len(captures)
+        miss_indices: list[int] = []
         for i, c in enumerate(captures):
             # Source image used for cache keying (raw BGR, same as what the
             # spec's make_signature() expects).
@@ -465,8 +463,30 @@ class OcrService:
                     _echo_name_spec, _cache_src, rarity=c.detected_rarity
                 )
                 if _cached is not None:
-                    card_results.append(_cached)
+                    card_results[i] = _cached
                     continue
+
+            miss_indices.append(i)
+
+        # Run batch OCR only for captures that missed cache.
+        filtered_results_by_idx: dict[int, list[tuple[str, float, np.ndarray]]] = {}
+        raw_results_by_idx: dict[int, list[tuple[str, float, np.ndarray]]] = {}
+        if miss_indices:
+            miss_filtered = [name_source_filtered[idx] for idx in miss_indices]
+            miss_raw = [name_source_raw[idx] for idx in miss_indices]
+
+            miss_filtered_results = self._batch_ocr.ocr_images(miss_filtered)
+            miss_raw_results = self._batch_ocr.ocr_images(miss_raw)
+
+            for list_pos, capture_idx in enumerate(miss_indices):
+                filtered_results_by_idx[capture_idx] = miss_filtered_results[list_pos]
+                raw_results_by_idx[capture_idx] = miss_raw_results[list_pos]
+
+        for i in miss_indices:
+            c = captures[i]
+            _cache_src = c.echo_name if c.echo_name is not None else c.card
+            filtered_result = filtered_results_by_idx[i]
+            raw_result = raw_results_by_idx[i]
 
             # ---- Multi-strategy OCR ----
             # New-UI path: captures with a dedicated echoName ROI use
@@ -510,24 +530,24 @@ class OcrService:
                             c.echo_index,
                         )
                         ocr_result = thorough_results
-                    elif _accept_filtered_echo_name(c, filtered_results[i], 'batch filtered echoName'):
+                    elif _accept_filtered_echo_name(c, filtered_result, 'batch filtered echoName'):
                         logger.debug(
                             'Echo %d — echoName recovered via batch-OCR on filtered crop.',
                             c.echo_index,
                         )
-                        ocr_result = filtered_results[i]
-                    elif _has_usable_text(raw_results[i]):
+                        ocr_result = filtered_result
+                    elif _has_usable_text(raw_result):
                         logger.debug(
                             'Echo %d — echoName recovered via raw echoName crop.',
                             c.echo_index,
                         )
-                        ocr_result = raw_results[i]
-            elif _has_usable_text(filtered_results[i]):
+                        ocr_result = raw_result
+            elif _has_usable_text(filtered_result):
                 # Legacy path (no echoName ROI): use batch OCR on card crop.
-                ocr_result = filtered_results[i]
+                ocr_result = filtered_result
 
             if ocr_result is None:
-                ocr_result = raw_results[i]
+                ocr_result = raw_result
 
             # ---- Cache store ----
             if _echo_name_spec is not None and ocr_result:
@@ -536,7 +556,9 @@ class OcrService:
                     rarity=c.detected_rarity,
                 )
 
-            card_results.append(ocr_result)
+            card_results[i] = ocr_result
+
+        final_card_results = [result or [] for result in card_results]
 
         name_results = self._ocr_with_spec(
             'echoes.fullStatsName',
@@ -555,7 +577,7 @@ class OcrService:
                 for image_results in ocr_result_list
             ]
 
-        card_tok   = to_tokens(card_results)
+        card_tok   = to_tokens(final_card_results)
         name_tok   = to_tokens(name_results)
         value_tok  = to_tokens(value_results)
 
