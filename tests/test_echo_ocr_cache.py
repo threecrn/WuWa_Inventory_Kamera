@@ -92,6 +92,18 @@ class _AlwaysHitOcrCache:
         self.store_calls += 1
 
 
+class _MissOnlyOcrCache:
+    def lookup_many(self, _spec, images: list[np.ndarray], rarity: int | None = None):
+        _ = rarity
+        return ['k'] * len(images), [None] * len(images), list(range(len(images)))
+
+    def store_many(self, *_args, **_kwargs):
+        return None
+
+    def record_ocr_latency(self, *_args, **_kwargs):
+        return None
+
+
 class _FakeEchoAssembler:
     def __init__(self) -> None:
         self.calls: list[tuple[list, list, list]] = []
@@ -99,6 +111,12 @@ class _FakeEchoAssembler:
     def assemble(self, _capture, card_tok, name_tok, value_tok):
         self.calls.append((card_tok, name_tok, value_tok))
         return {'ok': True}
+
+
+class _FixedTokenBatchOcr:
+    def ocr_images(self, images: list[np.ndarray]):
+        bbox = np.asarray([[0, 0], [5, 0], [5, 1], [0, 1]], dtype=np.float32)
+        return [[('A!?', 0.99, bbox)] for _ in images]
 
 
 def test_echo_ocr_cache_round_trip_across_instances(tmp_path):
@@ -261,3 +279,81 @@ def test_process_echoes_skips_name_batch_ocr_when_echo_name_cache_hits(monkeypat
     assert len(service._echo_asm.calls) == 1
     card_tok, _name_tok, _value_tok = service._echo_asm.calls[0]
     assert card_tok[0][1] == 'cached-name'
+
+
+def test_ocr_with_spec_uses_runtime_echo_name_allowed_chars(monkeypatch):
+    service = object.__new__(OcrService)
+    service._batch_ocr = _FixedTokenBatchOcr()
+    service._ocr_cache = _MissOnlyOcrCache()
+
+    spec = ocr_service_module.OcrRegionSpec(
+        roi_key='echoes.echoName',
+        cache_mode='none',
+    )
+
+    monkeypatch.setattr(
+        ocr_service_module,
+        'get_spec',
+        lambda roi_key: spec if roi_key == 'echoes.echoName' else None,
+    )
+    monkeypatch.setattr(
+        ocr_service_module,
+        '_runtime_echo_name_allowed_chars',
+        lambda: 'Aa',
+    )
+
+    result = OcrService._ocr_with_spec(
+        service,
+        'echoes.echoName',
+        [np.zeros((4, 8, 3), dtype=np.uint8)],
+    )
+
+    assert len(result) == 1
+    assert result[0][0][0] == 'A'
+
+
+def test_process_echoes_applies_runtime_echo_name_allowed_chars(monkeypatch):
+    service = object.__new__(OcrService)
+    service._batch_ocr = _FixedTokenBatchOcr()
+    service._ocr_cache = _AlwaysHitOcrCache(None)
+    service._echo_asm = _FakeEchoAssembler()
+
+    def _fake_ocr_with_spec(_roi_key: str, images: list[np.ndarray], rarity: int | None = None):
+        _ = rarity
+        return [_ocr_result('stat-token') for _ in images]
+
+    service._ocr_with_spec = _fake_ocr_with_spec
+
+    spec = ocr_service_module.OcrRegionSpec(
+        roi_key='echoes.echoName',
+        cache_mode='none',
+        single_line=False,
+    )
+
+    monkeypatch.setattr(
+        ocr_service_module,
+        'get_spec',
+        lambda roi_key: spec if roi_key == 'echoes.echoName' else None,
+    )
+    monkeypatch.setattr(
+        ocr_service_module,
+        '_runtime_echo_name_allowed_chars',
+        lambda: 'Aa',
+    )
+
+    capture = EchoCapture(
+        echo_index=0,
+        card=np.zeros((10, 20, 3), dtype=np.uint8),
+        stats_name=np.zeros((10, 20, 3), dtype=np.uint8),
+        stats_value=np.zeros((10, 20, 3), dtype=np.uint8),
+        echo_name=None,
+    )
+
+    fut = concurrent.futures.Future()
+    queue_item = ocr_service_module._QueueItem(capture, uid=0, future=fut)
+
+    OcrService._process_echoes(service, [queue_item])
+
+    assert len(service._echo_asm.calls) == 1
+    card_tok, _name_tok, _value_tok = service._echo_asm.calls[0]
+    assert card_tok[0][1] == 'A'

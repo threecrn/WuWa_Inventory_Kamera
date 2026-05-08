@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import itertools
+import json
 import logging
 import queue
 import threading
@@ -52,6 +53,7 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
+from ...config.app_config import app_config, basePATH
 from ..ocr import tokens_to_lines
 from ..ocr._rapidocr import RapidOcrBackend
 from ..ocr.batch import BatchOcr
@@ -87,6 +89,89 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _ECHO_NAME_FUZZY_CUTOFF = 0.75
+_ECHO_NAME_RUNTIME_ALLOWED_CACHE_KEY: tuple[str, int, int] | None = None
+_ECHO_NAME_RUNTIME_ALLOWED_CACHE_VALUE: str | None = None
+
+
+def _allowed_chars_from_names(names: list[str]) -> str | None:
+    """Build a deterministic allowlist from known localized echo names."""
+    charset: set[str] = set()
+
+    for name in names:
+        if not isinstance(name, str):
+            continue
+        for ch in name:
+            if ch.isspace():
+                continue
+            # Include case variants so uppercase OCR output still survives
+            # filtering when keys are stored in lowercase.
+            for variant in (ch, ch.lower(), ch.upper(), ch.casefold()):
+                for unit in variant:
+                    if unit and not unit.isspace():
+                        charset.add(unit)
+
+    if not charset:
+        return None
+
+    return ''.join(sorted(charset))
+
+
+def _resolve_game_language_code() -> str:
+    """Return the selected in-game language code (e.g. ``en``, ``ja``)."""
+    selected = str(getattr(app_config, 'gameLanguage', 'English') or 'English')
+    if (basePATH / 'data' / selected).is_dir():
+        return selected
+
+    languages_path = basePATH / 'data' / 'languages.json'
+    try:
+        with open(languages_path, 'r', encoding='utf-8') as f:
+            mapping = json.load(f)
+        if isinstance(mapping, dict):
+            mapped = mapping.get(selected)
+            if isinstance(mapped, str) and mapped:
+                return mapped
+            if selected in mapping.values():
+                return selected
+    except Exception:
+        pass
+
+    return 'en'
+
+
+def _runtime_echo_name_allowed_chars() -> str | None:
+    """Compute a localized allowlist for ``echoes.echoName`` at runtime."""
+    global _ECHO_NAME_RUNTIME_ALLOWED_CACHE_KEY
+    global _ECHO_NAME_RUNTIME_ALLOWED_CACHE_VALUE
+
+    language_code = _resolve_game_language_code()
+    echoes_path = basePATH / 'data' / language_code / 'echoes.json'
+
+    try:
+        stat = echoes_path.stat()
+        cache_key = (language_code, stat.st_mtime_ns, stat.st_size)
+        if cache_key == _ECHO_NAME_RUNTIME_ALLOWED_CACHE_KEY:
+            return _ECHO_NAME_RUNTIME_ALLOWED_CACHE_VALUE
+
+        with open(echoes_path, 'r', encoding='utf-8') as f:
+            payload = json.load(f)
+
+        if isinstance(payload, dict):
+            allowed_chars = _allowed_chars_from_names(
+                [name for name in payload.keys() if isinstance(name, str)]
+            )
+            if allowed_chars:
+                _ECHO_NAME_RUNTIME_ALLOWED_CACHE_KEY = cache_key
+                _ECHO_NAME_RUNTIME_ALLOWED_CACHE_VALUE = allowed_chars
+                return allowed_chars
+    except Exception as exc:
+        logger.debug('Echo-name runtime allowlist fallback: %s', exc)
+
+    # Fallback for tests/CLI flows where localized files may not be present.
+    from ..data import echoesID
+
+    return _allowed_chars_from_names(
+        [name for name in echoesID.keys() if isinstance(name, str)]
+    )
 
 # ---------------------------------------------------------------------------
 # Spec-driven preprocessing helper
@@ -408,6 +493,19 @@ class OcrService:
         _echo_name_single_line = bool(
             _echo_name_spec is not None and _echo_name_spec.single_line
         )
+        _echo_name_allowed_chars = (
+            getattr(_echo_name_spec, 'allowed_chars', None)
+            if _echo_name_spec is not None else None
+        )
+        if _echo_name_allowed_chars is None:
+            _echo_name_allowed_chars = _runtime_echo_name_allowed_chars()
+
+        def _filter_echo_name_chars(
+            results: list[tuple[str, float, np.ndarray]],
+        ) -> list[tuple[str, float, np.ndarray]]:
+            if not _echo_name_allowed_chars:
+                return results
+            return self._filter_allowed_chars([results], _echo_name_allowed_chars)[0]
 
         def _has_usable_text(results: list[tuple[str, float, np.ndarray]]) -> bool:
             return any(text and any(ch.isalnum() for ch in text) for text, _conf, _box in results)
@@ -463,7 +561,7 @@ class OcrService:
                     _echo_name_spec, _cache_src, rarity=c.detected_rarity
                 )
                 if _cached is not None:
-                    card_results[i] = _cached
+                    card_results[i] = _filter_echo_name_chars(_cached)
                     continue
 
             miss_indices.append(i)
@@ -485,8 +583,8 @@ class OcrService:
         for i in miss_indices:
             c = captures[i]
             _cache_src = c.echo_name if c.echo_name is not None else c.card
-            filtered_result = filtered_results_by_idx[i]
-            raw_result = raw_results_by_idx[i]
+            filtered_result = _filter_echo_name_chars(filtered_results_by_idx[i])
+            raw_result = _filter_echo_name_chars(raw_results_by_idx[i])
 
             # ---- Multi-strategy OCR ----
             # New-UI path: captures with a dedicated echoName ROI use
@@ -500,28 +598,36 @@ class OcrService:
 
             if c.echo_name is not None:
                 if _echo_name_single_line:
-                    single_results = _backend_to_batch(
-                        self._backend.recognize_single_line(name_source_filtered[i]),
-                        image=name_source_filtered[i],
+                    single_results = _filter_echo_name_chars(
+                        _backend_to_batch(
+                            self._backend.recognize_single_line(name_source_filtered[i]),
+                            image=name_source_filtered[i],
+                        )
                     )
                 else:
-                    single_results = _backend_to_batch(
-                        self._backend.recognize(name_source_filtered[i]),
-                        image=name_source_filtered[i],
+                    single_results = _filter_echo_name_chars(
+                        _backend_to_batch(
+                            self._backend.recognize(name_source_filtered[i]),
+                            image=name_source_filtered[i],
+                        )
                     )
 
                 if _accept_filtered_echo_name(c, single_results, 'single filtered echoName'):
                     ocr_result = single_results
                 else:
                     if _echo_name_single_line:
-                        thorough_results = _backend_to_batch(
-                            self._backend.recognize(name_source_filtered[i]),
-                            image=name_source_filtered[i],
+                        thorough_results = _filter_echo_name_chars(
+                            _backend_to_batch(
+                                self._backend.recognize(name_source_filtered[i]),
+                                image=name_source_filtered[i],
+                            )
                         )
                     else:
-                        thorough_results = _backend_to_batch(
-                            self._backend.thorough_recognize(name_source_filtered[i]),
-                            image=name_source_filtered[i],
+                        thorough_results = _filter_echo_name_chars(
+                            _backend_to_batch(
+                                self._backend.thorough_recognize(name_source_filtered[i]),
+                                image=name_source_filtered[i],
+                            )
                         )
 
                     if _accept_filtered_echo_name(c, thorough_results, 'thorough filtered echoName'):
@@ -710,7 +816,12 @@ class OcrService:
                 cached_results[idx] = result
 
         raw_results = [r or [] for r in cached_results]
-        return self._filter_allowed_chars(raw_results, spec.allowed_chars)
+
+        allowed_chars = spec.allowed_chars
+        if allowed_chars is None and roi_key == 'echoes.echoName':
+            allowed_chars = _runtime_echo_name_allowed_chars()
+
+        return self._filter_allowed_chars(raw_results, allowed_chars)
 
     def _process_weapons(self, group: list[_QueueItem]) -> None:
         """Run batched OCR and assembly for a group of :class:`WeaponCapture` objects."""

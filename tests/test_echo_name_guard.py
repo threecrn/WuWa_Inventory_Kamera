@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import numpy as np
 
+import wuwa_inventory_kamera.scraping.service.ocr_service as ocr_service_module
 from wuwa_inventory_kamera.scraping.service.ocr_service import (
+    _allowed_chars_from_names,
     _echo_name_candidate_from_results,
     _is_plausible_echo_name_results,
 )
@@ -48,3 +50,46 @@ def test_echo_name_guard_rejects_garbage_candidate() -> None:
     ]
 
     assert not _is_plausible_echo_name_results(results)
+
+
+def test_allowed_chars_from_names_includes_case_variants() -> None:
+    allowed = _allowed_chars_from_names([
+        'jué',
+        'scar:aberrantnightmare',
+    ])
+
+    assert allowed is not None
+    assert 'j' in allowed
+    assert 'J' in allowed
+    assert 'é' in allowed
+    assert 'É' in allowed
+    assert ':' in allowed
+
+
+def test_runtime_echo_name_allowed_chars_uses_selected_language_file(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    data_dir = tmp_path / 'data'
+    (data_dir / 'ja').mkdir(parents=True)
+    (data_dir / 'languages.json').write_text(
+        '{"English": "en", "日本語": "ja"}',
+        encoding='utf-8',
+    )
+    (data_dir / 'ja' / 'echoes.json').write_text(
+        '{"先兵岩塊": 1, "jué": 2}',
+        encoding='utf-8',
+    )
+
+    monkeypatch.setattr(ocr_service_module, 'basePATH', tmp_path)
+    monkeypatch.setattr(ocr_service_module.app_config, 'gameLanguage', '日本語')
+    monkeypatch.setattr(ocr_service_module, '_ECHO_NAME_RUNTIME_ALLOWED_CACHE_KEY', None)
+    monkeypatch.setattr(ocr_service_module, '_ECHO_NAME_RUNTIME_ALLOWED_CACHE_VALUE', None)
+
+    allowed = ocr_service_module._runtime_echo_name_allowed_chars()
+
+    assert allowed is not None
+    assert '先' in allowed
+    assert '兵' in allowed
+    assert 'é' in allowed
+    assert 'É' in allowed
