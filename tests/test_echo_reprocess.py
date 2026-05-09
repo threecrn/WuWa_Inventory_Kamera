@@ -135,6 +135,7 @@ def test_reprocess_write_debug_dumps_region_images(monkeypatch, tmp_path) -> Non
 
     echo_workflow_module = ModuleType('wuwa_inventory_kamera.scraping.scanning.echo_workflow')
     echo_workflow_module._rarity_from_bgr_pixel = lambda _pixel: 5
+    echo_workflow_module._rarity_from_rgb_pixel = lambda _pixel: 5
     monkeypatch.setitem(sys.modules, 'wuwa_inventory_kamera.scraping.scanning.echo_workflow', echo_workflow_module)
 
     ocr_service_module = ModuleType('wuwa_inventory_kamera.scraping.service.ocr_service')

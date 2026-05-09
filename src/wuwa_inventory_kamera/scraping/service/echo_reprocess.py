@@ -213,11 +213,11 @@ def reprocess_echo_scans_with_service(
 
             detected_rarity: int | None = None
             if hasattr(si, 'rarityColorPick'):
-                from ..scanning.echo_workflow import _rarity_from_bgr_pixel
+                from ..scanning.echo_workflow import _rarity_from_rgb_pixel
 
                 rcp = si.rarityColorPick
-                detected_rarity = _rarity_from_bgr_pixel(
-                    scan.full_screenshot[int(rcp.y), int(rcp.x)][::-1]
+                detected_rarity = _rarity_from_rgb_pixel(
+                    scan.full_screenshot[int(rcp.y), int(rcp.x)]
                 )
 
             if write_debug:
