@@ -578,7 +578,7 @@ class LControlPanel(QFrame):
                 providers=ocr_providers,
                 min_rarity=cfg.echoMinRarity.value,
                 min_level=cfg.echoMinLevel.value,
-                write_debug=True,
+                write_debug=cfg.writeDebug.value,
                 echo_stat_cache_path=cfg.get(cfg.echoStatCachePath),
                 ocr_cache_path=cfg.get(cfg.ocrCachePath),
                 raw_base=raw_base,

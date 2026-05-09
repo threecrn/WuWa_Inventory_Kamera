@@ -163,6 +163,7 @@ class Config(QConfig):
         OptionsValidator(["DEBUG", "INFO", "WARNING", "ERROR"]),
     )
     saveRaw = ConfigItem("Advanced", "SaveRaw", False, BoolValidator())
+    writeDebug = ConfigItem("Advanced", "WriteDebug", False, BoolValidator())
 
 
 # ---------------------------------------------------------------------------
