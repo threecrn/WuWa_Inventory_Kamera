@@ -28,6 +28,7 @@ Batch-compare a folder of crops::
 from __future__ import annotations
 
 import argparse
+import io
 import logging
 import sys
 from pathlib import Path
@@ -56,9 +57,12 @@ _PROVIDER_MAP: dict[str, list[str]] = {
 
 
 def _configure_logging(level_name: str) -> None:
+    if sys.platform.startswith("win") and isinstance(sys.stderr, io.TextIOWrapper):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     logging.basicConfig(
         level=getattr(logging, level_name.upper(), logging.INFO),
         format="%(levelname)s: %(message)s",
+        stream=sys.stderr,
     )
 
 

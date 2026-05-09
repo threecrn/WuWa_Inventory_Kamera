@@ -159,6 +159,23 @@ def test_signature_stable_across_minor_shift() -> None:
     assert spec.make_signature(base) == spec.make_signature(shifted)
 
 
+def test_signature_thresholds_preprocessed_gray_before_hashing() -> None:
+    spec = OcrRegionSpec(
+        roi_key="echoes.fullStatsName",
+        threshold_mode="floor",
+        floor_value=100,
+        sig_from_preprocessed=True,
+        sig_text_floor=230,
+        sig_downscale=(32, 32),
+    )
+    image_a = np.full((64, 64, 3), 110, dtype=np.uint8)
+    image_b = np.full((64, 64, 3), 120, dtype=np.uint8)
+    image_a[16:48, 20:44] = 255
+    image_b[16:48, 20:44] = 255
+
+    assert spec.make_signature(image_a) == spec.make_signature(image_b)
+
+
 def test_signature_falls_back_to_raw_image_when_preprocessed_plane_is_constant() -> None:
     spec = OcrRegionSpec(
         roi_key="echoes.echoName",

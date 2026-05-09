@@ -55,9 +55,16 @@ color_space = "rgb"
 threshold_mode = "floor"
 floor_value = 100
 cache_mode = "persistent"
+#sig_from_preprocessed = true
+#sig_downscale = [64, 256]
+#sig_text_floor = 230
+#sig_max_spread = 32
 sig_downscale = [512, 512]
-sig_text_floor = 200
-sig_max_spread = 32
+[echoes.fullStatsName.signature]
+color_space = "bgr"
+text_color_ranges = [
+    [[255, 255, 249], [255, 255, 249]],
+]
 
 [echoes.fullStatsValue]
 color_space = "rgb"
@@ -65,9 +72,16 @@ threshold_mode = "floor"
 floor_value = 100
 allowed_chars = "0123456789.%+"
 cache_mode = "persistent"
+#sig_from_preprocessed = true
+#sig_downscale = [128, 128]
+#sig_text_floor = 230
+#sig_max_spread = 32
 sig_downscale = [256, 512]
-sig_text_floor = 200
-sig_max_spread = 32
+[echoes.fullStatsValue.signature]
+color_space = "bgr"
+text_color_ranges = [
+    [[255, 255, 249], [255, 255, 249]],
+]
 
 [echoes.level]
 color_space = "gray"

@@ -40,6 +40,7 @@ defaults to the session folder (the parent of the ``raw/`` directory).
 from __future__ import annotations
 
 import json
+import io
 import logging
 import os
 import sys
@@ -73,7 +74,13 @@ def _configure_logging(level_name: str) -> None:
     if root.handlers:
         for h in root.handlers:
             h.setLevel(level)
+            if os.name == 'nt' and isinstance(h, logging.StreamHandler):
+                stream = getattr(h, 'stream', None)
+                if isinstance(stream, io.TextIOWrapper):
+                    stream.reconfigure(encoding='utf-8', errors='replace')
     else:
+        if os.name == 'nt' and isinstance(sys.stdout, io.TextIOWrapper):
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(fmt)
         root.addHandler(handler)

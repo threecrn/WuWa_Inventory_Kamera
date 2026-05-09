@@ -46,6 +46,7 @@ Adjust a threshold-based region and keep a backup of the TOML::
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import logging
 import shutil
@@ -112,9 +113,12 @@ def _parse_range(raw: str) -> tuple[tuple[int, ...], tuple[int, ...]]:
 
 
 def _configure_logging(level_name: str) -> None:
+    if sys.platform.startswith("win") and isinstance(sys.stderr, io.TextIOWrapper):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     logging.basicConfig(
         level=getattr(logging, level_name.upper(), logging.INFO),
         format="%(levelname)s: %(message)s",
+        stream=sys.stderr,
     )
 
 

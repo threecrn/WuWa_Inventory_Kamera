@@ -565,6 +565,8 @@ class OcrService:
         Sonata detection is handled by the :class:`EchoAssembler` via
         icon template matching on ``capture.sonata_icon``, bypassing OCR.
         """
+        import cv2
+
         captures: list[EchoCapture] = [cast(EchoCapture, it.capture) for it in group]
 
         # Prefer the dedicated echoName ROI (new UI): preprocess via spec,
@@ -756,13 +758,18 @@ class OcrService:
 
         final_card_results = [result or [] for result in card_results]
 
+        # EchoCapture stores stat crops as RGB, but the OCR specs and cache
+        # signatures operate on BGR inputs.
+        stats_name_bgr = [cv2.cvtColor(c.stats_name, cv2.COLOR_RGB2BGR) for c in captures]
+        stats_value_bgr = [cv2.cvtColor(c.stats_value, cv2.COLOR_RGB2BGR) for c in captures]
+
         name_results = self._ocr_with_spec(
             'echoes.fullStatsName',
-            [c.stats_name for c in captures],
+            stats_name_bgr,
         )
         value_results = self._ocr_with_spec(
             'echoes.fullStatsValue',
-            [c.stats_value for c in captures],
+            stats_value_bgr,
         )
 
         # Convert [[( text, conf, box ), ...], ...] → [[OcrResult, ...], ...]

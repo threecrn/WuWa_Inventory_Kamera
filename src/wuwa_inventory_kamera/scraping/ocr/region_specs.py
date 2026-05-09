@@ -297,6 +297,12 @@ class OcrRegionSpec:
             # make unrelated crops collide in the OCR cache. Fall back to a
             # normalized raw-image signature in that case.
             if np.ptp(preprocessed) != 0:
+                normalized = _normalize_preprocessed_for_signature(
+                    preprocessed,
+                    floor=self.sig_text_floor,
+                )
+                if np.ptp(normalized) != 0:
+                    return _downscale(normalized, self.sig_downscale)
                 return _downscale(preprocessed, self.sig_downscale)
 
         # Raw-signature path
@@ -420,6 +426,27 @@ def _downscale(image: np.ndarray, max_size: tuple[int, int]) -> np.ndarray:
 
 def _is_binary(image: np.ndarray) -> bool:
     return bool(np.all((image == 0) | (image == 255)))
+
+
+def _normalize_preprocessed_for_signature(
+    image: np.ndarray,
+    *,
+    floor: int,
+) -> np.ndarray:
+    """Stabilize a preprocessed OCR plane before hashing.
+
+    Floor-thresholded OCR preprocess often preserves a dim background ramp.
+    Remove that residual background before downscaling so cache keys stay
+    stable across small lighting and backdrop shifts.
+    """
+    gray = image
+    if image.ndim == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+
+    if _is_binary(gray):
+        return np.ascontiguousarray(gray)
+
+    return _threshold_plane(gray, floor=floor, margin=24)
 
 
 def _normalize_for_signature(

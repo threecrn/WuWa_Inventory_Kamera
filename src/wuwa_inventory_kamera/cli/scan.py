@@ -30,6 +30,7 @@ Registered as ``wuwa-scan`` console script in ``pyproject.toml``.
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import logging
 import sys
@@ -60,7 +61,13 @@ def _configure_logging(level_name: str) -> None:
     if root.handlers:
         for h in root.handlers:
             h.setLevel(level)
+            if sys.platform.startswith('win') and isinstance(h, logging.StreamHandler):
+                stream = getattr(h, 'stream', None)
+                if isinstance(stream, io.TextIOWrapper):
+                    stream.reconfigure(encoding='utf-8', errors='replace')
     else:
+        if sys.platform.startswith('win') and isinstance(sys.stdout, io.TextIOWrapper):
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(fmt)
         root.addHandler(handler)
