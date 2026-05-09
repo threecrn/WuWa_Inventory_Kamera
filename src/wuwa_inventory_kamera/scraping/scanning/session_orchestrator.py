@@ -87,6 +87,7 @@ class SessionOrchestrator:
         windowed: bool = False,
         echo_stat_cache_path: Path | None = None,
         ocr_cache_path: Path | None = None,
+        write_debug: bool = False,
     ) -> None:
         self.scrapers = scrapers
         self.ocr_providers = ocr_providers
@@ -100,6 +101,7 @@ class SessionOrchestrator:
         self.windowed = windowed
         self.echo_stat_cache_path = echo_stat_cache_path
         self.ocr_cache_path = ocr_cache_path
+        self.write_debug = write_debug
 
     def run(self) -> dict[str, Any]:
         """
@@ -238,6 +240,7 @@ class SessionOrchestrator:
             save_raw=raw_path,
             stop_event=stop_event,
             min_level=self.min_level,
+            write_debug=self.write_debug,
         )
 
         def _on_progress(scanned: int, total: int) -> None:

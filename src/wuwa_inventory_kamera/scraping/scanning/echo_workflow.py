@@ -121,6 +121,7 @@ class EchoWorkflow:
         max_rescans: int = 2,
         stop_event: threading.Event | None = None,
         min_level: int = 0,
+        write_debug: bool = False,
     ) -> None:
         self.nav = nav
         self.ocr = ocr_service
@@ -130,6 +131,7 @@ class EchoWorkflow:
         self.max_rescans = max_rescans
         self._stop_event = stop_event
         self.min_level = min_level
+        self.write_debug = write_debug
 
     # ── Public entry point ───────────────────────────────────────────────
 
@@ -407,6 +409,23 @@ class EchoWorkflow:
         # Optionally save raw images
         if self.save_raw:
             self._save_raw(pos, full)
+
+        # Optionally write debug crop artifacts
+        if self.write_debug:
+            from types import SimpleNamespace
+            from ..service.echo_reprocess import _write_echo_debug_artifacts
+            from ...config.app_config import app_config
+            _debug_base = self.save_raw or (
+                Path(app_config.exportFolder) / self.session.session_id / 'raw'
+            )
+            _write_echo_debug_artifacts(
+                SimpleNamespace(index=pos.scan_index),
+                raw_base=_debug_base,
+                detected_rarity=detected_rarity,
+                echo_name=echo_name,
+                stats_name=stats_name,
+                stats_value=stats_value,
+            )
 
         capture = EchoCapture(
             echo_index=pos.scan_index,

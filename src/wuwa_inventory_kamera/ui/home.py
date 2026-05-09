@@ -68,6 +68,7 @@ class ScanThread(QThread):
         save_raw: bool = False,
         max_batch_size: int = 8,
         windowed: bool = False,
+        write_debug: bool = False,
     ):
         super().__init__()
         self._scrapers = scrapers
@@ -81,6 +82,7 @@ class ScanThread(QThread):
         self._save_raw = save_raw
         self._max_batch_size = max_batch_size
         self._windowed = windowed
+        self._write_debug = write_debug
 
     def run(self):  # noqa: D102  (QThread override)
         from ..scraping.scanning.session_orchestrator import SessionOrchestrator
@@ -106,6 +108,7 @@ class ScanThread(QThread):
                     Path(self._ocr_cache_path)
                     if self._ocr_cache_path else None
                 ),
+                write_debug=self._write_debug,
             )
             result = orch.run()
             self.finished.emit(result)
@@ -460,6 +463,7 @@ class LControlPanel(QFrame):
             save_raw=cfg.saveRaw.value,
             max_batch_size=cfg.ocrBatchSize.value,
             windowed=cfg.windowed.value,
+            write_debug=cfg.writeDebug.value,
         )
         self._scan_thread.progress.connect(self._onScanProgress)
         self._scan_thread.finished.connect(self._onScanFinished)

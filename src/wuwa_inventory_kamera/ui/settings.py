@@ -177,6 +177,13 @@ class SettingInterface(ScrollArea):
             configItem=cfg.saveRaw,
             parent=self.advancedGroup,
         )
+        self.writeDebugCard = SwitchSettingCard(
+            FIF.SAVE,
+            self.tr('Write debug output'),
+            self.tr('Save debug crop images and OCR trace files for every echo during scanning.'),
+            configItem=cfg.writeDebug,
+            parent=self.advancedGroup,
+        )
         self.dataSourceCard = ComboBoxSettingCard(
             cfg.dataSource,
             FIF.UPDATE,
@@ -237,6 +244,7 @@ class SettingInterface(ScrollArea):
         self.ocrGroup.addSettingCard(self.cleanupCacheCard)
         self.advancedGroup.addSettingCard(self.logLevelCard)
         self.advancedGroup.addSettingCard(self.saveRawCard)
+        self.advancedGroup.addSettingCard(self.writeDebugCard)
         self.advancedGroup.addSettingCard(self.dataSourceCard)
         self.updateSoftwareGroup.addSettingCard(self.updateOnStartUpCard)
         self.aboutGroup.addSettingCard(self.helpCard)

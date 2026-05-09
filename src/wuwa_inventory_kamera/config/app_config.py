@@ -89,6 +89,7 @@ class AppConfig:
         # Advanced / debug
         self.logLevel: str = 'INFO'
         self.saveRaw: bool = False
+        self.writeDebug: bool = False
 
         # Window mode
         self.windowed: bool = False
@@ -167,6 +168,8 @@ class AppConfig:
             self.logLevel = str(advanced['LogLevel']).upper()
         if 'SaveRaw' in advanced:
             self.saveRaw = _bool(advanced['SaveRaw'])
+        if 'WriteDebug' in advanced:
+            self.writeDebug = _bool(advanced['WriteDebug'])
         if 'WindowedMode' in advanced:
             self.windowed = _bool(advanced['WindowedMode'])
 
@@ -211,6 +214,7 @@ class AppConfig:
         self.ocrCachePath = get(qcfg_obj.ocrCachePath)
         self.logLevel  = get(qcfg_obj.logLevel)
         self.saveRaw   = get(qcfg_obj.saveRaw)
+        self.writeDebug = get(qcfg_obj.writeDebug)
         self.windowed  = get(qcfg_obj.windowed)
 
 
