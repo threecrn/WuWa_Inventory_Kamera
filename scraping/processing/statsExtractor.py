@@ -7,6 +7,4 @@ from wuwa_inventory_kamera.scraping.processing.stats_extractor import (  # noqa:
     StatsExtractor,
     RapidOcrStatsExtractor,
     RapidOcrCoordStatsExtractor,
-    TesserOcrStatsExtractor,
-    TesserOcrCoordStatsExtractor,
 )

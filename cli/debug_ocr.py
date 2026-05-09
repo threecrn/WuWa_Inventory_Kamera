@@ -17,10 +17,6 @@ Or supply the two image files directly::
 
     python cli/debug_ocr.py --name path/to/stats_name.png --value path/to/stats_value.png
 
-Filter extractors (default: rapid, rapid_coord)::
-
-    python cli/debug_ocr.py <dir> --extractor rapid rapid_coord tesser tesser_coord
-
 Save annotated images alongside the originals::
 
     python cli/debug_ocr.py <dir> --annotate
@@ -192,12 +188,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument('--name',  default=None, help='Explicit path to stats_name.png.')
     p.add_argument('--value', default=None, help='Explicit path to stats_value.png.')
     p.add_argument(
-        '--extractor', nargs='+',
-        choices=['rapid', 'rapid_coord', 'tesser', 'tesser_coord'],
-        default=['rapid', 'rapid_coord'],
-        help='Extractors to run (default: rapid rapid_coord).',
-    )
-    p.add_argument('--pad-px', type=int, default=10,
+        '--pad-px', type=int, default=10,
                    help='pad_px for RapidOCR backends (default: 10). Use 0 to disable.')
     p.add_argument('--fallback-text-score', type=float, default=0.3, metavar='SCORE',
                    help='text_score for the low-conf fallback RapidOCR pass '
@@ -270,44 +261,29 @@ def main() -> None:
 
     fallback_score = args.fallback_text_score if args.fallback_text_score > 0 else None
 
-    if any(k.startswith('rapid') for k in args.extractor):
-        try:
-            from wuwa_inventory_kamera.scraping.ocr._rapidocr import RapidOcrBackend
-            rapid_backend = RapidOcrBackend(
-                pad_px=args.pad_px,
-                fallback_text_score=fallback_score,
-            )
-        except Exception as exc:
-            print(f'WARNING: could not load RapidOCR backend: {exc}')
+    try:
+        from wuwa_inventory_kamera.scraping.ocr._rapidocr import RapidOcrBackend
+        rapid_backend = RapidOcrBackend(
+            pad_px=args.pad_px,
+            fallback_text_score=fallback_score,
+        )
+    except Exception as exc:
+        print(f'WARNING: could not load RapidOCR backend: {exc}')
 
-    if 'rapid' in args.extractor and rapid_backend:
+    if rapid_backend:
         from wuwa_inventory_kamera.scraping.processing.stats_extractor import RapidOcrStatsExtractor
         extractors['rapid'] = RapidOcrStatsExtractor()
         extractors['rapid']._backend = rapid_backend  # type: ignore[attr-defined]
 
-    if 'rapid_coord' in args.extractor and rapid_backend:
+    if rapid_backend:
         from wuwa_inventory_kamera.scraping.processing.stats_extractor import RapidOcrCoordStatsExtractor
         extractors['rapid_coord'] = RapidOcrCoordStatsExtractor(
             pad_px=args.pad_px,
             fallback_text_score=fallback_score,
         )
 
-    if 'tesser' in args.extractor:
-        try:
-            from wuwa_inventory_kamera.scraping.processing.stats_extractor import TesserOcrStatsExtractor
-            extractors['tesser'] = TesserOcrStatsExtractor()
-        except Exception as exc:
-            print(f'WARNING: skipping tesser — {exc}')
-
-    if 'tesser_coord' in args.extractor:
-        try:
-            from wuwa_inventory_kamera.scraping.processing.stats_extractor import TesserOcrCoordStatsExtractor
-            extractors['tesser_coord'] = TesserOcrCoordStatsExtractor()
-        except Exception as exc:
-            print(f'WARNING: skipping tesser_coord — {exc}')
-
     # Dump raw backend output first (useful for RapidOCR)
-    if rapid_backend and any(k.startswith('rapid') for k in args.extractor):
+    if rapid_backend:
         print('\n' + '#' * 60)
         print('  RAW BACKEND OUTPUT (RapidOcrBackend)')
         print('#' * 60)

@@ -216,3 +216,55 @@ def test_reprocess_write_debug_dumps_region_images(monkeypatch, tmp_path) -> Non
     np.testing.assert_array_equal(echo_name_raw, cv2.cvtColor(image[2:4, 2:4], cv2.COLOR_RGB2BGR))
     np.testing.assert_array_equal(stats_name_raw, cv2.cvtColor(image[0:2, 2:4], cv2.COLOR_RGB2BGR))
     np.testing.assert_array_equal(stats_value_raw, cv2.cvtColor(image[2:4, 0:2], cv2.COLOR_RGB2BGR))
+
+
+def test_reprocess_uses_shared_level_decision_for_sonata_slot(monkeypatch) -> None:
+    class _FakeScreenInfoWithDistinctSlots:
+        def __init__(self, _width: int, _height: int) -> None:
+            self.echoes = SimpleNamespace(
+                echoCard=SimpleNamespace(x=0, y=0, w=2, h=2),
+                fullStatsName=SimpleNamespace(x=2, y=0, w=2, h=2),
+                fullStatsValue=SimpleNamespace(x=0, y=2, w=2, h=2),
+                echoName=SimpleNamespace(x=2, y=2, w=2, h=2),
+                level=SimpleNamespace(x=4, y=0, w=2, h=2),
+                sonataIcon=SimpleNamespace(
+                    radius=1.0,
+                    level_X=SimpleNamespace(
+                        circle=SimpleNamespace(x=1.0, y=1.0),
+                        icon=SimpleNamespace(x=0, y=4, w=2, h=2),
+                    ),
+                    level_XX=SimpleNamespace(
+                        circle=SimpleNamespace(x=1.0, y=1.0),
+                        icon=SimpleNamespace(x=2, y=4, w=2, h=2),
+                    ),
+                ),
+                rarityColorPick=SimpleNamespace(x=0, y=0),
+            )
+
+    class _FakeOcrServiceWithArtifacts(_FakeOcrService):
+        def ocr_adhoc_text(self, _image, _roi_key: str) -> str:
+            return '25.'
+
+    screen_info_module = ModuleType('wuwa_inventory_kamera.game.screen_info')
+    screen_info_module.ScreenInfo = _FakeScreenInfoWithDistinctSlots
+    monkeypatch.setitem(sys.modules, 'wuwa_inventory_kamera.game.screen_info', screen_info_module)
+
+    ocr_service_module = ModuleType('wuwa_inventory_kamera.scraping.service.ocr_service')
+    ocr_service_module.OcrService = _FakeOcrServiceWithArtifacts
+    monkeypatch.setitem(sys.modules, 'wuwa_inventory_kamera.scraping.service.ocr_service', ocr_service_module)
+
+    _FakeOcrService.instances.clear()
+    image = np.arange(6 * 6 * 3, dtype=np.uint8).reshape(6, 6, 3)
+    scan = _FakeScan(image)
+
+    reprocess_echo_scans_with_service(
+        scans=[scan],
+        providers=['CPUExecutionProvider'],
+        min_rarity=5,
+        min_level=21,
+        write_debug=False,
+    )
+
+    capture = _FakeOcrService.instances[0].submitted[0]
+    assert capture.detected_level == 25
+    np.testing.assert_array_equal(capture.sonata_icon, image[4:6, 2:4])

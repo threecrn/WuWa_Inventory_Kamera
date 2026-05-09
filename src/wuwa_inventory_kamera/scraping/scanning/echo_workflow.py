@@ -33,7 +33,6 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
-import re
 import threading
 from pathlib import Path
 from typing import Callable
@@ -55,6 +54,10 @@ from .scan_state import (
     ScanSession,
 )
 from ..service.captures import EchoCapture, EchoResult
+from ..service.echo_capture_utils import (
+    decide_echo_level,
+    select_level_dependent_sonata_slot,
+)
 from ..service.ocr_service import OcrService
 
 logger = logging.getLogger(__name__)
@@ -235,21 +238,23 @@ class EchoWorkflow:
             if self._stop_event and self._stop_event.is_set():
                 return False
 
+            detected_level: int | None = None
+
             # Before capturing, check the level against min_level constraint.
             # Since echoes are sorted by level descending, any level below the
             # minimum means all remaining echoes can be skipped.  This avoids
             # submitting unnecessary OCR jobs to the service.
             if self.min_level > 0:
-                level = self._read_last_echo_level()
-                if level is not None and level < self.min_level:
+                detected_level = self._read_last_echo_level()
+                if detected_level is not None and detected_level < self.min_level:
                     logger.info(
                         'Level-based early stop at index %d: '
                         'detected_level=%d < min_level=%d',
-                        position.scan_index, level, self.min_level,
+                        position.scan_index, detected_level, self.min_level,
                     )
                     return False
 
-            future = self._capture_echo(position)
+            future = self._capture_echo(position, detected_level=detected_level)
             future.add_done_callback(_process_done_callback)
             futures.append((position.scan_index, future))
             if on_progress:
@@ -310,19 +315,20 @@ class EchoWorkflow:
         roi = self.nav.layout.echoes.level
         crop = capture_region(self.nav.gw, roi)
         text = self.ocr.ocr_adhoc_text(crop, 'echoes.level')
-        text = text.strip()
-        if text.isdigit():
-            return int(text)
-        # Fallback: grab first run of digits (handles OCR artefacts)
-        m = re.search(r'\d+', text)
-        if m:
-            return int(m.group())
-        logger.debug('Level OCR returned no digits: %r', text)
+        level_decision = decide_echo_level(level_text=text)
+        if level_decision.detected_level is not None:
+            return level_decision.detected_level
+        logger.debug('Level OCR returned no digits: %r', level_decision.level_text)
         return None
 
     # ── Core capture logic ───────────────────────────────────────────────
 
-    def _capture_echo(self, pos: GridPosition) -> concurrent.futures.Future:
+    def _capture_echo(
+        self,
+        pos: GridPosition,
+        *,
+        detected_level: int | None = None,
+    ) -> concurrent.futures.Future:
         """
         Capture screenshots for one echo and submit to the OcrService.
 
@@ -383,27 +389,35 @@ class EchoWorkflow:
         sonata_icon_cx: float | None = None
         sonata_icon_cy: float | None = None
         sonata_icon_r:  float | None = None
-        detected_level: int | None = None
 
-        level_crop = full[
-            int(ei.level.y) : int(ei.level.y + ei.level.h),
-            int(ei.level.x) : int(ei.level.x + ei.level.w),
-        ]
-        level_text = self.ocr.ocr_adhoc_text(level_crop, 'echoes.level').strip()
-        two_digits = len(level_text) == 2
-        si_slot = si_raw.level_XX if two_digits else si_raw.level_X
+        if detected_level is None:
+            level_crop = full[
+                int(ei.level.y) : int(ei.level.y + ei.level.h),
+                int(ei.level.x) : int(ei.level.x + ei.level.w),
+            ]
+            level_decision = decide_echo_level(
+                level_text=self.ocr.ocr_adhoc_text(level_crop, 'echoes.level')
+            )
+        else:
+            level_decision = decide_echo_level(detected_level=detected_level)
+
+        si_slot = select_level_dependent_sonata_slot(
+            si_raw,
+            two_digits=level_decision.two_digits,
+        )
         logger.debug(
             'Echo %d — level_text=%r two_digits=%s → sonataIcon=%s',
-            pos.scan_index, level_text, two_digits,
-            'level_XX' if two_digits else 'level_X',
+            pos.scan_index,
+            level_decision.level_text,
+            level_decision.two_digits,
+            'level_XX' if level_decision.two_digits else 'level_X',
         )
         si = si_slot.icon
         sonata_icon_cx = si_slot.circle.x
         sonata_icon_cy = si_slot.circle.y
         sonata_icon_r  = si_raw.radius
         # Parse the level here so the assembler doesn't need to OCR card for it
-        if level_text.isdigit():
-            detected_level = min(25, int(level_text))
+        detected_level = level_decision.detected_level
 
         sonata_icon = full[
             int(si.y) : int(si.y + si.h),

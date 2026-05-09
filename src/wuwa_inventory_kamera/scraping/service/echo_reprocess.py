@@ -12,6 +12,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from .echo_capture_utils import decide_echo_level, select_level_dependent_sonata_slot
+
 logger = logging.getLogger('wuwa.echo_reprocess')
 
 
@@ -177,15 +179,18 @@ def reprocess_echo_scans_with_service(
                 int(si.level.y): int(si.level.y + si.level.h),
                 int(si.level.x): int(si.level.x + si.level.w),
             ]
-            level_text = svc.ocr_adhoc_text(level_crop, 'echoes.level').strip()
-            two_digits = len(level_text) == 2
-            si_slot = si_raw.level_XX if two_digits else si_raw.level_X
+            level_decision = decide_echo_level(
+                level_text=svc.ocr_adhoc_text(level_crop, 'echoes.level')
+            )
+            si_slot = select_level_dependent_sonata_slot(
+                si_raw,
+                two_digits=level_decision.two_digits,
+            )
             icon_roi = si_slot.icon
             sonata_icon_cx = si_slot.circle.x
             sonata_icon_cy = si_slot.circle.y
             sonata_icon_r = si_raw.radius
-            if level_text.isdigit():
-                detected_level = min(25, int(level_text))
+            detected_level = level_decision.detected_level
 
             sonata_icon = scan.full_screenshot[
                 int(icon_roi.y): int(icon_roi.y + icon_roi.h),

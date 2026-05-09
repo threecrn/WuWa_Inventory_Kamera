@@ -411,12 +411,11 @@ resumable sessions.
 Offline re-processing of saved raw scans (no game needed):
 
 ```
-wuwa-reprocess --session-id 2026-02-28_14-30-00 --service --provider dml
-wuwa-reprocess --raw-dir export/2026-02-28_14-30-00/raw --extractor rapid_coord
+wuwa-reprocess --session-id 2026-02-28_14-30-00 --provider dml
+wuwa-reprocess --raw-dir export/2026-02-28_14-30-00/raw --max-batch-size 8
 ```
 
-Options: `--session-id` or `--raw-dir`, `--service` (v2 batched GPU OCR via
-OcrService), `--extractor` (legacy path), `--provider`, `--use-bw`,
+Options: `--session-id` or `--raw-dir`, `--provider`, `--max-batch-size`,
 `--min-rarity`, `--min-level`, `--output-dir`.
 
 ### `wuwa-app`
@@ -580,8 +579,8 @@ src/wuwa_inventory_kamera/
       __init__.py
       echoesValidator.py    (validate_echo_stats, expected_sub_count — shared by V1 + V2)
       echo_stats_valid_values.yaml
-      echoes_processor.py   (EchoesProcessor — offline Phase-2 processing; used by wuwa-reprocess --extractor)
-      stats_extractor.py    (legacy stat extractors: rapid, rapid_coord, tesser, tesser_coord)
+      echoes_processor.py   (Older offline Phase-2 processing module kept for legacy internals)
+      stats_extractor.py    (Older RapidOCR stat extractors kept for legacy internals)
     utils/
       __init__.py
       common.py             (isUserAdmin, itemsID, savingScraped)
@@ -891,7 +890,7 @@ scraping/ocr/
   re-export shim.
 - `scraping/processing/echoesProcessor.py` / `statsExtractor.py` — canonical
   copies moved to `src/.../scraping/processing/`; legacy paths are re-export shims.
-- `wuwa-reprocess` still supports the legacy `echoesProcessor` path via `--extractor`.
+- `wuwa-reprocess` now uses the `OcrService` pipeline only.
 - Character, achievement, and shell scrapers have V2 ports
   (`CharacterWorkflow`, `AchievementWorkflow`, `ShellWorkflow`).
 - Disk saving is opt-in debug mode (`--save-raw`) rather than the default.
