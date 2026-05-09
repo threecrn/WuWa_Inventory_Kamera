@@ -45,6 +45,9 @@ class _FakeOcrService:
         self.submitted.append(capture)
         return _FakeFuture()
 
+    def ocr_adhoc_text(self, _image, _roi_key: str) -> str:
+        return '25'
+
 
 class _FakeScan:
     def __init__(self, image: np.ndarray, *, full_path=None) -> None:
@@ -65,7 +68,18 @@ class _FakeScreenInfo:
             fullStatsName=SimpleNamespace(x=2, y=0, w=2, h=2),
             fullStatsValue=SimpleNamespace(x=0, y=2, w=2, h=2),
             echoName=SimpleNamespace(x=2, y=2, w=2, h=2),
-            sonataIcon=SimpleNamespace(x=4, y=0, w=2, h=2),
+            level=SimpleNamespace(x=4, y=0, w=2, h=2),
+            sonataIcon=SimpleNamespace(
+                radius=1.0,
+                level_X=SimpleNamespace(
+                    circle=SimpleNamespace(x=1.0, y=1.0),
+                    icon=SimpleNamespace(x=4, y=0, w=2, h=2),
+                ),
+                level_XX=SimpleNamespace(
+                    circle=SimpleNamespace(x=1.0, y=1.0),
+                    icon=SimpleNamespace(x=4, y=0, w=2, h=2),
+                ),
+            ),
             rarityColorPick=SimpleNamespace(x=0, y=0),
         )
 

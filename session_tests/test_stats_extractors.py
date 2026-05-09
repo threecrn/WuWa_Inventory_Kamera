@@ -30,8 +30,6 @@ from wuwa_inventory_kamera.scraping.processing.echoesValidator import expected_s
 from wuwa_inventory_kamera.scraping.processing.stats_extractor import (
     RapidOcrCoordStatsExtractor,
     RapidOcrStatsExtractor,
-    TesserOcrCoordStatsExtractor,
-    TesserOcrStatsExtractor,
 )
 
 
@@ -113,24 +111,6 @@ def rapid_coord_extractor(request):
     return RapidOcrCoordStatsExtractor(use_bw=request.param)
 
 
-@pytest.fixture(
-    scope="module",
-    params=[pytest.param(False, id="colour"), pytest.param(True, id="bw")],
-)
-def tesser_extractor(request):
-    pytest.importorskip("tesserocr", reason="tesserocr not installed — skipping Tesseract tests")
-    return TesserOcrStatsExtractor(use_bw=request.param)
-
-
-@pytest.fixture(
-    scope="module",
-    params=[pytest.param(False, id="colour"), pytest.param(True, id="bw")],
-)
-def tesser_coord_extractor(request):
-    pytest.importorskip("tesserocr", reason="tesserocr not installed — skipping Tesseract tests")
-    return TesserOcrCoordStatsExtractor(use_bw=request.param)
-
-
 # ---------------------------------------------------------------------------
 # Tests  (stats_case parametrized by conftest.pytest_generate_tests)
 # ---------------------------------------------------------------------------
@@ -147,17 +127,3 @@ def test_rapid_ocr_coord(rapid_coord_extractor, stats_case) -> None:
     if stats_case is None:
         pytest.skip("No stats data — supply --session-dir.")
     _run(rapid_coord_extractor, stats_case)
-
-
-def test_tesser_ocr(tesser_extractor, stats_case) -> None:
-    """Tesseract line-order extractor."""
-    if stats_case is None:
-        pytest.skip("No stats data — supply --session-dir.")
-    _run(tesser_extractor, stats_case)
-
-
-def test_tesser_ocr_coord(tesser_coord_extractor, stats_case) -> None:
-    """Tesseract coordinate-aware extractor."""
-    if stats_case is None:
-        pytest.skip("No stats data — supply --session-dir.")
-    _run(tesser_coord_extractor, stats_case)

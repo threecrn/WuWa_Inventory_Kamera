@@ -2,11 +2,11 @@
 wuwa_inventory_kamera.game.screen_info
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Resolution-aware coordinate resolver for the WuWa game UI.
+Coordinate resolver for the supported WuWa game UI layouts.
 
 This is a migration of ``game/screenInfo.py`` from the legacy package root
-into the ``wuwa_inventory_kamera`` package.  The only change from the
-original is the import path for :data:`~.game_roi.COORDINATES`.
+into the ``wuwa_inventory_kamera`` package.  Only the actively supported
+layouts are retained: 1920x1080 and 1920x1200.
 
 Usage::
 
@@ -17,11 +17,7 @@ Usage::
 """
 from __future__ import annotations
 
-import math
-
 from .game_roi import Coordinates, COORDINATES
-
-PRECOMPUTED_RATIOS = [(w / h, (w, h)) for w, h in list(COORDINATES)]
 
 
 class ScreenInfoObject:
@@ -44,14 +40,22 @@ class ScreenInfoObject:
 
 class ScreenInfo:
     def __init__(self, width: int | float, height: int | float, monitor: int = 1):
-        self.width = width
-        self.height = height
+        self.width = int(width)
+        self.height = int(height)
         self.monitor = monitor
 
         try:
             self.data = COORDINATES[self.getRatio()][(self.width, self.height)]
         except KeyError:
-            self.data = self._scaleScreen()
+            supported = ', '.join(
+                f'{supported_width}x{supported_height}'
+                for ratio in COORDINATES.values()
+                for supported_width, supported_height in ratio
+            )
+            raise ValueError(
+                f'Unsupported WuWa resolution {self.width}x{self.height}. '
+                f'Supported resolutions: {supported}'
+            )
 
         self.data = self._convertToObject(self.data)
 
@@ -62,43 +66,6 @@ class ScreenInfo:
         if isinstance(obj, dict):
             return ScreenInfoObject(obj)
         return obj
-
-    def _scaleScreen(self):
-        """
-        Dynamically generate screen scaling data based on the closest known
-        resolution and aspect ratio.
-        """
-        closestRatio = self.closestAspectRatio(self.width, self.height)
-        closestResolution = min(
-            list(COORDINATES[closestRatio]),
-            key=lambda size: abs((size[0] / size[1]) - (closestRatio[0] / closestRatio[1])),
-        )
-
-        referenceData = COORDINATES[closestRatio][closestResolution]
-
-        def _scale(data, _no_scale: bool = False):
-            if isinstance(data, Coordinates):
-                # Scroll values are wheel-notch amounts, not pixel coordinates.
-                # They are resolution-independent so must never be scaled.
-                if _no_scale:
-                    return data
-                return Coordinates(
-                    x=self._scaleWidth(data.x, closestResolution[0]) if data.x else 0,
-                    y=self._scaleHeight(data.y, closestResolution[1]) if data.y else 0,
-                    w=self._scaleWidth(data.w, closestResolution[0]) if data.w else 0,
-                    h=self._scaleHeight(data.h, closestResolution[1]) if data.h else 0,
-                )
-            elif isinstance(data, dict):
-                return {
-                    key: _scale(value, _no_scale=(_no_scale or key == 'scroll'))
-                    for key, value in data.items()
-                }
-            elif isinstance(data, list):
-                return [_scale(item, _no_scale=_no_scale) for item in data]
-            else:
-                return data
-
-        return _scale(referenceData)
 
     def __getattr__(self, item):
         """Dynamically access attributes from the nested data dictionary."""
@@ -111,42 +78,11 @@ class ScreenInfo:
     @staticmethod
     def reduceRatio(width, height):
         """Reduce width and height to their simplest ratio."""
-        divisor = math.gcd(width, height)
+        from math import gcd
+
+        divisor = gcd(width, height)
         return (width // divisor, height // divisor)
-
-    @staticmethod
-    def calculateRatioDifference(actualRatio, standardRatio):
-        """Calculate the percentage difference between two aspect ratios."""
-        return abs(actualRatio - standardRatio) / actualRatio * 100
-
-    @staticmethod
-    def closestAspectRatio(width, height, threshold=3.0):
-        """Find the closest standard aspect ratio for the given dimensions."""
-        actualWidth, actualHeight = ScreenInfo.reduceRatio(width, height)
-        actualRatio = actualWidth / actualHeight
-
-        minDiff = float('inf')
-        closestRatio = (16, 9)
-
-        for standardRatio, (w, h) in PRECOMPUTED_RATIOS:
-            diff = ScreenInfo.calculateRatioDifference(actualRatio, standardRatio)
-            if diff < minDiff:
-                minDiff = diff
-                closestRatio = (w, h)
-            if minDiff == 0:
-                break
-
-        return closestRatio if minDiff <= threshold else (16, 9)
 
     def getRatio(self):
         """Return the simplified ratio of the screen."""
-        return self.closestAspectRatio(self.width, self.height)
-
-    def _scaleWidth(self, value: int | float, resolution: int):
-        return self._scale(value, self.width, resolution)
-
-    def _scaleHeight(self, value: int | float, resolution: int):
-        return self._scale(value, self.height, resolution)
-
-    def _scale(self, value, dimension, resolution):
-        return int(value / resolution * dimension)
+        return self.reduceRatio(self.width, self.height)

@@ -385,37 +385,25 @@ class EchoWorkflow:
         sonata_icon_r:  float | None = None
         detected_level: int | None = None
 
-        if hasattr(si_raw, 'level_X'):
-            # New-UI nested structure — pick variant based on digit count.
-            level_crop = full[
-                int(ei.level.y) : int(ei.level.y + ei.level.h),
-                int(ei.level.x) : int(ei.level.x + ei.level.w),
-            ]
-            level_text = self.ocr.ocr_adhoc_text(level_crop, 'echoes.level').strip()
-            two_digits = len(level_text) == 2
-            si_slot = si_raw.level_XX if two_digits else si_raw.level_X
-            logger.debug(
-                'Echo %d — level_text=%r two_digits=%s → sonataIcon=%s',
-                pos.scan_index, level_text, two_digits,
-                'level_XX' if two_digits else 'level_X',
-            )
-            si = si_slot.icon
-            sonata_icon_cx = si_slot.circle.x
-            sonata_icon_cy = si_slot.circle.y
-            sonata_icon_r  = si_raw.radius
-            # Parse the level here so the assembler doesn't need to OCR card for it
-            if level_text.isdigit():
-                detected_level = min(25, int(level_text))
-        else:
-            # Legacy flat Coordinates (older resolution entries).
-            si = si_raw
-            if hasattr(ei, 'sonataIconCircle'):
-                sic = ei.sonataIconCircle
-                if hasattr(sic, 'circle'):
-                    sonata_icon_cx = sic.circle.x
-                    sonata_icon_cy = sic.circle.y
-                if hasattr(sic, 'radius'):
-                    sonata_icon_r = sic.radius
+        level_crop = full[
+            int(ei.level.y) : int(ei.level.y + ei.level.h),
+            int(ei.level.x) : int(ei.level.x + ei.level.w),
+        ]
+        level_text = self.ocr.ocr_adhoc_text(level_crop, 'echoes.level').strip()
+        two_digits = len(level_text) == 2
+        si_slot = si_raw.level_XX if two_digits else si_raw.level_X
+        logger.debug(
+            'Echo %d — level_text=%r two_digits=%s → sonataIcon=%s',
+            pos.scan_index, level_text, two_digits,
+            'level_XX' if two_digits else 'level_X',
+        )
+        si = si_slot.icon
+        sonata_icon_cx = si_slot.circle.x
+        sonata_icon_cy = si_slot.circle.y
+        sonata_icon_r  = si_raw.radius
+        # Parse the level here so the assembler doesn't need to OCR card for it
+        if level_text.isdigit():
+            detected_level = min(25, int(level_text))
 
         sonata_icon = full[
             int(si.y) : int(si.y + si.h),

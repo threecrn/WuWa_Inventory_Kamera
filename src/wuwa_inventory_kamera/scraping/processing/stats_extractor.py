@@ -15,14 +15,6 @@ StatsExtractor
 RapidOcrStatsExtractor
     Uses RapidOCR with colour crops; aligns names to values by line order.
 
-TesserOcrStatsExtractor
-    Uses Tesseract with B/W pre-processing; aligns by line order.
-
-TesserOcrCoordStatsExtractor
-    Uses Tesseract and aligns stat names to values by bounding-box Y
-    coordinate rather than line order — more robust when OCR skips or
-    merges lines differently in the two columns.
-
 RapidOcrCoordStatsExtractor
     Uses RapidOCR and aligns stat names to values by bounding-box Y
     coordinate.  Additionally handles stat names that wrap across two
@@ -327,149 +319,14 @@ class RapidOcrStatsExtractor(StatsExtractor):
         return names, values, trace
 
 
-class TesserOcrStatsExtractor(StatsExtractor):
-    """
-    Stats extractor backed by Tesseract OCR via ``tesserocr``.
-
-    Converts crops to greyscale B/W before recognition — Tesseract achieves
-    higher accuracy on high-contrast monochrome images than on colour crops.
-    Names and values are aligned by line order (zip).
-
-    Parameters
-    ----------
-    **kwargs:
-        Forwarded verbatim to
-        :class:`~scraping.ocr._tesserocr.TesserOcrBackend` (e.g. ``lang``,
-        ``psm``, ``tessdata_path``, ``char_whitelist``).
-    """
-
-    def __init__(self, use_bw: bool = True, **kwargs):
-        super().__init__(use_bw=use_bw)
-        from ..ocr._tesserocr import TesserOcrBackend
-        self._backend = TesserOcrBackend(**kwargs)
-
-    def _ocr_and_pair(
-        self,
-        name_crop: np.ndarray,
-        value_crop: np.ndarray,
-        scan_index: int,
-    ) -> tuple[list[str], list[str], dict]:
-        raw_names = (
-            imageToString(name_crop, allowedChars=string.ascii_letters, backend=self._backend)
-            .lower()
-            .split('\n')
-        )
-        names = _matchStats(raw_names)
-        values = imageToString(
-            value_crop, allowedChars=string.digits + '.%', backend=self._backend
-        ).split()
-        trace = {'raw_names_ocr': raw_names, 'matched_names': names, 'raw_values_ocr': values}
-        return names, values, trace
-
-
-class TesserOcrCoordStatsExtractor(StatsExtractor):
-    """
-    Stats extractor backed by Tesseract that uses bounding-box Y coordinates
-    to align stat names with their values.
-
-    Instead of relying on line order, each resolved stat name is paired with
-    the value token whose vertical centre is nearest to the name row's
-    vertical centre.  This is more robust when Tesseract produces a different
-    number of output rows for the two columns (e.g. one column merges two
-    adjacent stat lines that the other splits).
-
-    Parameters
-    ----------
-    row_tolerance:
-        Maximum pixel distance between two tokens' Y centres to be
-        considered part of the same text row.  Defaults to ``10``.
-    use_bw:
-        Apply B/W pre-processing before OCR.  Defaults to ``True``.
-    **kwargs:
-        Forwarded verbatim to
-        :class:`~scraping.ocr._tesserocr.TesserOcrBackend`.
-    """
-
-    _ALPHA_RE = re.compile(r'[^a-zA-Z]')
-    _DIGIT_RE = re.compile(r'[^0-9.%]')
-
-    def __init__(self, row_tolerance: int = 10, use_bw: bool = True, **kwargs):
-        super().__init__(use_bw=use_bw)
-        from ..ocr._tesserocr import TesserOcrBackend
-        self._backend = TesserOcrBackend(**kwargs)
-        self._row_tolerance = row_tolerance
-
-    def _ocr_and_pair(
-        self,
-        name_crop: np.ndarray,
-        value_crop: np.ndarray,
-        scan_index: int,
-    ) -> tuple[list[str], list[str], dict]:
-        raw_name_tokens = self._backend.recognize(name_crop)
-        raw_value_tokens = self._backend.recognize(value_crop)
-
-        # --- Name tokens: keep letters, record (y_center, x_center, text) ---
-        name_items: list[tuple[float, float, str]] = []
-        for bbox, text, _conf in raw_name_tokens:
-            cleaned = self._ALPHA_RE.sub('', text).lower()
-            if cleaned:
-                xc, yc = _bbox_center(bbox)
-                name_items.append((yc, xc, cleaned))
-        name_items.sort()  # primary: y, secondary: x
-
-        # Group tokens into rows by Y proximity; sort tokens within each
-        # row left-to-right so _matchStats sees them in the correct order.
-        tol = self._row_tolerance
-        grouped: list[tuple[float, list[tuple[float, str]]]] = []
-        for yc, xc, text in name_items:
-            if grouped and abs(yc - grouped[-1][0]) <= tol:
-                grouped[-1][1].append((xc, text))
-            else:
-                grouped.append((yc, [(xc, text)]))
-
-        # Apply _matchStats per row to resolve multi-token stat names.
-        named_rows: list[tuple[float, str]] = []  # (y_center, resolved_name)
-        for row_y, xtokens in grouped:
-            xtokens.sort()
-            for name in _matchStats([t for _, t in xtokens]):
-                named_rows.append((row_y, name))
-
-        # --- Value tokens: keep digits/./%, record (y_center, text) ---
-        value_items: list[tuple[float, str]] = []
-        for bbox, text, _conf in raw_value_tokens:
-            cleaned = self._DIGIT_RE.sub('', text)
-            if cleaned:
-                _, yc = _bbox_center(bbox)
-                value_items.append((yc, cleaned))
-        value_items.sort()
-
-        # --- Pair each name row with the nearest unused value by Y ---
-        available = list(value_items)
-        paired_names: list[str] = []
-        paired_values: list[str] = []
-        for name_y, name in named_rows:
-            if not available:
-                break
-            best = min(range(len(available)), key=lambda i: abs(available[i][0] - name_y))
-            _, value = available.pop(best)
-            paired_names.append(name)
-            paired_values.append(value)
-
-        trace = {
-            'raw_names_ocr': [t for _, _, t in name_items],
-            'matched_names': paired_names,
-            'raw_values_ocr': [t for _, t in value_items],
-        }
-        return paired_names, paired_values, trace
-
-
 class RapidOcrCoordStatsExtractor(StatsExtractor):
     """
     Stats extractor backed by RapidOCR that uses bounding-box Y coordinates
     to align stat names with their values.
 
-    Similar to :class:`TesserOcrCoordStatsExtractor` but uses the RapidOCR
-    backend.  Additionally handles stat names that wrap across two display
+    Uses the same coordinate-aware row pairing strategy as the removed
+    Tesseract implementation, but on RapidOCR tokens.  Additionally handles
+    stat names that wrap across two display
     lines: when a row of name tokens produces no valid match on its own,
     it is merged with the next row and resolved as a single name, with the
     value paired to the *first* row's Y position (where the value glyph

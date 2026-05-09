@@ -16,16 +16,11 @@ Reprocess a session (reads config from config/config.json in cwd)::
     wuwa-reprocess --session-id 2026-02-28_14-30-00
     wuwa-reprocess --raw-dir export/2026-02-28_14-30-00/raw
 
-OcrService path (batched GPU OCR, v2)::
+OcrService path (batched GPU OCR)::
 
-    wuwa-reprocess --raw-dir ./raw --service
-    wuwa-reprocess --raw-dir ./raw --service --provider dml
-    wuwa-reprocess --raw-dir ./raw --service --max-batch-size 8
-
-Legacy extractor path (original behaviour, default)::
-
-    wuwa-reprocess --raw-dir ./raw --extractor rapid_coord --provider dml
-    wuwa-reprocess --raw-dir ./raw --extractor rapid_coord --use-bw
+    wuwa-reprocess --raw-dir ./raw
+    wuwa-reprocess --raw-dir ./raw --provider dml
+    wuwa-reprocess --raw-dir ./raw --max-batch-size 8
 
 Quality filters and output location::
 
@@ -197,52 +192,6 @@ def _run_service(
 
 
 # ---------------------------------------------------------------------------
-# Legacy path: original echoProcessor
-# ---------------------------------------------------------------------------
-
-def _build_legacy_extractor(args, extractor_params: dict):
-    """Build a StatsExtractor for the legacy echoProcessor path."""
-    # These imports come from the existing (non-src) scraping package.
-    from ..scraping.processing.stats_extractor import (
-        RapidOcrStatsExtractor,
-        RapidOcrCoordStatsExtractor,
-        TesserOcrStatsExtractor,
-        TesserOcrCoordStatsExtractor,
-    )
-
-    _EXTRACTOR_MAP = {
-        'rapid':        RapidOcrStatsExtractor,
-        'rapid_coord':  RapidOcrCoordStatsExtractor,
-        'tesser':       TesserOcrStatsExtractor,
-        'tesser_coord': TesserOcrCoordStatsExtractor,
-    }
-
-    extractor_cls = _EXTRACTOR_MAP[args.extractor]
-    is_rapid = args.extractor.startswith('rapid')
-
-    if args.provider and is_rapid and 'onnx_providers' not in extractor_params:
-        extractor_params['onnx_providers'] = _PROVIDER_MAP[args.provider]
-    elif args.provider and not is_rapid:
-        logger.warning('--provider is ignored for non-RapidOCR extractors (%s)', args.extractor)
-
-    try:
-        extractor = extractor_cls(use_bw=args.use_bw, **extractor_params)
-    except Exception as exc:
-        logger.error('Failed to initialise extractor %r: %s', args.extractor, exc)
-        sys.exit(1)
-
-    logger.info(
-        'Extractor : %s(use_bw=%r%s)',
-        args.extractor, args.use_bw,
-        f', {extractor_params}' if extractor_params else '',
-    )
-    if args.provider and is_rapid:
-        logger.info('Provider  : %s', extractor_params.get('onnx_providers'))
-
-    return extractor
-
-
-# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -295,7 +244,7 @@ def main() -> None:
         '--provider', choices=['cpu', 'dml'], default=None,
         help=(
             '"dml" = DirectML GPU (Windows, DirectX 12); "cpu" = CPU only. '
-            'Applies to both the service path and the RapidOCR legacy extractors.'
+            'Applies to the OCR service backend.'
         ),
     )
     parser.add_argument(
@@ -322,54 +271,21 @@ def main() -> None:
         ),
     )
 
-    # ── Mode selection ─────────────────────────────────────────────────────
-    mode = parser.add_argument_group('processing mode (mutually exclusive with legacy options)')
-    mode.add_argument(
-        '--service', action='store_true', default=False,
-        help=(
-            'Use the v2 OcrService path (batched GPU OCR, assemblers). '
-            'Ignores --extractor / --use-bw / --extractor-params / --workers.'
-        ),
-    )
-    mode.add_argument(
+    parser.add_argument(
         '--max-batch-size', type=int, default=8, metavar='N',
         help=(
-            'Maximum captures drained per OCR batch in --service mode '
+            'Maximum captures drained per OCR batch '
             '(default: 8).'
         ),
     )
-
-    # ── Legacy extractor options ───────────────────────────────────────────
-    legacy = parser.add_argument_group('legacy extractor options (ignored when --service is set)')
-    legacy.add_argument(
-        '--extractor',
-        choices=['rapid', 'rapid_coord', 'tesser', 'tesser_coord'],
-        default='rapid_coord',
-        help='Stat extractor (default: rapid_coord).',
-    )
-    legacy.add_argument(
-        '--use-bw', action='store_true', default=False,
-        help='Force B/W pre-processing before OCR (always on for Tesseract extractors).',
-    )
-    legacy.add_argument(
-        '--extractor-params', default='{}', metavar='JSON',
-        help='JSON object of keyword arguments for the extractor constructor.',
-    )
-    legacy.add_argument(
-        '--workers', type=int, default=None, metavar='N',
-        help=(
-            f'Parallel OCR worker threads (default: CPU count = {os.cpu_count() or 4}). '
-            'Use --workers 1 to disable multi-threading.'
-        ),
-    )
-    legacy.add_argument(
+    parser.add_argument(
         '--echo-id-range', metavar='START,END',
         help=(
             'Range of echo scan IDs to reprocess (e.g. 0,100). '
             'IDs are zero-padded four-digit numbers (e.g. 0001). '
         ),
     )
-    legacy.add_argument(
+    parser.add_argument(
         '--echo-ids', metavar='ID[,ID,...]',
         help=(
             'Comma-separated echo scan IDs to reprocess (e.g. 0111,0231). '
@@ -492,42 +408,22 @@ def main() -> None:
         )
 
     # ── Process ────────────────────────────────────────────────────────────
-    if args.service:
-        providers = _PROVIDER_MAP[args.provider] if args.provider else _auto_providers()
-        logger.info(
-            'Mode      : OcrService (v2)  providers=%s  max_batch_size=%d',
-            providers,
-            args.max_batch_size,
-        )
-        echoes = _run_service(
-            scans, raw_dir, session_id,
-            providers=providers,
-            min_rarity=min_rarity,
-            min_level=min_level,
-            write_debug=args.write_debug,
-            max_batch_size=args.max_batch_size,
-            echo_stat_cache_path=echo_stat_cache_path,
-            ocr_cache_path=ocr_cache_path,
-        )
-    else:
-        # Parse extractor params JSON
-        try:
-            extractor_params = json.loads(args.extractor_params)
-        except json.JSONDecodeError as exc:
-            logger.error('--extractor-params is not valid JSON: %s', exc)
-            sys.exit(1)
-
-        extractor = _build_legacy_extractor(args, extractor_params)
-        workers: int = args.workers if args.workers is not None else (os.cpu_count() or 4)
-        logger.info('Mode      : legacy extractor  workers=%d', workers)
-
-        from ..scraping.processing.echoes_processor import echoProcessor
-        echoes = echoProcessor(
-            scans, session_id, raw_dir,
-            workers=workers,
-            write_debug=args.write_debug,
-            extractor=extractor,
-        )
+    providers = _PROVIDER_MAP[args.provider] if args.provider else _auto_providers()
+    logger.info(
+        'Mode      : OcrService  providers=%s  max_batch_size=%d',
+        providers,
+        args.max_batch_size,
+    )
+    echoes = _run_service(
+        scans, raw_dir, session_id,
+        providers=providers,
+        min_rarity=min_rarity,
+        min_level=min_level,
+        write_debug=args.write_debug,
+        max_batch_size=args.max_batch_size,
+        echo_stat_cache_path=echo_stat_cache_path,
+        ocr_cache_path=ocr_cache_path,
+    )
 
     logger.info('Accepted %d / %d echo(es)', len(echoes), len(scans))
 

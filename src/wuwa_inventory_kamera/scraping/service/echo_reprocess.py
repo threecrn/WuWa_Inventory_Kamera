@@ -173,29 +173,19 @@ def reprocess_echo_scans_with_service(
             sonata_icon_cy: float | None = None
             sonata_icon_r: float | None = None
             detected_level: int | None = None
-            if hasattr(si_raw, 'level_X'):
-                level_crop = scan.full_screenshot[
-                    int(si.level.y): int(si.level.y + si.level.h),
-                    int(si.level.x): int(si.level.x + si.level.w),
-                ]
-                level_text = svc.ocr_adhoc_text(level_crop, 'echoes.level').strip()
-                two_digits = len(level_text) == 2
-                si_slot = si_raw.level_XX if two_digits else si_raw.level_X
-                icon_roi = si_slot.icon
-                sonata_icon_cx = si_slot.circle.x
-                sonata_icon_cy = si_slot.circle.y
-                sonata_icon_r = si_raw.radius
-                if level_text.isdigit():
-                    detected_level = min(25, int(level_text))
-            else:
-                icon_roi = si_raw
-                if hasattr(si, 'sonataIconCircle'):
-                    sic = si.sonataIconCircle
-                    if hasattr(sic, 'circle'):
-                        sonata_icon_cx = sic.circle.x
-                        sonata_icon_cy = sic.circle.y
-                    if hasattr(sic, 'radius'):
-                        sonata_icon_r = sic.radius
+            level_crop = scan.full_screenshot[
+                int(si.level.y): int(si.level.y + si.level.h),
+                int(si.level.x): int(si.level.x + si.level.w),
+            ]
+            level_text = svc.ocr_adhoc_text(level_crop, 'echoes.level').strip()
+            two_digits = len(level_text) == 2
+            si_slot = si_raw.level_XX if two_digits else si_raw.level_X
+            icon_roi = si_slot.icon
+            sonata_icon_cx = si_slot.circle.x
+            sonata_icon_cy = si_slot.circle.y
+            sonata_icon_r = si_raw.radius
+            if level_text.isdigit():
+                detected_level = min(25, int(level_text))
 
             sonata_icon = scan.full_screenshot[
                 int(icon_roi.y): int(icon_roi.y + icon_roi.h),

@@ -50,8 +50,6 @@ from .echoesValidator import infer_cost, expected_sub_count, validate_echo_stats
 from .stats_extractor import (
     RapidOcrStatsExtractor,
     StatsExtractor,
-    TesserOcrCoordStatsExtractor,
-    TesserOcrStatsExtractor,
 )
 from ..data import echoesID, echoStats, sonataName
 from ..utils.common import (
@@ -124,8 +122,7 @@ def _extractSonataFromIcon(
     scan_index:
         Echo index for log messages.
     level:
-        Echo level (used to pick the correct ``level_X`` / ``level_XX``
-        sonata-icon variant for new-UI resolutions).
+        Echo level (used to pick the correct supported sonata-icon variant).
 
     Returns
     -------
@@ -133,19 +130,11 @@ def _extractSonataFromIcon(
         Matched ``sonataName`` key, or ``None`` on failure.
     """
     si_raw = echoes_info.sonataIcon
-    sonata_icon_cx: float | None = None
-    sonata_icon_cy: float | None = None
-    sonata_icon_r:  float | None = None
-
-    if hasattr(si_raw, 'level_X'):
-        # New-UI nested structure: level_XX (≥10) vs level_X (<10).
-        si_slot  = si_raw.level_XX if level >= 10 else si_raw.level_X
-        icon_roi = si_slot.icon
-        sonata_icon_cx = si_slot.circle.x
-        sonata_icon_cy = si_slot.circle.y
-        sonata_icon_r  = si_raw.radius
-    else:
-        icon_roi = si_raw
+    si_slot = si_raw.level_XX if level >= 10 else si_raw.level_X
+    icon_roi = si_slot.icon
+    sonata_icon_cx = si_slot.circle.x
+    sonata_icon_cy = si_slot.circle.y
+    sonata_icon_r = si_raw.radius
 
     sonata_icon = full_screenshot[
         int(icon_roi.y) : int(icon_roi.y + icon_roi.h),
