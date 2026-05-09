@@ -205,11 +205,16 @@ class GameWindow:
         """Logical (width, height) of the game viewport (after DPI)."""
         if not self._window:
             return (1920, 1080)
-        if self.windowed:
-            cw, ch = self.client_size
-            dpi = self.dpi_scale
-            return (int(cw / dpi), int(ch / dpi))
+        cw, ch = self.client_size
         dpi = self.dpi_scale
+
+        # The scanner coordinates are expressed in client-area pixels.
+        # Even in borderless/fullscreen mode the outer window rect can be a
+        # few pixels larger because of invisible frame extents, which skews
+        # ROI scaling enough to miss tightly tuned echo coordinates.
+        if cw > 0 and ch > 0:
+            return (int(cw / dpi), int(ch / dpi))
+
         return (int(self._window.width / dpi), int(self._window.height / dpi))
 
     @property

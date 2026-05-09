@@ -76,8 +76,8 @@ _RARITY_PIXEL_COLORS_BGR: dict[int, np.ndarray] = {
 }
 
 
-def _rarity_from_bgr_pixel(pixel: np.ndarray) -> int:
-    """Return the rarity (2–5) whose reference color is closest to *pixel* (BGR)."""
+def _closest_rarity_from_bgr_pixel(pixel: np.ndarray) -> tuple[int, float]:
+    """Return the closest rarity and squared distance for a BGR pixel."""
     px = pixel[:3].astype(np.int32)
     best_rarity = 1
     best_dist = float('inf')
@@ -86,12 +86,26 @@ def _rarity_from_bgr_pixel(pixel: np.ndarray) -> int:
         if dist < best_dist:
             best_dist = dist
             best_rarity = rarity
-    return best_rarity
+    return best_rarity, best_dist
+
+
+def _rarity_from_bgr_pixel(pixel: np.ndarray) -> int:
+    """Return the rarity (2–5) whose reference color is closest to *pixel* (BGR)."""
+    return _closest_rarity_from_bgr_pixel(pixel)[0]
 
 
 def _rarity_from_rgb_pixel(pixel: np.ndarray) -> int:
     """Return the rarity for a pixel stored in RGB channel order."""
     return _rarity_from_bgr_pixel(pixel[::-1])
+
+
+def _rarity_from_capture_pixel(pixel: np.ndarray) -> tuple[int, str, float]:
+    """Return the closest rarity for a capture pixel, tolerating BGR or RGB input."""
+    rarity_bgr, dist_bgr = _closest_rarity_from_bgr_pixel(pixel)
+    rarity_rgb, dist_rgb = _closest_rarity_from_bgr_pixel(pixel[::-1])
+    if dist_bgr <= dist_rgb:
+        return rarity_bgr, 'BGR', dist_bgr
+    return rarity_rgb, 'RGB', dist_rgb
 
 
 class EchoWorkflow:
@@ -335,9 +349,16 @@ class EchoWorkflow:
         detected_rarity: int | None = None
         if hasattr(ei, 'rarityColorPick'):
             rcp = ei.rarityColorPick
-            detected_rarity = _rarity_from_bgr_pixel(full[int(rcp.y), int(rcp.x)])
-            logger.debug('Echo %d — rarity pixel BGR=%s → rarity %d',
-                         pos.scan_index, full[int(rcp.y), int(rcp.x)].tolist(), detected_rarity)
+            rarity_pixel = full[int(rcp.y), int(rcp.x)]
+            detected_rarity, rarity_order, rarity_dist = _rarity_from_capture_pixel(rarity_pixel)
+            logger.debug(
+                'Echo %d — rarity pixel raw=%s interpreted_as=%s → rarity %d (dist=%.1f)',
+                pos.scan_index,
+                rarity_pixel.tolist(),
+                rarity_order,
+                detected_rarity,
+                rarity_dist,
+            )
 
         card = full[
             int(ei.echoCard.y) : int(ei.echoCard.y + ei.echoCard.h),
