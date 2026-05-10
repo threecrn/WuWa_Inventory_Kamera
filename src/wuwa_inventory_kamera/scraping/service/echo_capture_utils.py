@@ -11,6 +11,9 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+import cv2
+import numpy as np
+
 
 @dataclass(frozen=True, slots=True)
 class EchoLevelDecision:
@@ -19,6 +22,16 @@ class EchoLevelDecision:
     level_text: str
     detected_level: int | None
     two_digits: bool
+
+
+def ensure_bgr_image(image: np.ndarray, *, source_space: str) -> np.ndarray:
+    """Normalize a capture crop to BGR before OCR/cache processing."""
+
+    if image.ndim == 2 or source_space == 'bgr':
+        return image.copy()
+    if source_space == 'rgb':
+        return cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    raise ValueError(f'Unsupported source_space: {source_space!r}')
 
 
 def parse_echo_level_text(level_text: str) -> int | None:

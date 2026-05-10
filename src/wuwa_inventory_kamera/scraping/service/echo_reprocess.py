@@ -12,7 +12,11 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .echo_capture_utils import decide_echo_level, select_level_dependent_sonata_slot
+from .echo_capture_utils import (
+    decide_echo_level,
+    ensure_bgr_image,
+    select_level_dependent_sonata_slot,
+)
 
 logger = logging.getLogger('wuwa.echo_reprocess')
 
@@ -32,14 +36,6 @@ def _resolve_debug_dir(scan, raw_base: str | Path | None) -> Path | None:
     if raw_base is not None:
         return Path(raw_base) / f'echo_{scan.index:04d}' / 'debug'
     return None
-
-
-def _to_bgr(image: np.ndarray, *, source_space: str) -> np.ndarray:
-    if image.ndim == 2 or source_space == 'bgr':
-        return image.copy()
-    if source_space == 'rgb':
-        return cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-    raise ValueError(f'Unsupported source_space: {source_space!r}')
 
 
 def _to_debug_image(image: np.ndarray) -> np.ndarray:
@@ -108,7 +104,7 @@ def _write_echo_debug_artifacts(
             debug_dir,
             basename=basename,
             roi_key=roi_key,
-            raw_bgr=_to_bgr(raw_image, source_space=source_space),
+            raw_bgr=ensure_bgr_image(raw_image, source_space=source_space),
             rarity=detected_rarity,
         )
 
@@ -149,7 +145,7 @@ def reprocess_echo_scans_with_service(
             if ocr_cache_path is not None else None
         ),
         resolution=resolution,
-        det_limit_side_len=32*12,
+        det_limit_side_len=32*8, #32*12,
         #det_limit_type='max',
     ) as svc:
         futures = []
@@ -166,7 +162,7 @@ def reprocess_echo_scans_with_service(
                 si.echoCard.y: si.echoCard.y + si.echoCard.h,
                 si.echoCard.x: si.echoCard.x + si.echoCard.w,
             ]
-            card = cv2.cvtColor(card_rgb, cv2.COLOR_RGB2BGR)
+            card = ensure_bgr_image(card_rgb, source_space='rgb')
             stats_name = scan.full_screenshot[
                 si.fullStatsName.y: si.fullStatsName.y + si.fullStatsName.h,
                 si.fullStatsName.x: si.fullStatsName.x + si.fullStatsName.w,
@@ -185,7 +181,7 @@ def reprocess_echo_scans_with_service(
                 int(si.level.y): int(si.level.y + si.level.h),
                 int(si.level.x): int(si.level.x + si.level.w),
             ]
-            level_crop_bgr = cv2.cvtColor(level_crop, cv2.COLOR_RGB2BGR)
+            level_crop_bgr = ensure_bgr_image(level_crop, source_space='rgb')
             level_decision = decide_echo_level(
                 level_text=svc.ocr_adhoc_text(level_crop_bgr, 'echoes.level')
             )
@@ -203,7 +199,7 @@ def reprocess_echo_scans_with_service(
                 int(icon_roi.y): int(icon_roi.y + icon_roi.h),
                 int(icon_roi.x): int(icon_roi.x + icon_roi.w),
             ]
-            sonata_icon = cv2.cvtColor(sonata_icon_rgb, cv2.COLOR_RGB2BGR)
+            sonata_icon = ensure_bgr_image(sonata_icon_rgb, source_space='rgb')
 
             echo_name = None
             if hasattr(si, 'echoName'):
@@ -212,7 +208,7 @@ def reprocess_echo_scans_with_service(
                     int(en.y): int(en.y + en.h),
                     int(en.x): int(en.x + en.w),
                 ]
-                echo_name = cv2.cvtColor(echo_name_rgb, cv2.COLOR_RGB2BGR)
+                echo_name = ensure_bgr_image(echo_name_rgb, source_space='rgb')
 
             detected_rarity: int | None = None
             if hasattr(si, 'rarityColorPick'):

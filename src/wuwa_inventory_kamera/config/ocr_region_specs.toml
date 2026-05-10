@@ -53,10 +53,12 @@ text_color_ranges = [
 ]
 
 [echoes.fullStatsName]
-color_space = "rgb"
-threshold_mode = "floor"
-floor_value = 100
+#color_space = "rgb"
+#threshold_mode = "floor"
+#floor_value = 100
 cache_mode = "persistent"
+post_upscale = [512, 512]
+
 #sig_from_preprocessed = true
 #signature.post_downscale = [64, 256]
 #sig_text_floor = 230
@@ -69,11 +71,13 @@ text_color_ranges = [
 ]
 
 [echoes.fullStatsValue]
-color_space = "rgb"
-threshold_mode = "floor"
-floor_value = 100
+#color_space = "rgb"
+#threshold_mode = "floor"
+#floor_value = 100
 allowed_chars = "0123456789.%+"
 cache_mode = "persistent"
+post_upscale = [128, 512]
+
 #sig_from_preprocessed = true
 #signature.post_downscale = [128, 128]
 #sig_text_floor = 230
@@ -96,6 +100,9 @@ single_line = true
 post_upscale = [64, 64]
 
 allowed_chars = "0123456789+"
+# Level OCR is cheap, and weak signature collisions can promote the wrong
+# digit across unrelated scans during a long reprocess run.
+#cache_mode = "none"
 cache_mode = "transient"
 
 
@@ -103,8 +110,12 @@ cache_mode = "transient"
 
 [echoes.level.signature]
 color_space = "bgr"
+# Signature colors are keyed against the shared BGR-normalized level crop
+# used by both live capture and raw-session reprocess.
 text_color_ranges = [
-    [[197, 185, 173], [197, 185, 173]],
+#    [[197, 185, 173], [197, 185, 173]],    
+#    [[189, 185, 169], [217, 205, 193]],
+    [[185, 181, 165], [189, 185, 169]],
 ]
 
 # =====================================================================

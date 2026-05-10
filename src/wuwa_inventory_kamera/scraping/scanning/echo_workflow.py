@@ -56,6 +56,7 @@ from .scan_state import (
 from ..service.captures import EchoCapture, EchoResult
 from ..service.echo_capture_utils import (
     decide_echo_level,
+    ensure_bgr_image,
     select_level_dependent_sonata_slot,
 )
 from ..service.ocr_service import OcrService
@@ -393,10 +394,11 @@ class EchoWorkflow:
             int(ei.level.y) : int(ei.level.y + ei.level.h),
             int(ei.level.x) : int(ei.level.x + ei.level.w),
         ]
+        level_crop_bgr = ensure_bgr_image(level_crop, source_space='bgr')
 
         if detected_level is None:
             level_decision = decide_echo_level(
-                level_text=self.ocr.ocr_adhoc_text(level_crop, 'echoes.level')
+                level_text=self.ocr.ocr_adhoc_text(level_crop_bgr, 'echoes.level')
             )
         else:
             level_decision = decide_echo_level(detected_level=detected_level)

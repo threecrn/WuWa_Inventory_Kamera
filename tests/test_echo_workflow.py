@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any, cast
 
+import cv2
 import numpy as np
 
 import wuwa_inventory_kamera.scraping.scanning.echo_workflow as echo_workflow_module
@@ -14,6 +15,7 @@ from wuwa_inventory_kamera.scraping.scanning.echo_workflow import (
     _rarity_from_rgb_pixel,
 )
 from wuwa_inventory_kamera.scraping.service.echo_capture_utils import decide_echo_level
+from wuwa_inventory_kamera.scraping.service.echo_capture_utils import ensure_bgr_image
 
 
 def test_rarity_helpers_match_reference_palette() -> None:
@@ -50,6 +52,16 @@ def test_decide_echo_level_uses_parsed_digits_for_slot_selection() -> None:
     assert decision.detected_level == 25
     assert decision.two_digits is True
     assert decision.level_text == '25.'
+
+
+def test_level_crop_normalizer_matches_live_and_reprocess_sources() -> None:
+    rgb = np.arange(2 * 3 * 3, dtype=np.uint8).reshape(2, 3, 3)
+    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+
+    np.testing.assert_array_equal(
+        ensure_bgr_image(rgb, source_space='rgb'),
+        ensure_bgr_image(bgr, source_space='bgr'),
+    )
 
 
 def test_capture_echo_reuses_prefetched_level_without_second_ocr(monkeypatch) -> None:
@@ -110,6 +122,66 @@ def test_capture_echo_reuses_prefetched_level_without_second_ocr(monkeypatch) ->
     assert ocr.ocr_calls == 0
     assert ocr.submitted[0].detected_level == 25
     np.testing.assert_array_equal(ocr.submitted[0].sonata_icon, image[4:6, 2:4])
+
+
+def test_capture_echo_passes_level_crop_to_adhoc_ocr_in_bgr(monkeypatch) -> None:
+    image = np.arange(6 * 6 * 3, dtype=np.uint8).reshape(6, 6, 3)
+
+    monkeypatch.setattr(echo_workflow_module, 'capture_full', lambda *args, **kwargs: image)
+
+    layout = SimpleNamespace(
+        width=6,
+        height=6,
+        monitor=1,
+        echoes=SimpleNamespace(
+            rarityColorPick=SimpleNamespace(x=0, y=0),
+            echoCard=SimpleNamespace(x=0, y=0, w=2, h=2),
+            fullStatsName=SimpleNamespace(x=2, y=0, w=2, h=2),
+            fullStatsValue=SimpleNamespace(x=0, y=2, w=2, h=2),
+            echoName=SimpleNamespace(x=2, y=2, w=2, h=2),
+            level=SimpleNamespace(x=4, y=0, w=2, h=2),
+            sonataIcon=SimpleNamespace(
+                radius=1.0,
+                level_X=SimpleNamespace(
+                    circle=SimpleNamespace(x=1.0, y=1.0),
+                    icon=SimpleNamespace(x=0, y=4, w=2, h=2),
+                ),
+                level_XX=SimpleNamespace(
+                    circle=SimpleNamespace(x=1.0, y=1.0),
+                    icon=SimpleNamespace(x=2, y=4, w=2, h=2),
+                ),
+            ),
+        ),
+    )
+
+    class _RecordingOcrService:
+        def __init__(self) -> None:
+            self.adhoc_calls: list[tuple[np.ndarray, str]] = []
+            self.submitted = []
+
+        def ocr_adhoc_text(self, image, roi_key: str) -> str:
+            self.adhoc_calls.append((image.copy(), roi_key))
+            return '25'
+
+        def submit(self, capture):
+            self.submitted.append(capture)
+            return SimpleNamespace(capture=capture)
+
+    ocr = _RecordingOcrService()
+    workflow = EchoWorkflow(
+        nav=cast(Any, SimpleNamespace(layout=layout, gw=None)),
+        ocr_service=cast(Any, ocr),
+        session=cast(Any, SimpleNamespace()),
+    )
+
+    workflow._capture_echo(
+        cast(Any, SimpleNamespace(scan_index=7, page=0, row=0, col=0)),
+    )
+
+    assert len(ocr.adhoc_calls) == 1
+    adhoc_image, roi_key = ocr.adhoc_calls[0]
+    assert roi_key == 'echoes.level'
+    np.testing.assert_array_equal(adhoc_image, image[0:2, 4:6])
 
 
 def test_capture_echo_write_debug_passes_level_crop(monkeypatch, tmp_path) -> None:

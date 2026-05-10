@@ -118,6 +118,26 @@ def test_packaged_echo_level_spec_uses_single_line_ocr() -> None:
 
     assert spec is not None
     assert spec.single_line is True
+    assert spec.cache_mode == "transient"
+
+
+def test_packaged_echo_level_signature_preprocess_expects_bgr_badge_pixels() -> None:
+    spec = get_spec("echoes.level")
+
+    assert spec is not None
+
+    image_bgr = np.full((24, 32, 3), (44, 32, 22), dtype=np.uint8)
+    image_bgr[4:20, 8:11] = np.asarray([187, 183, 167], dtype=np.uint8)
+    image_bgr[10:13, 8:18] = np.asarray([187, 183, 167], dtype=np.uint8)
+
+    preprocessed_bgr = spec._preprocess_for_signature(image_bgr, None)
+    preprocessed_rgb = spec._preprocess_for_signature(
+        cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB),
+        None,
+    )
+
+    assert np.ptp(preprocessed_bgr) != 0
+    assert np.ptp(preprocessed_rgb) == 0
 
 
 def test_post_scaling_resizes_ocr_output() -> None:

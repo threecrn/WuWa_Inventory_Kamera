@@ -159,6 +159,7 @@ class SessionOrchestrator:
                 if self.ocr_cache_path is not None else None
             ),
             resolution=f'{gw.layout.width}x{gw.layout.height}',
+            det_limit_side_len=32*8, # 32*12
         ) as ocr_service:
 
             for scraper_name in self.scrapers:
