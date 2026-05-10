@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any, cast
 
 import numpy as np
 
@@ -96,13 +97,78 @@ def test_capture_echo_reuses_prefetched_level_without_second_ocr(monkeypatch) ->
 
     ocr = _FakeOcrService()
     workflow = EchoWorkflow(
-        nav=SimpleNamespace(layout=layout, gw=None),
-        ocr_service=ocr,
-        session=SimpleNamespace(),
+        nav=cast(Any, SimpleNamespace(layout=layout, gw=None)),
+        ocr_service=cast(Any, ocr),
+        session=cast(Any, SimpleNamespace()),
     )
 
-    workflow._capture_echo(SimpleNamespace(scan_index=7), detected_level=25)
+    workflow._capture_echo(
+        cast(Any, SimpleNamespace(scan_index=7, page=0, row=0, col=0)),
+        detected_level=25,
+    )
 
     assert ocr.ocr_calls == 0
     assert ocr.submitted[0].detected_level == 25
     np.testing.assert_array_equal(ocr.submitted[0].sonata_icon, image[4:6, 2:4])
+
+
+def test_capture_echo_write_debug_passes_level_crop(monkeypatch, tmp_path) -> None:
+    image = np.arange(6 * 6 * 3, dtype=np.uint8).reshape(6, 6, 3)
+
+    monkeypatch.setattr(echo_workflow_module, 'capture_full', lambda *args, **kwargs: image)
+
+    debug_call: dict[str, object] = {}
+
+    def _fake_write_echo_debug_artifacts(scan, **kwargs):
+        debug_call['scan_index'] = scan.index
+        debug_call.update(kwargs)
+
+    monkeypatch.setattr(
+        'wuwa_inventory_kamera.scraping.service.echo_reprocess._write_echo_debug_artifacts',
+        _fake_write_echo_debug_artifacts,
+    )
+
+    layout = SimpleNamespace(
+        width=6,
+        height=6,
+        monitor=1,
+        echoes=SimpleNamespace(
+            rarityColorPick=SimpleNamespace(x=0, y=0),
+            echoCard=SimpleNamespace(x=0, y=0, w=2, h=2),
+            fullStatsName=SimpleNamespace(x=2, y=0, w=2, h=2),
+            fullStatsValue=SimpleNamespace(x=0, y=2, w=2, h=2),
+            echoName=SimpleNamespace(x=2, y=2, w=2, h=2),
+            level=SimpleNamespace(x=4, y=0, w=2, h=2),
+            sonataIcon=SimpleNamespace(
+                radius=1.0,
+                level_X=SimpleNamespace(
+                    circle=SimpleNamespace(x=1.0, y=1.0),
+                    icon=SimpleNamespace(x=0, y=4, w=2, h=2),
+                ),
+                level_XX=SimpleNamespace(
+                    circle=SimpleNamespace(x=1.0, y=1.0),
+                    icon=SimpleNamespace(x=2, y=4, w=2, h=2),
+                ),
+            ),
+        ),
+    )
+
+    class _FakeOcrService:
+        def submit(self, capture):
+            return SimpleNamespace(capture=capture)
+
+    workflow = EchoWorkflow(
+        nav=cast(Any, SimpleNamespace(layout=layout, gw=None)),
+        ocr_service=cast(Any, _FakeOcrService()),
+        session=cast(Any, SimpleNamespace(session_id='test-session')),
+        save_raw=tmp_path / 'raw',
+        write_debug=True,
+    )
+
+    workflow._capture_echo(
+        cast(Any, SimpleNamespace(scan_index=7, page=0, row=0, col=0)),
+        detected_level=25,
+    )
+
+    assert debug_call['scan_index'] == 7
+    np.testing.assert_array_equal(debug_call['level'], image[0:2, 4:6])

@@ -92,7 +92,8 @@ text_color_ranges = [
 #text_color_ranges = [
 #    [[177, 165, 153], [217, 205, 193]],
 #]
-post_upscale = [128, 128]
+single_line = true
+post_upscale = [64, 64]
 
 allowed_chars = "0123456789+"
 cache_mode = "transient"

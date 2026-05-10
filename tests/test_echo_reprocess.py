@@ -49,6 +49,16 @@ class _FakeOcrService:
         return '25'
 
 
+class _RecordingOcrService(_FakeOcrService):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.adhoc_calls: list[tuple[np.ndarray, str]] = []
+
+    def ocr_adhoc_text(self, image, roi_key: str) -> str:
+        self.adhoc_calls.append((image.copy(), roi_key))
+        return '25'
+
+
 class _FakeScan:
     def __init__(self, image: np.ndarray, *, full_path=None) -> None:
         self.index = 3
@@ -110,6 +120,10 @@ def test_reprocess_reconstructs_echo_name_crop(monkeypatch) -> None:
     assert _FakeFuture.last_timeout is None
     assert _FakeOcrService.instances[0].kwargs['max_batch_size'] == 8
     capture = _FakeOcrService.instances[0].submitted[0]
+    np.testing.assert_array_equal(
+        capture.card,
+        cv2.cvtColor(image[0:2, 0:2], cv2.COLOR_RGB2BGR),
+    )
     np.testing.assert_array_equal(
         capture.echo_name,
         cv2.cvtColor(image[2:4, 2:4], cv2.COLOR_RGB2BGR),
@@ -272,4 +286,38 @@ def test_reprocess_uses_shared_level_decision_for_sonata_slot(monkeypatch) -> No
 
     capture = _FakeOcrService.instances[0].submitted[0]
     assert capture.detected_level == 25
-    np.testing.assert_array_equal(capture.sonata_icon, image[4:6, 2:4])
+    np.testing.assert_array_equal(
+        capture.sonata_icon,
+        cv2.cvtColor(image[4:6, 2:4], cv2.COLOR_RGB2BGR),
+    )
+
+
+def test_reprocess_converts_level_crop_to_bgr_for_adhoc_ocr(monkeypatch) -> None:
+    screen_info_module = ModuleType('wuwa_inventory_kamera.game.screen_info')
+    screen_info_module.ScreenInfo = _FakeScreenInfo
+    monkeypatch.setitem(sys.modules, 'wuwa_inventory_kamera.game.screen_info', screen_info_module)
+
+    ocr_service_module = ModuleType('wuwa_inventory_kamera.scraping.service.ocr_service')
+    ocr_service_module.OcrService = _RecordingOcrService
+    monkeypatch.setitem(sys.modules, 'wuwa_inventory_kamera.scraping.service.ocr_service', ocr_service_module)
+
+    _RecordingOcrService.instances.clear()
+    image = np.arange(6 * 6 * 3, dtype=np.uint8).reshape(6, 6, 3)
+    scan = _FakeScan(image)
+
+    reprocess_echo_scans_with_service(
+        scans=[scan],
+        providers=['CPUExecutionProvider'],
+        min_rarity=5,
+        min_level=21,
+        write_debug=False,
+    )
+
+    service = _RecordingOcrService.instances[0]
+    assert len(service.adhoc_calls) == 1
+    adhoc_image, roi_key = service.adhoc_calls[0]
+    assert roi_key == 'echoes.level'
+    np.testing.assert_array_equal(
+        adhoc_image,
+        cv2.cvtColor(image[0:2, 4:6], cv2.COLOR_RGB2BGR),
+    )

@@ -8,6 +8,7 @@ import numpy as np
 from wuwa_inventory_kamera.scraping.ocr.region_specs import (
     OcrRegionSpec,
     SignaturePreprocessSpec,
+    get_spec,
     load_specs_from_toml,
 )
 from wuwa_inventory_kamera.scraping.service.ocr_cache import OcrCache
@@ -110,6 +111,13 @@ def test_single_line_repair_bridges_tiny_horizontal_hole() -> None:
     processed = _gray_from_rgb(spec.preprocess(image))
 
     assert processed[3, 3] > 0
+
+
+def test_packaged_echo_level_spec_uses_single_line_ocr() -> None:
+    spec = get_spec("echoes.level")
+
+    assert spec is not None
+    assert spec.single_line is True
 
 
 def test_post_scaling_resizes_ocr_output() -> None:

@@ -162,10 +162,11 @@ def reprocess_echo_scans_with_service(
 
             si = ScreenInfo(scan.screen_width, scan.screen_height).echoes
 
-            card = scan.full_screenshot[
+            card_rgb = scan.full_screenshot[
                 si.echoCard.y: si.echoCard.y + si.echoCard.h,
                 si.echoCard.x: si.echoCard.x + si.echoCard.w,
             ]
+            card = cv2.cvtColor(card_rgb, cv2.COLOR_RGB2BGR)
             stats_name = scan.full_screenshot[
                 si.fullStatsName.y: si.fullStatsName.y + si.fullStatsName.h,
                 si.fullStatsName.x: si.fullStatsName.x + si.fullStatsName.w,
@@ -184,8 +185,9 @@ def reprocess_echo_scans_with_service(
                 int(si.level.y): int(si.level.y + si.level.h),
                 int(si.level.x): int(si.level.x + si.level.w),
             ]
+            level_crop_bgr = cv2.cvtColor(level_crop, cv2.COLOR_RGB2BGR)
             level_decision = decide_echo_level(
-                level_text=svc.ocr_adhoc_text(level_crop, 'echoes.level')
+                level_text=svc.ocr_adhoc_text(level_crop_bgr, 'echoes.level')
             )
             si_slot = select_level_dependent_sonata_slot(
                 si_raw,
@@ -197,10 +199,11 @@ def reprocess_echo_scans_with_service(
             sonata_icon_r = si_raw.radius
             detected_level = level_decision.detected_level
 
-            sonata_icon = scan.full_screenshot[
+            sonata_icon_rgb = scan.full_screenshot[
                 int(icon_roi.y): int(icon_roi.y + icon_roi.h),
                 int(icon_roi.x): int(icon_roi.x + icon_roi.w),
             ]
+            sonata_icon = cv2.cvtColor(sonata_icon_rgb, cv2.COLOR_RGB2BGR)
 
             echo_name = None
             if hasattr(si, 'echoName'):

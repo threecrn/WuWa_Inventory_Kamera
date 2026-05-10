@@ -389,12 +389,12 @@ class EchoWorkflow:
         sonata_icon_cx: float | None = None
         sonata_icon_cy: float | None = None
         sonata_icon_r:  float | None = None
+        level_crop = full[
+            int(ei.level.y) : int(ei.level.y + ei.level.h),
+            int(ei.level.x) : int(ei.level.x + ei.level.w),
+        ]
 
         if detected_level is None:
-            level_crop = full[
-                int(ei.level.y) : int(ei.level.y + ei.level.h),
-                int(ei.level.x) : int(ei.level.x + ei.level.w),
-            ]
             level_decision = decide_echo_level(
                 level_text=self.ocr.ocr_adhoc_text(level_crop, 'echoes.level')
             )
@@ -450,6 +450,7 @@ class EchoWorkflow:
                 raw_base=_debug_base,
                 detected_rarity=detected_rarity,
                 echo_name=echo_name,
+                level=level_crop,
                 stats_name=stats_name,
                 stats_value=stats_value,
             )
