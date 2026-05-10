@@ -146,6 +146,8 @@ def reprocess_echo_scans_with_service(
             if ocr_cache_path is not None else None
         ),
         resolution=resolution,
+        det_limit_side_len=32*12,
+        #det_limit_type='max',
     ) as svc:
         futures = []
         for scan in scans:

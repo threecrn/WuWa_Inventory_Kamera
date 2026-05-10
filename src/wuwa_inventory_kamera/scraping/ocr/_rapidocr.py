@@ -17,6 +17,7 @@ from ._types import OcrResult
 logger = logging.getLogger(__name__)
 
 _DEDUP_Y_THRESHOLD = 15
+_RUNTIME_DEBUG_PATCHED = False
 
 
 def _y_center(bbox) -> float:
@@ -55,6 +56,17 @@ class RapidOcrBackend:
     """
 
     @staticmethod
+    def _model_kind(model_name: str) -> str:
+        lower_name = model_name.lower()
+        if '_det' in lower_name:
+            return 'det'
+        if '_rec' in lower_name:
+            return 'rec'
+        if '_cls' in lower_name:
+            return 'cls'
+        return 'model'
+
+    @staticmethod
     @contextlib.contextmanager
     def _provider_patch(providers: list):
         """
@@ -62,21 +74,37 @@ class RapidOcrBackend:
         ONNX session created inside the context uses *providers*.
         """
         from rapidocr_onnxruntime import utils as _rutils
-        from onnxruntime import InferenceSession, SessionOptions, GraphOptimizationLevel
+        import onnxruntime as ort
+        import random
 
         _orig_init = _rutils.OrtInferSession.__init__
 
         def _patched_init(self, config):
-            sess_opt = SessionOptions()
+            model_path = config['model_path']
+            model_name = model_path.split("\\")[-1]
+            sess_opt = ort.SessionOptions()
             sess_opt.log_severity_level = 4
-            sess_opt.enable_cpu_mem_arena = False
-            sess_opt.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_ALL
-            _rutils.OrtInferSession._verify_model(config['model_path'])
-            self.session = InferenceSession(
-                config['model_path'],
+            sess_opt.enable_cpu_mem_arena = False # Avoid fragmentation issues with large models
+            sess_opt.enable_mem_pattern = False   # Avoid fragmentation issues with large models
+            sess_opt.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL # Avoid concurrency issues with some providers
+            #sess_opt.add_session_config_entry('arena_extend_strategy', '1') # Allow arena to grow beyond initial size for large models
+            #sess_opt.add_session_config_entry('initial_chunk_size_bytes', str(256*1024*1024)) # Start with a larger initial chunk to reduce fragmentation for large models
+            #sess_opt.add_session_config_entry("session.use_device_allocator_for_initializers", "1") # Use device memory for initializers to reduce fragmentation and improve performance on some providers
+            sess_opt.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            #sess_opt.enable_profiling = True
+            r: str = random.randbytes(8).hex()
+            provider_type: str = 'dml' if 'DmlExecutionProvider' in providers else 'cpu'
+            #print(f"model_path: {config['model_path']}")
+            sess_opt.profile_file_prefix = f"rapidocr_onnxr_{r}_{provider_type}_{model_name}_"
+            _rutils.OrtInferSession._verify_model(model_path)
+            self.session = ort.InferenceSession(
+                model_path,
                 sess_options=sess_opt,
                 providers=providers,
             )
+            self._wuwa_model_name = model_name
+            self._wuwa_model_kind = RapidOcrBackend._model_kind(model_name)
+            self._wuwa_requested_providers = tuple(providers)
             logger.debug(
                 'RapidOCR session providers (patched): %s',
                 self.session.get_providers(),
@@ -88,6 +116,47 @@ class RapidOcrBackend:
         finally:
             _rutils.OrtInferSession.__init__ = _orig_init
 
+    @staticmethod
+    def _ensure_runtime_debug_patches() -> None:
+        global _RUNTIME_DEBUG_PATCHED
+
+        from rapidocr_onnxruntime import utils as _rutils
+
+        if _RUNTIME_DEBUG_PATCHED:
+            return
+
+        _orig_call = _rutils.OrtInferSession.__call__
+
+        def _patched_call(self, input_content):
+            if logger.isEnabledFor(logging.DEBUG):
+                shape = tuple(getattr(input_content, 'shape', ()))
+                model_name = getattr(self, '_wuwa_model_name', '<unknown>')
+                model_kind = getattr(self, '_wuwa_model_kind', 'model')
+                providers = tuple(self.session.get_providers())
+
+                if model_kind == 'rec' and len(shape) == 4:
+                    logger.debug(
+                        'RapidOCR rec batch: model=%s providers=%s batch_size=%d batch_width=%d input_shape=%s',
+                        model_name,
+                        providers,
+                        shape[0],
+                        shape[3],
+                        shape,
+                    )
+                else:
+                    logger.debug(
+                        'RapidOCR %s input: model=%s providers=%s input_shape=%s',
+                        model_kind,
+                        model_name,
+                        providers,
+                        shape,
+                    )
+
+            return _orig_call(self, input_content)
+
+        _rutils.OrtInferSession.__call__ = _patched_call
+        #_RUNTIME_DEBUG_PATCHED = True
+
     def __init__(
         self,
         pad_px: int = 10,
@@ -96,6 +165,7 @@ class RapidOcrBackend:
         **kwargs,
     ):
         from rapidocr_onnxruntime import RapidOCR
+        self._ensure_runtime_debug_patches()
         ctx = self._provider_patch(onnx_providers) if onnx_providers else contextlib.nullcontext()
         with ctx:
             self._ocr = RapidOCR(**kwargs)
