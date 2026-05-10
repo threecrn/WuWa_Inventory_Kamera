@@ -42,6 +42,13 @@ Adjust a threshold-based region and keep a backup of the TOML::
         --spec echoes.fullStatsValue \
         --threshold-mode floor \
         --floor-value 110
+
+Tune OCR-stage scaling and the signature image cap::
+
+    uv run cli/calibrate_ocr.py write \
+        --spec echoes.fullStatsValue \
+        --post-upscale 384,128 \
+        --signature-post-downscale 256,128
 """
 from __future__ import annotations
 
@@ -327,9 +334,44 @@ def _build_parser() -> argparse.ArgumentParser:
     write.add_argument("--sig-text-floor", type=int, default=None, help="Base signature text floor.")
     write.add_argument("--sig-max-spread", type=int, default=None, help="Base signature max spread.")
     write.add_argument(
-        "--sig-downscale",
+        "--pre-upscale",
         default=None,
-        help="Base signature downscale as W,H.",
+        help="Base OCR pre-upscale minimum as W,H.",
+    )
+    write.add_argument(
+        "--pre-downscale",
+        default=None,
+        help="Base OCR pre-downscale maximum as W,H.",
+    )
+    write.add_argument(
+        "--post-upscale",
+        default=None,
+        help="Base OCR post-upscale minimum as W,H.",
+    )
+    write.add_argument(
+        "--post-downscale",
+        default=None,
+        help="Base OCR post-downscale maximum as W,H.",
+    )
+    write.add_argument(
+        "--signature-pre-upscale",
+        default=None,
+        help="Signature pre-upscale minimum as W,H.",
+    )
+    write.add_argument(
+        "--signature-pre-downscale",
+        default=None,
+        help="Signature pre-downscale maximum as W,H.",
+    )
+    write.add_argument(
+        "--signature-post-upscale",
+        default=None,
+        help="Signature post-upscale minimum as W,H.",
+    )
+    write.add_argument(
+        "--signature-post-downscale",
+        default=None,
+        help="Signature post-downscale maximum as W,H.",
     )
     write.add_argument(
         "--backup-suffix",
@@ -583,7 +625,7 @@ def _parse_wh(value: str) -> list[int]:
         return [int(w_raw), int(h_raw)]
     except ValueError as exc:
         raise argparse.ArgumentTypeError(
-            f"sig_downscale must be W,H but got {value!r}"
+            f"size must be W,H but got {value!r}"
         ) from exc
 
 
@@ -704,6 +746,14 @@ def _ensure_target_section(
     raise ValueError(f"Unsupported target: {target!r}")
 
 
+def _ensure_signature_section(base_section: dict[str, Any]) -> dict[str, Any]:
+    signature = base_section.get("signature")
+    if not isinstance(signature, dict):
+        signature = {}
+        base_section["signature"] = signature
+    return signature
+
+
 def _infer_sampling_space(
     base_section: dict[str, Any],
     target_section: dict[str, Any],
@@ -753,13 +803,34 @@ def _print_section_preview(
             "invert",
             "allowed_chars",
             "cache_mode",
+            "pre_upscale",
+            "pre_downscale",
+            "post_upscale",
+            "post_downscale",
             "sig_from_preprocessed",
             "sig_text_floor",
             "sig_max_spread",
-            "sig_downscale",
         ):
             if key in base_section:
                 print(f"{key} = {_format_toml_value(base_section[key])}")
+
+    signature_section = base_section.get("signature")
+    if isinstance(signature_section, dict) and signature_section:
+        print("\n[signature scalars]")
+        for key in (
+            "color_space",
+            "threshold_mode",
+            "floor_value",
+            "morphology",
+            "invert",
+            "single_line",
+            "pre_upscale",
+            "pre_downscale",
+            "post_upscale",
+            "post_downscale",
+        ):
+            if key in signature_section:
+                print(f"{key} = {_format_toml_value(signature_section[key])}")
 
 
 # ---------------------------------------------------------------------------
@@ -888,8 +959,38 @@ def cmd_write(args: argparse.Namespace) -> None:
         base_section["sig_text_floor"] = args.sig_text_floor
     if args.sig_max_spread is not None:
         base_section["sig_max_spread"] = args.sig_max_spread
-    if args.sig_downscale is not None:
-        base_section["sig_downscale"] = _parse_wh(args.sig_downscale)
+    if args.pre_upscale is not None:
+        base_section["pre_upscale"] = _parse_wh(args.pre_upscale)
+    if args.pre_downscale is not None:
+        base_section["pre_downscale"] = _parse_wh(args.pre_downscale)
+    if args.post_upscale is not None:
+        base_section["post_upscale"] = _parse_wh(args.post_upscale)
+    if args.post_downscale is not None:
+        base_section["post_downscale"] = _parse_wh(args.post_downscale)
+
+    signature_section = None
+    if any(
+        value is not None
+        for value in (
+            args.signature_pre_upscale,
+            args.signature_pre_downscale,
+            args.signature_post_upscale,
+            args.signature_post_downscale,
+        )
+    ):
+        signature_section = _ensure_signature_section(base_section)
+    if args.signature_pre_upscale is not None:
+        assert signature_section is not None
+        signature_section["pre_upscale"] = _parse_wh(args.signature_pre_upscale)
+    if args.signature_pre_downscale is not None:
+        assert signature_section is not None
+        signature_section["pre_downscale"] = _parse_wh(args.signature_pre_downscale)
+    if args.signature_post_upscale is not None:
+        assert signature_section is not None
+        signature_section["post_upscale"] = _parse_wh(args.signature_post_upscale)
+    if args.signature_post_downscale is not None:
+        assert signature_section is not None
+        signature_section["post_downscale"] = _parse_wh(args.signature_post_downscale)
 
     _print_section_preview(args.spec, args.target, args.rarity, base_section, target_section)
 

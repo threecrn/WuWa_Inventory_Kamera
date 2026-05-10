@@ -197,6 +197,9 @@ def test_reprocess_write_debug_dumps_region_images(monkeypatch, tmp_path) -> Non
         'echo_name.png',
         'echo_name_preprocessed.png',
         'echo_name_signature.png',
+        'level.png',
+        'level_preprocessed.png',
+        'level_signature.png',
         'stats_name.png',
         'stats_name_preprocessed.png',
         'stats_name_signature.png',
@@ -211,9 +214,11 @@ def test_reprocess_write_debug_dumps_region_images(monkeypatch, tmp_path) -> Non
         assert saved is not None, filename
 
     echo_name_raw = cv2.imread(str(debug_dir / 'echo_name.png'), cv2.IMREAD_COLOR)
+    level_raw = cv2.imread(str(debug_dir / 'level.png'), cv2.IMREAD_COLOR)
     stats_name_raw = cv2.imread(str(debug_dir / 'stats_name.png'), cv2.IMREAD_COLOR)
     stats_value_raw = cv2.imread(str(debug_dir / 'stats_value.png'), cv2.IMREAD_COLOR)
     np.testing.assert_array_equal(echo_name_raw, cv2.cvtColor(image[2:4, 2:4], cv2.COLOR_RGB2BGR))
+    np.testing.assert_array_equal(level_raw, cv2.cvtColor(image[0:2, 4:6], cv2.COLOR_RGB2BGR))
     np.testing.assert_array_equal(stats_name_raw, cv2.cvtColor(image[0:2, 2:4], cv2.COLOR_RGB2BGR))
     np.testing.assert_array_equal(stats_value_raw, cv2.cvtColor(image[2:4, 0:2], cv2.COLOR_RGB2BGR))
 

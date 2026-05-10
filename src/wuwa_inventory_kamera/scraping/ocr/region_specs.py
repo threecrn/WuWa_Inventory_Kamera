@@ -7,8 +7,9 @@ preprocessing recipe and cache-signature strategy.
 
 Each :class:`OcrRegionSpec` describes:
 
+* **stage scaling** — optional pre/post resize bounds for OCR input;
 * **colour masking** — exact or range-based text/background colour
-  filters, optionally keyed by item rarity;
+    filters, optionally keyed by item rarity;
 * **threshold pipeline** — floor / Otsu / none;
 * **morphology** — optional closing pass;
 * **cache tier** — none / transient / persistent;
@@ -23,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -38,11 +40,14 @@ DEFAULT_SPECS_PATH = Path(__file__).resolve().parents[2] / "config" / "ocr_regio
 # Each bound is a 3-tuple (or 1-tuple for gray).  Exact mode is lo == hi.
 ColorRange = tuple[tuple[int, ...], tuple[int, ...]]
 ColorRangeList = list[ColorRange]
+Size2D = tuple[int, int]
+
+_DEFAULT_SIGNATURE_POST_DOWNSCALE: Size2D = (512, 256)
 
 
 @dataclass(frozen=True, slots=True)
 class SignaturePreprocessSpec:
-    """Optional preprocessing overrides used only for signature hashing."""
+    """Optional preprocessing and scaling overrides used for signature hashing."""
 
     color_space: Literal["hsv", "rgb", "bgr", "gray"] | None = None
     text_color_ranges: ColorRangeList | None = None
@@ -54,6 +59,27 @@ class SignaturePreprocessSpec:
     floor_value: int | None = None
     morphology: Literal["close", "none"] | None = None
     fallback_color_space: str | None = None
+    pre_upscale: Size2D | None = None
+    pre_downscale: Size2D | None = None
+    post_upscale: Size2D | None = None
+    post_downscale: Size2D | None = None
+
+    def has_preprocess_overrides(self) -> bool:
+        return any(
+            value is not None
+            for value in (
+                self.color_space,
+                self.text_color_ranges,
+                self.text_color_ranges_by_rarity,
+                self.background_color_ranges,
+                self.invert,
+                self.single_line,
+                self.threshold_mode,
+                self.floor_value,
+                self.morphology,
+                self.fallback_color_space,
+            )
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,13 +110,20 @@ class OcrRegionSpec:
     morphology: Literal["close", "none"] = "none"
     allowed_chars: str | None = None
 
+    # Resize bounds applied around OCR preprocessing. Each tuple is
+    # (max_width, max_height) or (min_width, min_height) as documented by
+    # the field name, with aspect ratio preserved.
+    pre_upscale: Size2D | None = None
+    pre_downscale: Size2D | None = None
+    post_upscale: Size2D | None = None
+    post_downscale: Size2D | None = None
+
     # ---- Cache tier ----
     cache_mode: Literal["none", "transient", "persistent"] = "persistent"
 
     # ---- Signature parameters ----
     sig_text_floor: int = 200
     sig_max_spread: int = 32
-    sig_downscale: tuple[int, int] = (512, 256)
     sig_from_preprocessed: bool = False
 
     # Optional signature-only preprocessing recipe.  If present, this takes
@@ -135,9 +168,11 @@ class OcrRegionSpec:
             A single-channel (H, W) uint8 image ready for the OCR engine
             (converted to 3-channel RGB by ``format_for_ocr``).
         """
-        plane = self._preprocess_plane(
+        plane = self._preprocess_scaled_plane(
             bgr,
             rarity,
+            pre_upscale=self.pre_upscale,
+            pre_downscale=self.pre_downscale,
             color_space=self.color_space,
             text_color_ranges=self.text_color_ranges,
             text_color_ranges_by_rarity=self.text_color_ranges_by_rarity,
@@ -148,8 +183,55 @@ class OcrRegionSpec:
             floor_value=self.floor_value,
             morphology=self.morphology,
             fallback_color_space=self.fallback_color_space,
+            post_upscale=self.post_upscale,
+            post_downscale=self.post_downscale,
         )
         return _format_for_ocr(plane)
+
+    def _preprocess_scaled_plane(
+        self,
+        bgr: np.ndarray,
+        rarity: int | None,
+        *,
+        pre_upscale: Size2D | None,
+        pre_downscale: Size2D | None,
+        color_space: Literal["hsv", "rgb", "bgr", "gray"],
+        text_color_ranges: ColorRangeList | None,
+        text_color_ranges_by_rarity: dict[int, ColorRangeList] | None,
+        background_color_ranges: ColorRangeList | None,
+        invert: bool,
+        single_line: bool,
+        threshold_mode: Literal["otsu", "floor", "none"],
+        floor_value: int,
+        morphology: Literal["close", "none"],
+        fallback_color_space: str | None,
+        post_upscale: Size2D | None,
+        post_downscale: Size2D | None,
+    ) -> np.ndarray:
+        scaled_bgr = _apply_scaling_stage(
+            bgr,
+            upscale_min=pre_upscale,
+            downscale_max=pre_downscale,
+        )
+        plane = self._preprocess_plane(
+            scaled_bgr,
+            rarity,
+            color_space=color_space,
+            text_color_ranges=text_color_ranges,
+            text_color_ranges_by_rarity=text_color_ranges_by_rarity,
+            background_color_ranges=background_color_ranges,
+            invert=invert,
+            single_line=single_line,
+            threshold_mode=threshold_mode,
+            floor_value=floor_value,
+            morphology=morphology,
+            fallback_color_space=fallback_color_space,
+        )
+        return _apply_scaling_stage(
+            plane,
+            upscale_min=post_upscale,
+            downscale_max=post_downscale,
+        )
 
     def _preprocess_plane(
         self,
@@ -207,47 +289,59 @@ class OcrRegionSpec:
         bgr: np.ndarray,
         rarity: int | None,
     ) -> np.ndarray:
-        if self.signature_preprocess is None:
-            preprocessed = self.preprocess(bgr, rarity)
-            if preprocessed.ndim == 3:
-                return cv2.cvtColor(preprocessed, cv2.COLOR_RGB2GRAY)
-            return preprocessed
-
         sig = self.signature_preprocess
-        plane = self._preprocess_plane(
+        plane = self._preprocess_scaled_plane(
             bgr,
             rarity,
-            color_space=sig.color_space or self.color_space,
+            pre_upscale=(sig.pre_upscale if sig is not None else None),
+            pre_downscale=(sig.pre_downscale if sig is not None else None),
+            color_space=(sig.color_space if sig is not None and sig.color_space is not None else self.color_space),
             text_color_ranges=(
                 sig.text_color_ranges
-                if sig.text_color_ranges is not None
+                if sig is not None and sig.text_color_ranges is not None
                 else self.text_color_ranges
             ),
             text_color_ranges_by_rarity=(
                 sig.text_color_ranges_by_rarity
-                if sig.text_color_ranges_by_rarity is not None
+                if sig is not None and sig.text_color_ranges_by_rarity is not None
                 else self.text_color_ranges_by_rarity
             ),
             background_color_ranges=(
                 sig.background_color_ranges
-                if sig.background_color_ranges is not None
+                if sig is not None and sig.background_color_ranges is not None
                 else self.background_color_ranges
             ),
-            invert=sig.invert if sig.invert is not None else self.invert,
+            invert=(sig.invert if sig is not None and sig.invert is not None else self.invert),
             single_line=(
-                sig.single_line if sig.single_line is not None else self.single_line
+                sig.single_line
+                if sig is not None and sig.single_line is not None
+                else self.single_line
             ),
             threshold_mode=(
                 sig.threshold_mode
-                if sig.threshold_mode is not None
+                if sig is not None and sig.threshold_mode is not None
                 else self.threshold_mode
             ),
-            floor_value=sig.floor_value if sig.floor_value is not None else self.floor_value,
-            morphology=sig.morphology if sig.morphology is not None else self.morphology,
+            floor_value=(
+                sig.floor_value
+                if sig is not None and sig.floor_value is not None
+                else self.floor_value
+            ),
+            morphology=(
+                sig.morphology
+                if sig is not None and sig.morphology is not None
+                else self.morphology
+            ),
             fallback_color_space=(
                 sig.fallback_color_space
-                if sig.fallback_color_space is not None
+                if sig is not None and sig.fallback_color_space is not None
                 else self.fallback_color_space
+            ),
+            post_upscale=(sig.post_upscale if sig is not None else None),
+            post_downscale=(
+                sig.post_downscale
+                if sig is not None and sig.post_downscale is not None
+                else _DEFAULT_SIGNATURE_POST_DOWNSCALE
             ),
         )
         return plane
@@ -291,7 +385,7 @@ class OcrRegionSpec:
         bgr: np.ndarray,
         rarity: int | None,
     ) -> np.ndarray:
-        if self.signature_preprocess is not None or self.sig_from_preprocessed:
+        if self._signature_uses_preprocessed_source():
             preprocessed = self._preprocess_for_signature(bgr, rarity)
             # If preprocessing collapses to a constant image, hashing it will
             # make unrelated crops collide in the OCR cache. Fall back to a
@@ -302,21 +396,45 @@ class OcrRegionSpec:
                     floor=self.sig_text_floor,
                 )
                 if np.ptp(normalized) != 0:
-                    return _downscale(normalized, self.sig_downscale)
-                return _downscale(preprocessed, self.sig_downscale)
+                    return self._finalize_signature_image(normalized)
+                return self._finalize_signature_image(preprocessed)
 
         # Raw-signature path
-        color_view = _convert_color_space(bgr, self.color_space)
+        sig = self.signature_preprocess
+        scaled_bgr = _apply_scaling_stage(
+            bgr,
+            upscale_min=(sig.pre_upscale if sig is not None else None),
+            downscale_max=(sig.pre_downscale if sig is not None else None),
+        )
+        color_view = _convert_color_space(scaled_bgr, self.color_space)
         reject_mask = _mask_from_ranges(color_view, self.background_color_ranges)
         if reject_mask is not None:
-            bgr = _zero_masked(bgr, reject_mask)
+            scaled_bgr = _zero_masked(scaled_bgr, reject_mask)
 
         normalized = _normalize_for_signature(
-            bgr,
+            scaled_bgr,
             floor=self.sig_text_floor,
             max_spread=self.sig_max_spread,
         )
-        return _downscale(normalized, self.sig_downscale)
+        return self._finalize_signature_image(normalized)
+
+    def _signature_uses_preprocessed_source(self) -> bool:
+        return self.sig_from_preprocessed or (
+            self.signature_preprocess is not None
+            and self.signature_preprocess.has_preprocess_overrides()
+        )
+
+    def _finalize_signature_image(self, image: np.ndarray) -> np.ndarray:
+        sig = self.signature_preprocess
+        return _apply_scaling_stage(
+            image,
+            upscale_min=(sig.post_upscale if sig is not None else None),
+            downscale_max=(
+                sig.post_downscale
+                if sig is not None and sig.post_downscale is not None
+                else _DEFAULT_SIGNATURE_POST_DOWNSCALE
+            ),
+        )
 
 
 # ======================================================================
@@ -408,16 +526,63 @@ def _format_for_ocr(plane: np.ndarray) -> np.ndarray:
     return plane
 
 
-def _downscale(image: np.ndarray, max_size: tuple[int, int]) -> np.ndarray:
+def _apply_scaling_stage(
+    image: np.ndarray,
+    *,
+    upscale_min: Size2D | None,
+    downscale_max: Size2D | None,
+) -> np.ndarray:
+    scaled = image
+    if upscale_min is not None:
+        scaled = _upscale_to_min(scaled, upscale_min)
+    if downscale_max is not None:
+        scaled = _downscale(scaled, downscale_max)
+    if scaled.flags.c_contiguous:
+        return scaled
+    return np.ascontiguousarray(scaled)
+
+
+def _upscale_to_min(image: np.ndarray, min_size: Size2D) -> np.ndarray:
+    """Resize *image* up so both dimensions meet *min_size*."""
+    h, w = image.shape[:2]
+    min_w, min_h = min_size
+    if w >= min_w and h >= min_h:
+        return image if image.flags.c_contiguous else np.ascontiguousarray(image)
+
+    scale = max(min_w / max(1, w), min_h / max(1, h))
+    new_w = max(1, math.ceil(w * scale))
+    new_h = max(1, math.ceil(h * scale))
+    interpolation = cv2.INTER_NEAREST if _is_binary(image) else cv2.INTER_LINEAR
+    return _resize_preserving_binary(
+        image,
+        (new_w, new_h),
+        interpolation=interpolation,
+    )
+
+
+def _downscale(image: np.ndarray, max_size: Size2D) -> np.ndarray:
     """Resize *image* to fit within *max_size*, preserving aspect ratio."""
     h, w = image.shape[:2]
     max_w, max_h = max_size
     if w <= max_w and h <= max_h:
-        return np.ascontiguousarray(image)
+        return image if image.flags.c_contiguous else np.ascontiguousarray(image)
     scale = min(max_w / w, max_h / h)
     new_w = max(1, int(w * scale))
     new_h = max(1, int(h * scale))
-    resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    return _resize_preserving_binary(
+        image,
+        (new_w, new_h),
+        interpolation=cv2.INTER_AREA,
+    )
+
+
+def _resize_preserving_binary(
+    image: np.ndarray,
+    size: Size2D,
+    *,
+    interpolation: int,
+) -> np.ndarray:
+    resized = cv2.resize(image, size, interpolation=interpolation)
     # Re-binarize if input was binary
     if _is_binary(image):
         resized = np.where(resized >= 32, np.uint8(255), np.uint8(0))
@@ -551,7 +716,8 @@ def _parse_section(
         "sig_text_floor", "sig_max_spread", "sig_downscale",
         "sig_from_preprocessed", "invert", "background_color_ranges",
         "rarity_source", "rarity_overrides", "fallback", "single_line",
-        "signature",
+        "signature", "pre_upscale", "pre_downscale",
+        "post_upscale", "post_downscale",
         "spec_version",
     }
     has_spec_keys = any(k in spec_keys for k in section)
@@ -588,8 +754,14 @@ def _build_spec(
         if simple_key in data:
             kwargs[simple_key] = data[simple_key]
 
-    if "sig_downscale" in data:
-        kwargs["sig_downscale"] = tuple(data["sig_downscale"])
+    for scale_key in (
+        "pre_upscale",
+        "pre_downscale",
+        "post_upscale",
+        "post_downscale",
+    ):
+        if scale_key in data:
+            kwargs[scale_key] = _parse_size(data[scale_key], key=scale_key)
 
     if "text_color_ranges" in data:
         kwargs["text_color_ranges"] = _parse_color_ranges(data["text_color_ranges"])
@@ -627,15 +799,25 @@ def _build_spec(
                 if fallback_cs and fallback_cs != parent_cs:
                     kwargs["fallback_color_space"] = fallback_cs
 
-    if "signature" in data and isinstance(data["signature"], dict):
-        signature = _build_signature_preprocess(data["signature"])
+    raw_signature = data.get("signature")
+    signature_data: dict = raw_signature if isinstance(raw_signature, dict) else {}
+    legacy_sig_downscale = data.get("sig_downscale")
+    if signature_data or legacy_sig_downscale is not None:
+        signature = _build_signature_preprocess(
+            signature_data,
+            legacy_post_downscale=legacy_sig_downscale,
+        )
         if signature is not None:
             kwargs["signature_preprocess"] = signature
 
     return OcrRegionSpec(**kwargs)
 
 
-def _build_signature_preprocess(data: dict) -> SignaturePreprocessSpec | None:
+def _build_signature_preprocess(
+    data: dict,
+    *,
+    legacy_post_downscale: list[int] | tuple[int, int] | None = None,
+) -> SignaturePreprocessSpec | None:
     kwargs: dict = {}
 
     for simple_key in (
@@ -674,9 +856,34 @@ def _build_signature_preprocess(data: dict) -> SignaturePreprocessSpec | None:
         if fallback_cs is not None:
             kwargs["fallback_color_space"] = fallback_cs
 
+    for scale_key in (
+        "pre_upscale",
+        "pre_downscale",
+        "post_upscale",
+        "post_downscale",
+    ):
+        if scale_key in data:
+            kwargs[scale_key] = _parse_size(data[scale_key], key=scale_key)
+
+    if legacy_post_downscale is not None and "post_downscale" not in kwargs:
+        kwargs["post_downscale"] = _parse_size(
+            legacy_post_downscale,
+            key="sig_downscale",
+        )
+
     if not kwargs:
         return None
     return SignaturePreprocessSpec(**kwargs)
+
+
+def _parse_size(raw: list[int] | tuple[int, int], *, key: str) -> Size2D:
+    if len(raw) != 2:
+        raise ValueError(f"{key} must contain exactly two integers")
+    width = int(raw[0])
+    height = int(raw[1])
+    if width <= 0 or height <= 0:
+        raise ValueError(f"{key} values must be positive integers")
+    return width, height
 
 
 def _parse_color_ranges(raw: list) -> ColorRangeList:

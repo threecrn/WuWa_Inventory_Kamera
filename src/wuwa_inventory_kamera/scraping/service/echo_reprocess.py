@@ -21,6 +21,7 @@ _DEBUG_REGION_SPECS: tuple[tuple[str, str, str], ...] = (
     ('echoes.echoName', 'echo_name', 'bgr'),
     ('echoes.fullStatsName', 'stats_name', 'rgb'),
     ('echoes.fullStatsValue', 'stats_value', 'rgb'),
+    ('echoes.level', 'level', 'rgb'),
 )
 
 
@@ -80,6 +81,7 @@ def _write_echo_debug_artifacts(
     raw_base: str | Path | None,
     detected_rarity: int | None,
     echo_name: np.ndarray | None,
+    level: np.ndarray,
     stats_name: np.ndarray,
     stats_value: np.ndarray,
 ) -> None:
@@ -93,6 +95,7 @@ def _write_echo_debug_artifacts(
 
     region_images: dict[str, np.ndarray | None] = {
         'echo_name': echo_name,
+        'level': level,
         'stats_name': stats_name,
         'stats_value': stats_value,
     }
@@ -223,6 +226,7 @@ def reprocess_echo_scans_with_service(
                     raw_base=raw_base,
                     detected_rarity=detected_rarity,
                     echo_name=echo_name,
+                    level=level_crop,
                     stats_name=stats_name,
                     stats_value=stats_value,
                 )

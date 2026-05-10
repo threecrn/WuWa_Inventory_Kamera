@@ -3,6 +3,8 @@
 # Each section defines an OcrRegionSpec by its ROI key path.
 # Colour ranges use [[lo, lo, lo], [hi, hi, hi]] notation.
 # Exact mode: lo == hi, e.g. [[166, 235, 247], [166, 235, 247]].
+# OCR resize bounds use [width, height].
+# pre_upscale/post_upscale enforce minimum size; pre_downscale/post_downscale cap maximum size.
 
 spec_version = "3.3-new-ui-v2"
 
@@ -15,7 +17,6 @@ spec_version = "3.3-new-ui-v2"
 color_space = "hsv"
 cache_mode = "persistent"
 single_line = true
-sig_downscale = [1024, 64]
 
 [echoes.echoName.rarity_overrides."5"]
 text_color_ranges = [[[20, 60, 150], [32, 255, 255]]]
@@ -29,6 +30,7 @@ text_color_ranges = [[[55, 60, 150], [70, 255, 255]]]
 # Exact-match signature recipe for cache keying.
 [echoes.echoName.signature]
 color_space = "bgr"
+post_downscale = [1024, 64]
 
 [echoes.echoName.signature.rarity_overrides."5"]
 text_color_ranges = [
@@ -56,12 +58,12 @@ threshold_mode = "floor"
 floor_value = 100
 cache_mode = "persistent"
 #sig_from_preprocessed = true
-#sig_downscale = [64, 256]
+#signature.post_downscale = [64, 256]
 #sig_text_floor = 230
 #sig_max_spread = 32
-sig_downscale = [512, 512]
 [echoes.fullStatsName.signature]
 color_space = "bgr"
+post_downscale = [512, 512]
 text_color_ranges = [
     [[255, 255, 249], [255, 255, 249]],
 ]
@@ -73,23 +75,31 @@ floor_value = 100
 allowed_chars = "0123456789.%+"
 cache_mode = "persistent"
 #sig_from_preprocessed = true
-#sig_downscale = [128, 128]
+#signature.post_downscale = [128, 128]
 #sig_text_floor = 230
 #sig_max_spread = 32
-sig_downscale = [256, 512]
 [echoes.fullStatsValue.signature]
 color_space = "bgr"
+post_downscale = [256, 512]
 text_color_ranges = [
     [[255, 255, 249], [255, 255, 249]],
 ]
 
 [echoes.level]
-color_space = "gray"
-threshold_mode = "floor"
-floor_value = 150
-allowed_chars = "0123456789"
+#color_space = "bgr"
+#threshold_mode = "floor"
+#floor_value = 150
+#text_color_ranges = [
+#    [[177, 165, 153], [217, 205, 193]],
+#]
+post_upscale = [128, 128]
+
+allowed_chars = "0123456789+"
 cache_mode = "transient"
+
+
 #sig_from_preprocessed = true
+
 [echoes.level.signature]
 color_space = "bgr"
 text_color_ranges = [

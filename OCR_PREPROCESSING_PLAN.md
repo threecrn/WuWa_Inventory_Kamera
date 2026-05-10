@@ -63,6 +63,14 @@ class OcrRegionSpec:
     morphology: Literal["close", "none"] = "none"
     allowed_chars: str | None = None # forwarded to OCR engine (e.g. "0123456789.%")
 
+    # Optional scaling bounds applied around OCR preprocessing.
+    # Each stage preserves aspect ratio. Upscale fields enforce minimum
+    # size, downscale fields cap maximum size.
+    pre_upscale: tuple[int, int] | None = None
+    pre_downscale: tuple[int, int] | None = None
+    post_upscale: tuple[int, int] | None = None
+    post_downscale: tuple[int, int] | None = None
+
     # --- Cache Tier ---
     # "none"        — no caching; always hit the OCR engine (e.g. page counts that change every frame)
     # "transient"   — in-memory dict keyed by signature, scoped to the current scan session.
@@ -76,7 +84,6 @@ class OcrRegionSpec:
     # --- Signature Parameters (transient and persistent modes) ---
     sig_text_floor: int = 200        # pixel intensity floor for text isolation
     sig_max_spread: int = 32         # max channel spread for "near-white" detection
-    sig_downscale: tuple[int, int] = (64, 64)  # max signature thumb size
     # When True, the signature is computed on the *preprocessed* (color-masked) image
     # rather than the raw crop. This makes the key background-independent when the
     # preprocessing reliably strips the background (e.g. an HSV color mask).
@@ -336,6 +343,11 @@ NAV_PAGE_COUNT = OcrRegionSpec(
 
 ```python
 def preprocess_for_ocr(crop_bgr: np.ndarray, spec: OcrRegionSpec, rarity: int | None) -> np.ndarray:
+    crop_bgr = apply_stage_scaling(
+        crop_bgr,
+        min_size=spec.pre_upscale,
+        max_size=spec.pre_downscale,
+    )
     rarity_ranges = spec.text_color_ranges_by_rarity or {}
     effective_ranges = rarity_ranges.get(rarity, spec.text_color_ranges)
     color_view = convert_color_space(crop_bgr, spec.color_space)
@@ -354,6 +366,11 @@ def preprocess_for_ocr(crop_bgr: np.ndarray, spec: OcrRegionSpec, rarity: int | 
     plane = apply_morphology(plane, spec.morphology)
     if spec.invert:
         plane = 255 - plane
+    plane = apply_stage_scaling(
+        plane,
+        min_size=spec.post_upscale,
+        max_size=spec.post_downscale,
+    )
     return format_for_ocr_backend(plane)
 ```
 
@@ -380,7 +397,11 @@ def image_for_signature(crop_bgr: np.ndarray, spec: OcrRegionSpec, rarity: int |
         normalized,
         floor=spec.sig_text_floor,
         max_spread=spec.sig_max_spread,
-        downscale=spec.sig_downscale,
+    )
+    normalized = apply_stage_scaling(
+        normalized,
+        min_size=spec.signature.post_upscale,
+        max_size=spec.signature.post_downscale,
     )
     return normalized
 ```

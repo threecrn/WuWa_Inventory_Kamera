@@ -17,7 +17,7 @@ from ._types import OcrResult
 logger = logging.getLogger(__name__)
 
 _DEDUP_Y_THRESHOLD = 15
-_RUNTIME_DEBUG_PATCHED = False
+_RUNTIME_DEBUG_PATCHED = True
 
 
 def _y_center(bbox) -> float:
@@ -155,7 +155,7 @@ class RapidOcrBackend:
             return _orig_call(self, input_content)
 
         _rutils.OrtInferSession.__call__ = _patched_call
-        #_RUNTIME_DEBUG_PATCHED = True
+        _RUNTIME_DEBUG_PATCHED = True
 
     def __init__(
         self,

@@ -112,6 +112,22 @@ def test_single_line_repair_bridges_tiny_horizontal_hole() -> None:
     assert processed[3, 3] > 0
 
 
+def test_post_scaling_resizes_ocr_output() -> None:
+    spec = OcrRegionSpec(
+        roi_key="echoes.fullStatsValue",
+        threshold_mode="floor",
+        floor_value=200,
+        pre_upscale=(24, 24),
+        post_downscale=(12, 12),
+    )
+    image = np.zeros((8, 8, 3), dtype=np.uint8)
+    image[2:6, 3:5] = 255
+
+    processed = spec.preprocess(image)
+
+    assert processed.shape == (12, 12, 3)
+
+
 def test_invert_flips_thresholded_foreground_and_background() -> None:
     spec = OcrRegionSpec(
         roi_key="echoes.level",
@@ -149,7 +165,7 @@ def test_signature_stable_across_minor_shift() -> None:
         threshold_mode="floor",
         floor_value=200,
         sig_from_preprocessed=True,
-        sig_downscale=(8, 8),
+        signature_preprocess=SignaturePreprocessSpec(post_downscale=(8, 8)),
     )
     base = np.zeros((128, 128, 3), dtype=np.uint8)
     shifted = np.zeros((128, 128, 3), dtype=np.uint8)
@@ -166,7 +182,7 @@ def test_signature_thresholds_preprocessed_gray_before_hashing() -> None:
         floor_value=100,
         sig_from_preprocessed=True,
         sig_text_floor=230,
-        sig_downscale=(32, 32),
+        signature_preprocess=SignaturePreprocessSpec(post_downscale=(32, 32)),
     )
     image_a = np.full((64, 64, 3), 110, dtype=np.uint8)
     image_b = np.full((64, 64, 3), 120, dtype=np.uint8)
@@ -245,7 +261,10 @@ def test_load_specs_from_toml_parses_rarity_and_fallback_color_space(tmp_path: P
                 '[echoes.fullStatsValue]',
                 'threshold_mode = "floor"',
                 'floor_value = 100',
-                'sig_downscale = [32, 16]',
+                'pre_upscale = [64, 48]',
+                '',
+                '[echoes.fullStatsValue.signature]',
+                'post_downscale = [32, 16]',
             ]
         ),
         encoding="utf-8",
@@ -269,7 +288,34 @@ def test_load_specs_from_toml_parses_rarity_and_fallback_color_space(tmp_path: P
     assert stats_value.spec_version == "test-spec"
     assert stats_value.threshold_mode == "floor"
     assert stats_value.floor_value == 100
-    assert stats_value.sig_downscale == (32, 16)
+    assert stats_value.pre_upscale == (64, 48)
+    assert stats_value.signature_preprocess is not None
+    assert stats_value.signature_preprocess.post_downscale == (32, 16)
+
+
+def test_load_specs_from_toml_maps_legacy_sig_downscale_to_signature_post_downscale(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ocr_region_specs.toml"
+    config_path.write_text(
+        "\n".join(
+            [
+                'spec_version = "test-spec"',
+                '',
+                '[echoes.fullStatsValue]',
+                'threshold_mode = "floor"',
+                'floor_value = 100',
+                'sig_downscale = [32, 16]',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    specs = load_specs_from_toml(str(config_path))
+
+    stats_value = specs["echoes.fullStatsValue"]
+    assert stats_value.signature_preprocess is not None
+    assert stats_value.signature_preprocess.post_downscale == (32, 16)
 
 
 def test_ocr_cache_round_trip_with_region_spec(tmp_path: Path) -> None:
