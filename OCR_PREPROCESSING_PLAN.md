@@ -459,7 +459,165 @@ For regions where `sig_from_preprocessed = True`, `make_signature()` calls `prep
 
 ---
 
-## Proposal 5 — Maintainability Strategy
+## Proposal 5 — Split Region Specs Into OCR And Signature Pipelines
+
+### Review Of The Current Model
+
+The current spec shape is doing two jobs at once:
+
+- deciding how to derive a stable cache signature from the raw crop
+- deciding how to prepare the OCR input for RapidOCR
+
+That coupling made sense when both paths converged on the same binary or
+grayscale image, but it becomes a constraint once we want OCR preprocessing to
+stay explicitly 3-channel and color-aware.
+
+The architectural boundary should therefore be:
+
+- **signature pipeline**: raw crop in, stable normalized signature image out
+- **OCR pipeline**: raw crop in, color-enhanced 3-channel OCR image out
+
+These pipelines may share some region knowledge, such as rarity overrides or
+known background hues, but they should not be forced to share the same config
+surface or the same final image.
+
+### Proposed Config Shape
+
+Instead of storing all settings directly under one region table, split each
+region into explicit `ocr` and `signature` subsections.
+
+```toml
+[echoes.level.ocr]
+single_line = true
+post_upscale = [64, 64]
+allowed_chars = "0123456789+"
+
+[echoes.level.signature]
+cache_mode = "transient"
+color_space = "bgr"
+text_color_ranges = [
+        [[185, 181, 165], [189, 185, 169]],
+]
+```
+
+Recommended ownership split:
+
+- `*.ocr` owns OCR-only settings such as render mode, allowed chars, single-line
+    behavior, pre/post upscaling, and UI-aware contrast enhancement.
+- `*.signature` owns signature-only settings such as cache tier, working color
+    space, thresholding, text/background range masks, and downscaling.
+
+This keeps cache behavior attached to the signature path, which is where cache
+keys are actually derived.
+
+### OCR-Side Contrast Enhancement
+
+For the OCR pipeline, `text_color_ranges` is often too tied to binary masking.
+For RapidOCR-targeted preprocessing, a better fit is a small UI-aware contrast
+guidance block that describes the expected text and background appearance
+without requiring the final OCR image to be binarized.
+
+Suggested shape:
+
+```toml
+[echoes.fullStatsName.ocr]
+post_upscale = [512, 512]
+render_mode = "luma_boost_color"
+
+[echoes.fullStatsName.ocr.contrast_guidance]
+text_color_ranges = [
+        [[255, 255, 249], [255, 255, 249]],
+]
+background_color_ranges = [
+        [[35, 35, 35], [95, 95, 95]],
+]
+aggressiveness = 0.5
+```
+
+Intent of this block:
+
+- `text_color_ranges` identifies the typical text colors for guidance rather
+    than for final hard masking.
+- `background_color_ranges` identifies the typical background family that
+    should be compressed, neutralized, or darkened.
+- `aggressiveness` controls how strongly the renderer spreads contrast between
+    those populations, for example via a sigmoid or curve-based luminance remap.
+
+The important design rule is that the OCR path uses these values to guide a
+3-channel render, not to force a one-channel terminal image.
+
+### Data Model Direction
+
+At the Python level, the cleanest extension is to split the current region spec
+into two nested descriptors.
+
+```python
+@dataclass(frozen=True, slots=True)
+class OcrPipelineSpec:
+        allowed_chars: str | None = None
+        single_line: bool = False
+        pre_upscale: tuple[int, int] | None = None
+        post_upscale: tuple[int, int] | None = None
+        render_mode: Literal[
+                "raw_passthrough",
+                "masked_color",
+                "neutral_bg_color",
+                "luma_boost_color",
+                "legacy_binary_rgb",
+        ] = "legacy_binary_rgb"
+        contrast_guidance: ContrastGuidance | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SignaturePipelineSpec:
+        cache_mode: Literal["none", "transient", "persistent"] = "persistent"
+        color_space: Literal["hsv", "rgb", "bgr", "gray"] = "gray"
+        text_color_ranges: ColorRanges | None = None
+        background_color_ranges: ColorRanges | None = None
+        threshold_mode: Literal["otsu", "floor", "none"] = "none"
+        floor_value: int = 100
+        pre_downscale: tuple[int, int] | None = None
+        post_downscale: tuple[int, int] | None = None
+```
+
+Then the region-level object becomes a container for shared metadata plus the
+two independent pipelines.
+
+### How This Changes The Runtime Contract
+
+With this split, the runtime contract becomes explicit:
+
+1. `spec.ocr` receives the raw BGR crop and produces the RGB image passed to
+     RapidOCR.
+2. `spec.signature` receives the raw BGR crop and produces the normalized image
+     that is hashed for cache lookup.
+3. Shared region metadata, such as rarity overrides, can still be resolved once
+     at the region layer and then applied to both sub-pipelines where relevant.
+
+This also means `sig_from_preprocessed` stops being the default architectural
+bridge between the two paths. If a region truly benefits from hashing the OCR
+render, that should be expressed deliberately rather than by treating the OCR
+image as the natural signature source.
+
+### Incremental Migration Strategy
+
+This does not need a flag day rewrite.
+
+Recommended rollout:
+
+1. Keep supporting the current flat region tables during bring-up.
+2. Teach the loader to accept both legacy flat fields and the new
+     `[region.ocr]` / `[region.signature]` layout.
+3. Migrate a few regions first, especially `echoes.level`,
+     `echoes.fullStatsName`, and `echoes.fullStatsValue`.
+4. Once the dual-pipeline structure is stable, stop adding new flat fields and
+     move future region work into the nested layout only.
+
+This preserves compatibility while making the intended architecture explicit.
+
+---
+
+## Proposal 6 — Maintainability Strategy
 
 ### Problem
 
@@ -543,7 +701,7 @@ Game UI updates can shift colours (e.g. the echo name changed from turquoise to 
 
 ---
 
-## Proposal 6 — Testing OCR Quality & Cache Efficiency
+## Proposal 7 — Testing OCR Quality & Cache Efficiency
 
 ### A. OCR Quality Testing
 
