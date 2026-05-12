@@ -32,4 +32,4 @@ Documents concerning the management of localized data and the data structures us
 ## 📖 General Information
 Core project documentation.
 
-* **`README.md`**: The primary entry point, providing project purpose, supported resolutions, and key features.
+* **`UPSTREAM.md`**: Providing project purpose, supported resolutions, and key features of the project this one was forked from.
