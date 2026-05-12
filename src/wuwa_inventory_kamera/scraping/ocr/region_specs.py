@@ -26,6 +26,15 @@ import hashlib
 import logging
 import math
 from dataclasses import dataclass, field
+
+# --- Phase 1: Color Preprocessing Migration ---
+@dataclass(frozen=True, slots=True)
+class OcrPreprocessResult:
+    ocr_rgb: np.ndarray
+    signature_image: np.ndarray
+    text_mask: np.ndarray | None = None
+    debug_steps: dict[str, np.ndarray] = field(default_factory=dict)
+
 from pathlib import Path
 from typing import Literal
 
@@ -146,92 +155,96 @@ class OcrRegionSpec:
     # Preprocessing
     # ------------------------------------------------------------------
 
+
     def preprocess(
         self,
         bgr: np.ndarray,
         rarity: int | None = None,
-    ) -> np.ndarray:
-        """Apply the declared pipeline, returning a cleaned image for OCR.
-
-        Parameters
-        ----------
-        bgr:
-            Raw crop in BGR uint8.
-        rarity:
-            If supplied and ``text_color_ranges_by_rarity`` contains a
-            matching entry, that entry replaces the base
-            ``text_color_ranges``.
-
-        Returns
-        -------
-        np.ndarray
-            A single-channel (H, W) uint8 image ready for the OCR engine
-            (converted to 3-channel RGB by ``format_for_ocr``).
+    ) -> OcrPreprocessResult:
         """
-        plane = self._preprocess_scaled_plane(
-            bgr,
-            rarity,
-            pre_upscale=self.pre_upscale,
-            pre_downscale=self.pre_downscale,
-            color_space=self.color_space,
-            text_color_ranges=self.text_color_ranges,
-            text_color_ranges_by_rarity=self.text_color_ranges_by_rarity,
-            background_color_ranges=self.background_color_ranges,
-            invert=self.invert,
-            single_line=self.single_line,
-            threshold_mode=self.threshold_mode,
-            floor_value=self.floor_value,
-            morphology=self.morphology,
-            fallback_color_space=self.fallback_color_space,
-            post_upscale=self.post_upscale,
-            post_downscale=self.post_downscale,
-        )
-        return _format_for_ocr(plane)
-
-    def _preprocess_scaled_plane(
-        self,
-        bgr: np.ndarray,
-        rarity: int | None,
-        *,
-        pre_upscale: Size2D | None,
-        pre_downscale: Size2D | None,
-        color_space: Literal["hsv", "rgb", "bgr", "gray"],
-        text_color_ranges: ColorRangeList | None,
-        text_color_ranges_by_rarity: dict[int, ColorRangeList] | None,
-        background_color_ranges: ColorRangeList | None,
-        invert: bool,
-        single_line: bool,
-        threshold_mode: Literal["otsu", "floor", "none"],
-        floor_value: int,
-        morphology: Literal["close", "none"],
-        fallback_color_space: str | None,
-        post_upscale: Size2D | None,
-        post_downscale: Size2D | None,
-    ) -> np.ndarray:
+        Apply the declared pipeline, returning a color-aware OCR input and debug artifacts.
+        """
+        # 1. Pre-scaling
         scaled_bgr = _apply_scaling_stage(
             bgr,
-            upscale_min=pre_upscale,
-            downscale_max=pre_downscale,
+            upscale_min=self.pre_upscale,
+            downscale_max=self.pre_downscale,
         )
-        plane = self._preprocess_plane(
-            scaled_bgr,
-            rarity,
-            color_space=color_space,
-            text_color_ranges=text_color_ranges,
-            text_color_ranges_by_rarity=text_color_ranges_by_rarity,
-            background_color_ranges=background_color_ranges,
-            invert=invert,
-            single_line=single_line,
-            threshold_mode=threshold_mode,
-            floor_value=floor_value,
-            morphology=morphology,
-            fallback_color_space=fallback_color_space,
+        # 2. Build text mask
+        text_mask = self.build_text_mask(scaled_bgr, rarity)
+        # 3. Render for OCR (currently legacy path, will expand)
+        rendered_rgb = self.render_for_ocr(scaled_bgr, text_mask)
+        # 4. Post-scaling
+        rendered_rgb = _apply_scaling_stage(
+            rendered_rgb,
+            upscale_min=self.post_upscale,
+            downscale_max=self.post_downscale,
         )
-        return _apply_scaling_stage(
-            plane,
-            upscale_min=post_upscale,
-            downscale_max=post_downscale,
-        )
+        # 5. Signature image (legacy path)
+        signature_image = self._image_for_signature(bgr, rarity)
+        debug_steps = {
+            "scaled_bgr": scaled_bgr,
+            "text_mask": text_mask if text_mask is not None else np.zeros_like(scaled_bgr[...,0]),
+            "rendered_rgb": rendered_rgb,
+            "signature": signature_image,
+        }
+        return OcrPreprocessResult(rendered_rgb, signature_image, text_mask, debug_steps)
+
+    def build_text_mask(
+        self,
+        bgr: np.ndarray,
+        rarity: int | None = None,
+    ) -> np.ndarray | None:
+        """
+        Build a boolean mask of likely text pixels using color ranges and thresholding.
+        """
+        effective_cs = self.color_space
+        effective_ranges = self.text_color_ranges
+        if rarity is not None and self.text_color_ranges_by_rarity and rarity in self.text_color_ranges_by_rarity:
+            effective_ranges = self.text_color_ranges_by_rarity[rarity]
+        color_view = _convert_color_space(bgr, effective_cs)
+        if effective_ranges is not None:
+            include_mask = _mask_from_ranges(color_view, effective_ranges)
+            if include_mask is not None:
+                if self.background_color_ranges is not None:
+                    reject_mask = _mask_from_ranges(color_view, self.background_color_ranges)
+                    if reject_mask is not None:
+                        include_mask = include_mask & ~reject_mask
+                if self.single_line:
+                    include_mask = _repair_single_line_glyphs(np.uint8(include_mask) * 255) > 0
+                return include_mask
+        # Fallback: threshold on grayscale
+        gray = _to_gray(bgr)
+        plane = _apply_threshold(gray, self.threshold_mode, self.floor_value)
+        if self.single_line:
+            plane = _repair_single_line_glyphs(plane)
+        return plane > 0
+
+    def render_for_ocr(
+        self,
+        bgr: np.ndarray,
+        text_mask: np.ndarray | None,
+    ) -> np.ndarray:
+        """
+        Render a 3-channel RGB image for OCR using the text mask and original crop.
+        Currently: legacy path (grayscale to RGB). Later: color-aware rendering.
+        """
+        if text_mask is None:
+            # Fallback: legacy grayscale
+            plane = _to_gray(bgr)
+            plane = _apply_threshold(plane, self.threshold_mode, self.floor_value)
+            if self.morphology != "none":
+                plane = _apply_morphology(plane, self.morphology)
+            if self.invert:
+                plane = np.bitwise_not(plane)
+            return _format_for_ocr(plane)
+        # For now, just use the mask to keep text, zero background, then to RGB
+        out = bgr.copy()
+        if out.ndim == 3 and text_mask.shape == out.shape[:2]:
+            out[~text_mask] = 0
+        return cv2.cvtColor(out, cv2.COLOR_BGR2RGB)
+
+    # _preprocess_scaled_plane is now obsolete and can be removed in future cleanup
 
     def _preprocess_plane(
         self,

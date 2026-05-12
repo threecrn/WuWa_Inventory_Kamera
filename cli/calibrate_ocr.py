@@ -168,6 +168,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Run OCR on both raw and preprocessed images and print the text.",
     )
     preview.add_argument(
+        "--debug-steps",
+        action="store_true",
+        help="Save all debug steps (raw, mask, rendered, signature) as separate panels.",
+    )
+    preview.add_argument(
         "--save-dir",
         default=None,
         help="Directory for side-by-side preview PNGs. Defaults to calibration_output/<spec>/.",
@@ -513,21 +518,28 @@ def _label_panel(image: np.ndarray, label: str) -> np.ndarray:
 
 def _build_preview_panel(
     raw_bgr: np.ndarray,
-    processed_rgb: np.ndarray,
+    text_mask: np.ndarray | None,
+    rendered_rgb: np.ndarray,
     signature: np.ndarray,
     points: list[tuple[int, int]],
 ) -> np.ndarray:
     height, width = raw_bgr.shape[:2]
-    processed_bgr = _ensure_bgr_for_preview(processed_rgb, input_space="rgb")
+    rendered_bgr = _ensure_bgr_for_preview(rendered_rgb, input_space="rgb")
     signature_bgr = _ensure_bgr_for_preview(signature, input_space="gray")
-
     raw_vis = _annotate_points(raw_bgr, points) if points else raw_bgr
-    processed_vis = _annotate_points(processed_bgr, points) if points else processed_bgr
+    rendered_vis = _annotate_points(rendered_bgr, points) if points else rendered_bgr
     signature_vis = _ensure_preview_size(signature_bgr, (width, height))
-
+    if text_mask is not None:
+        mask_vis = np.uint8(text_mask) * 255
+        mask_vis = cv2.cvtColor(mask_vis, cv2.COLOR_GRAY2BGR)
+        mask_vis = _annotate_points(mask_vis, points) if points else mask_vis
+        mask_vis = _ensure_preview_size(mask_vis, (width, height))
+    else:
+        mask_vis = np.zeros((height, width, 3), dtype=np.uint8)
     panels = [
         _label_panel(raw_vis, "raw"),
-        _label_panel(processed_vis, "preprocessed"),
+        _label_panel(mask_vis, "mask"),
+        _label_panel(rendered_vis, "rendered"),
         _label_panel(signature_vis, "signature"),
     ]
     return np.hstack(panels)
@@ -859,20 +871,35 @@ def cmd_preview(args: argparse.Namespace) -> None:
 
     for path in image_paths:
         raw_bgr = _read_bgr(path)
-        processed_rgb = spec.preprocess(raw_bgr, rarity=args.rarity)
-        signature = spec._image_for_signature(raw_bgr, args.rarity)
-        panel = _build_preview_panel(raw_bgr, processed_rgb, signature, args.points)
-
+        result = spec.preprocess(raw_bgr, rarity=args.rarity)
+        panel = _build_preview_panel(
+            raw_bgr,
+            result.text_mask,
+            result.ocr_rgb,
+            result.signature_image,
+            args.points,
+        )
         out_path = save_dir / f"{path.stem}_preview.png"
         cv2.imwrite(str(out_path), panel)
         print(f"{path.name}: preview -> {out_path}")
 
+        if args.debug_steps:
+            for k, v in result.debug_steps.items():
+                # Save each debug step as its own image
+                if v.ndim == 2:
+                    v_img = cv2.cvtColor(np.uint8(v), cv2.COLOR_GRAY2BGR)
+                else:
+                    v_img = np.uint8(v)
+                debug_path = save_dir / f"{path.stem}_{k}.png"
+                cv2.imwrite(str(debug_path), v_img)
+                print(f"  debug: {k} -> {debug_path}")
+
         if backend is not None:
             raw_rgb = cv2.cvtColor(raw_bgr, cv2.COLOR_BGR2RGB)
             raw_text = _ocr_text(backend, raw_rgb, spec.allowed_chars)
-            processed_text = _ocr_text(backend, processed_rgb, spec.allowed_chars)
+            rendered_text = _ocr_text(backend, result.ocr_rgb, spec.allowed_chars)
             print(f"  raw        : {raw_text!r}")
-            print(f"  preprocessed: {processed_text!r}")
+            print(f"  rendered   : {rendered_text!r}")
 
         if args.show:
             cv2.imshow(path.name, panel)
