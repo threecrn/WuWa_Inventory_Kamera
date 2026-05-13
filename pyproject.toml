@@ -17,7 +17,7 @@ dependencies = [
     "PyYAML",
     "babel",
     "onnxruntime-directml; sys_platform == 'win32'",
-    #"onnxruntime-directml",
+    "onnxruntime; sys_platform != 'win32'",
 ]
 
 [project.optional-dependencies]
@@ -59,6 +59,52 @@ environments = ["sys_platform == 'linux'", "sys_platform == 'win32'"]
 # This override marks plain onnxruntime as only needed on sys_platform=='never',
 # so uv never installs it and onnxruntime-directml remains the sole provider.
 override-dependencies = [
-    #"onnxruntime-directml; sys_platform != 'win32' and sys_platform == 'never'",
-    "onnxruntime; sys_platform == 'win32' and sys_platform == 'never'",
+    "onnxruntime-directml; sys_platform == 'win32'",
+    "onnxruntime; sys_platform != 'win32'",
 ]
+
+[tool.cxfreeze]
+executables = [
+    { script = "main.py", target_name = "wuwa-app" }
+]
+
+[tool.wuwa_inventory_kamera.freeze]
+script = "main.py"
+gui_base = true
+include_msvcr = true
+build_root = "build/cx_freeze"
+env_root = ".build/cx_freeze/envs"
+common_packages = [
+    #"PySide6",
+    "cv2",
+    "mss",
+    "numpy",
+    "onnxruntime",
+    "pywinctl",
+    "qfluentwidgets",
+    "rapidocr_onnxruntime",
+    "wuwa_inventory_kamera",
+    "yaml",
+]
+include_files = ["assets", "config", "data"]
+create_directories = ["export", "logs", "screenshots"]
+zip_exclude_packages = ["rapidocr_onnxruntime", "wuwa_inventory_kamera"]
+package_files = [
+    { source = "src/wuwa_inventory_kamera/config/ocr_region_specs.toml", target = "lib/wuwa_inventory_kamera/config/ocr_region_specs.toml" },
+    { source = "src/wuwa_inventory_kamera/scraping/processing/echo_stats_valid_values.yaml", target = "lib/wuwa_inventory_kamera/scraping/processing/echo_stats_valid_values.yaml" },
+]
+
+[tool.wuwa_inventory_kamera.freeze.backends.cpu]
+distribution = "onnxruntime"
+target_name = "wuwa-app-cpu"
+providers = ["CPUExecutionProvider"]
+
+[tool.wuwa_inventory_kamera.freeze.backends.directml]
+distribution = "onnxruntime-directml"
+target_name = "wuwa-app-directml"
+providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
+
+[tool.wuwa_inventory_kamera.freeze.backends.cuda]
+distribution = "onnxruntime-gpu"
+target_name = "wuwa-app-cuda"
+providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]

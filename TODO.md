@@ -2,7 +2,7 @@
 - [ ] WuWa 3.3 had UI overhaul, need to adjust nav and recognition for new UI elements
   - [ ] character scan
   - [ ] weapon scan
-  - [ ] echo scan
+  - [x] echo scan
   - [ ] other scans (dev items, achievements, etc)
 
 - [ ] echo scraper:
