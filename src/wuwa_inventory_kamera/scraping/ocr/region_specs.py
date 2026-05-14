@@ -127,6 +127,30 @@ class OcrRegionSpec:
     post_upscale: Size2D | None = None
     post_downscale: Size2D | None = None
 
+    # ---- OCR render mode ----
+    # Controls how the preprocessed mask or color information is turned into
+    # the final RGB image passed to the OCR engine.
+    #
+    #  legacy_binary_rgb : reproduce the old grayscale/binary pipeline; default
+    #                      for backward compatibility.
+    #  raw_passthrough   : skip all processing; convert BGR → RGB only.
+    #  masked_color      : keep text pixels in their original colour; set all
+    #                      non-text pixels to black.  Good for rarity-tinted
+    #                      names where the colour itself carries signal.
+    #  neutral_bg_color  : place text pixels on a neutral dark background.
+    #                      Suppresses complex backgrounds while preserving the
+    #                      3-channel structure RapidOCR benefits from.
+    #  luma_boost_color  : contrast-stretch the luma channel while leaving
+    #                      chroma intact.  Good for white/off-white text on
+    #                      stable dark panels.
+    render_mode: Literal[
+        "legacy_binary_rgb",
+        "raw_passthrough",
+        "masked_color",
+        "neutral_bg_color",
+        "luma_boost_color",
+    ] = "legacy_binary_rgb"
+
     # ---- Cache tier ----
     cache_mode: Literal["none", "transient", "persistent"] = "persistent"
 
@@ -197,25 +221,37 @@ class OcrRegionSpec:
         """
         Build a boolean mask of likely text pixels using color ranges and thresholding.
         """
-        effective_cs = self.color_space
-        effective_ranges = self.text_color_ranges
-        if rarity is not None and self.text_color_ranges_by_rarity and rarity in self.text_color_ranges_by_rarity:
-            effective_ranges = self.text_color_ranges_by_rarity[rarity]
+        used_rarity_override = (
+            rarity is not None
+            and self.text_color_ranges_by_rarity is not None
+            and rarity in self.text_color_ranges_by_rarity
+        )
+        if used_rarity_override:
+            effective_ranges: ColorRangeList | None = self.text_color_ranges_by_rarity[rarity]  # type: ignore[index]
+            effective_cs: str = self.color_space
+        else:
+            effective_ranges = self.text_color_ranges
+            # When no rarity override, evaluate base ranges in fallback_color_space
+            # if specified (e.g. HSV band for echo name without rarity context).
+            effective_cs = self.fallback_color_space or self.color_space
+
         color_view = _convert_color_space(bgr, effective_cs)
+        reject_mask = _mask_from_ranges(color_view, self.background_color_ranges)
+
         if effective_ranges is not None:
             include_mask = _mask_from_ranges(color_view, effective_ranges)
             if include_mask is not None:
-                if self.background_color_ranges is not None:
-                    reject_mask = _mask_from_ranges(color_view, self.background_color_ranges)
-                    if reject_mask is not None:
-                        include_mask = include_mask & ~reject_mask
+                if reject_mask is not None:
+                    include_mask = include_mask & ~reject_mask
                 if self.single_line:
                     include_mask = _repair_single_line_glyphs(
                         np.where(include_mask, np.uint8(255), np.uint8(0))
                     ) > 0
                 return include_mask
-        # Fallback: threshold on grayscale
-        gray = _to_gray(bgr)
+
+        # Fallback: threshold on grayscale, with background suppression applied first.
+        work_bgr = _zero_masked(bgr, reject_mask) if reject_mask is not None else bgr
+        gray = _to_gray(work_bgr)
         plane = _apply_threshold(gray, self.threshold_mode, self.floor_value)
         if self.single_line:
             plane = _repair_single_line_glyphs(plane)
@@ -228,22 +264,43 @@ class OcrRegionSpec:
     ) -> np.ndarray:
         """
         Render a 3-channel RGB image for OCR using the text mask and original crop.
-        Currently: legacy path (grayscale to RGB). Later: color-aware rendering.
+
+        Dispatch is based on ``self.render_mode``.
+
+        *  ``legacy_binary_rgb`` — convert the mask (or gray threshold) to a
+           binary plane, apply morphology / invert, then promote to 3-channel RGB.
+        *  ``raw_passthrough`` — BGR → RGB; no further processing.
+        *  ``masked_color`` — keep original text pixels in colour; black elsewhere.
+        *  ``neutral_bg_color`` — keep text pixels on a neutral dark background.
+        *  ``luma_boost_color`` — contrast-stretch the luma channel; keep chroma.
         """
+        mode = self.render_mode
+
+        if mode == "raw_passthrough":
+            return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+
+        if mode == "luma_boost_color":
+            return _render_luma_boost_color(bgr, self.floor_value)
+
+        # All remaining modes derive a refined boolean mask.
         if text_mask is None:
-            # Fallback: legacy grayscale
-            plane = _to_gray(bgr)
-            plane = _apply_threshold(plane, self.threshold_mode, self.floor_value)
-            if self.morphology != "none":
-                plane = _apply_morphology(plane, self.morphology)
-            if self.invert:
-                plane = np.bitwise_not(plane)
-            return _format_for_ocr(plane)
-        # For now, just use the mask to keep text, zero background, then to RGB
-        out = bgr.copy()
-        if out.ndim == 3 and text_mask.shape == out.shape[:2]:
-            out[~text_mask] = 0
-        return cv2.cvtColor(out, cv2.COLOR_BGR2RGB)
+            # Build a minimal binary mask from threshold as fallback.
+            gray = _to_gray(bgr)
+            plane = _apply_threshold(gray, self.threshold_mode, self.floor_value)
+            text_mask = plane > 0
+
+        if mode == "masked_color":
+            return _render_masked_color(bgr, text_mask, self.morphology)
+
+        if mode == "neutral_bg_color":
+            return _render_neutral_bg_color(bgr, text_mask, self.morphology)
+
+        # Default: "legacy_binary_rgb" — binary plane promoted to RGB.
+        plane = np.where(text_mask, np.uint8(255), np.uint8(0))
+        plane = _apply_morphology(plane, self.morphology)
+        if self.invert:
+            plane = np.bitwise_not(plane)
+        return _format_for_ocr(plane)
 
     def _preprocess_plane(
         self,
@@ -453,6 +510,69 @@ class OcrRegionSpec:
                 else _DEFAULT_SIGNATURE_POST_DOWNSCALE
             ),
         )
+
+
+# ======================================================================
+# Render-mode helpers
+# ======================================================================
+
+# Neutral dark background colour (BGR) used by masked_color / neutral_bg_color.
+_NEUTRAL_BG_BGR: tuple[int, int, int] = (16, 16, 16)
+
+
+def _render_masked_color(
+    bgr: np.ndarray,
+    text_mask: np.ndarray,
+    morphology: str,
+) -> np.ndarray:
+    """Keep original text pixels in colour; black elsewhere."""
+    # Apply morphology to the mask before selecting pixels.
+    mask_plane = np.where(text_mask, np.uint8(255), np.uint8(0))
+    mask_plane = _apply_morphology(mask_plane, morphology)
+    refined_mask = mask_plane > 0
+
+    out = np.zeros_like(bgr)
+    out[refined_mask] = bgr[refined_mask]
+    return cv2.cvtColor(out, cv2.COLOR_BGR2RGB)
+
+
+def _render_neutral_bg_color(
+    bgr: np.ndarray,
+    text_mask: np.ndarray,
+    morphology: str,
+) -> np.ndarray:
+    """Place text pixels on a flat neutral dark background.
+
+    Similar to ``masked_color`` but the non-text fill is a dark grey rather
+    than pure black, which avoids hard-zero artefacts when the OCR engine
+    uses the absolute pixel value distribution.
+    """
+    mask_plane = np.where(text_mask, np.uint8(255), np.uint8(0))
+    mask_plane = _apply_morphology(mask_plane, morphology)
+    refined_mask = mask_plane > 0
+
+    out = np.full_like(bgr, _NEUTRAL_BG_BGR)
+    out[refined_mask] = bgr[refined_mask]
+    return cv2.cvtColor(out, cv2.COLOR_BGR2RGB)
+
+
+def _render_luma_boost_color(
+    bgr: np.ndarray,
+    floor_value: int,
+) -> np.ndarray:
+    """Contrast-stretch the luma channel while preserving chroma.
+
+    Converts to LAB, applies a floor-stretch on L, converts back.  The
+    chroma (A, B) channels are left untouched so RapidOCR retains the
+    colour cues that distinguish, e.g., rarity-tinted glyphs.
+    """
+    lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
+    l_f32 = lab[..., 0].astype(np.float32)
+    stretch = 255.0 / max(1, 255 - floor_value)
+    boosted = np.clip((l_f32 - floor_value) * stretch, 0.0, 255.0).astype(np.uint8)
+    lab[..., 0] = boosted
+    out_bgr = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+    return cv2.cvtColor(out_bgr, cv2.COLOR_BGR2RGB)
 
 
 # ======================================================================
@@ -727,7 +847,9 @@ def _parse_section(
     out: dict[str, OcrRegionSpec],
 ) -> None:
     """Recursively parse TOML sections into OcrRegionSpec objects."""
-    # Detect if this section is a spec (has known keys) or a namespace
+    # Detect if this section is a spec (has known keys) or a namespace.
+    # "ocr" and "signature" are recognised as spec-level sub-tables, not as
+    # namespace recursion targets.
     spec_keys = {
         "color_space", "text_color_ranges", "threshold_mode",
         "floor_value", "morphology", "allowed_chars", "cache_mode",
@@ -737,10 +859,15 @@ def _parse_section(
         "signature", "pre_upscale", "pre_downscale",
         "post_upscale", "post_downscale",
         "spec_version",
+        "ocr",        # new split-format OCR sub-section
+        "render_mode",
     }
     has_spec_keys = any(k in spec_keys for k in section)
+    # "ocr" is now treated like "signature" — consumed by _build_spec, not
+    # recursed into for generating child specs.
+    _NO_RECURSE = {"rarity_overrides", "fallback", "signature", "ocr"}
     has_sub_tables = any(
-        isinstance(v, dict) and k not in {"rarity_overrides", "fallback", "signature"}
+        isinstance(v, dict) and k not in _NO_RECURSE
         for k, v in section.items()
     )
 
@@ -749,7 +876,7 @@ def _parse_section(
         out[prefix] = spec
     if has_sub_tables:
         for k, v in section.items():
-            if isinstance(v, dict) and k not in {"rarity_overrides", "fallback", "signature"}:
+            if isinstance(v, dict) and k not in _NO_RECURSE:
                 _parse_section(f"{prefix}.{k}", v, spec_version, out)
 
 
@@ -758,19 +885,42 @@ def _build_spec(
     data: dict,
     spec_version: str,
 ) -> OcrRegionSpec:
-    """Construct an OcrRegionSpec from a parsed TOML section."""
+    """Construct an OcrRegionSpec from a parsed TOML section.
+
+    Supports two TOML layouts:
+
+    * **Legacy flat** — all fields at the section level::
+
+        [echoes.level]
+        single_line = true
+        cache_mode  = "transient"
+
+    * **Split OCR/signature** — OCR settings under ``[section.ocr]`` and
+      cache/signature settings under ``[section.signature]``::
+
+        [echoes.level.ocr]
+        single_line  = true
+        post_upscale = [64, 64]
+
+        [echoes.level.signature]
+        cache_mode = "transient"
+    """
     kwargs: dict = {
         "roi_key": roi_key,
         "spec_version": data.get("spec_version", spec_version),
     }
 
+    # Determine the source for OCR-side parameters.  In the split format the
+    # "ocr" sub-dict owns them; in the legacy format they live at the top level.
+    ocr_source: dict = data.get("ocr") if isinstance(data.get("ocr"), dict) else data  # type: ignore[assignment]
+
     for simple_key in (
         "color_space", "threshold_mode", "floor_value", "morphology",
-        "allowed_chars", "cache_mode", "sig_text_floor", "sig_max_spread",
-        "invert", "single_line",
+        "allowed_chars", "sig_text_floor", "sig_max_spread",
+        "invert", "single_line", "render_mode",
     ):
-        if simple_key in data:
-            kwargs[simple_key] = data[simple_key]
+        if simple_key in ocr_source:
+            kwargs[simple_key] = ocr_source[simple_key]
 
     for scale_key in (
         "pre_upscale",
@@ -778,20 +928,20 @@ def _build_spec(
         "post_upscale",
         "post_downscale",
     ):
-        if scale_key in data:
-            kwargs[scale_key] = _parse_size(data[scale_key], key=scale_key)
+        if scale_key in ocr_source:
+            kwargs[scale_key] = _parse_size(ocr_source[scale_key], key=scale_key)
 
-    if "text_color_ranges" in data:
-        kwargs["text_color_ranges"] = _parse_color_ranges(data["text_color_ranges"])
+    if "text_color_ranges" in ocr_source:
+        kwargs["text_color_ranges"] = _parse_color_ranges(ocr_source["text_color_ranges"])
 
-    if "background_color_ranges" in data:
+    if "background_color_ranges" in ocr_source:
         kwargs["background_color_ranges"] = _parse_color_ranges(
-            data["background_color_ranges"]
+            ocr_source["background_color_ranges"]
         )
 
-    if "rarity_overrides" in data:
+    if "rarity_overrides" in ocr_source:
         by_rarity: dict[int, ColorRangeList] = {}
-        for rarity_str, rarity_data in data["rarity_overrides"].items():
+        for rarity_str, rarity_data in ocr_source["rarity_overrides"].items():
             rarity_int = int(rarity_str)
             if "text_color_ranges" in rarity_data:
                 by_rarity[rarity_int] = _parse_color_ranges(
@@ -800,22 +950,28 @@ def _build_spec(
         if by_rarity:
             kwargs["text_color_ranges_by_rarity"] = by_rarity
 
-    # Fallback ranges (stored in base text_color_ranges if no rarity override)
-    if "fallback" in data:
-        fallback = data["fallback"]
+    # Fallback ranges (stored in base text_color_ranges when rarity is absent).
+    if "fallback" in ocr_source:
+        fallback = ocr_source["fallback"]
         if "text_color_ranges" in fallback:
-            # Only set base ranges if not already set
             if "text_color_ranges" not in kwargs:
                 kwargs["text_color_ranges"] = _parse_color_ranges(
                     fallback["text_color_ranges"]
                 )
-                # If the fallback uses a different color space, record it so
-                # that preprocess() evaluates these ranges in the correct
-                # space (e.g. HSV bands) rather than the parent's space (BGR).
+                # Record a different fallback colour space if declared, so that
+                # preprocess() evaluates base ranges in the correct space.
                 fallback_cs = fallback.get("color_space")
                 parent_cs = kwargs.get("color_space", "gray")
                 if fallback_cs and fallback_cs != parent_cs:
                     kwargs["fallback_color_space"] = fallback_cs
+
+    # cache_mode: top-level (legacy) or hoisted from [section.signature].
+    if "cache_mode" in data:
+        kwargs["cache_mode"] = data["cache_mode"]
+    else:
+        sig_raw = data.get("signature")
+        if isinstance(sig_raw, dict) and "cache_mode" in sig_raw:
+            kwargs["cache_mode"] = sig_raw["cache_mode"]
 
     raw_signature = data.get("signature")
     signature_data: dict = raw_signature if isinstance(raw_signature, dict) else {}

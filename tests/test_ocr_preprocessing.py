@@ -40,7 +40,7 @@ def test_preprocess_prefers_rarity_override_over_fallback_ranges() -> None:
     image[2, 2] = np.asarray([5, 5, 250], dtype=np.uint8)
     image[2, 3] = np.asarray(_bgr_from_hsv(26, 220, 220), dtype=np.uint8)
 
-    processed = _gray_from_rgb(spec.preprocess(image, rarity=5))
+    processed = _gray_from_rgb(spec.preprocess(image, rarity=5).ocr_rgb)
 
     assert processed[2, 2] == 255
     assert processed[2, 3] == 0
@@ -58,7 +58,7 @@ def test_preprocess_uses_fallback_color_space_when_rarity_missing() -> None:
     image[2, 2] = np.asarray([5, 5, 250], dtype=np.uint8)
     image[2, 3] = np.asarray(_bgr_from_hsv(26, 220, 220), dtype=np.uint8)
 
-    processed = _gray_from_rgb(spec.preprocess(image, rarity=None))
+    processed = _gray_from_rgb(spec.preprocess(image, rarity=None).ocr_rgb)
 
     assert processed[2, 2] == 0
     assert processed[2, 3] == 255
@@ -75,7 +75,7 @@ def test_background_suppression_happens_before_threshold() -> None:
     image = np.full((12, 12, 3), _bgr_from_hsv(110, 220, 240), dtype=np.uint8)
     image[3:9, 5:7] = np.asarray([245, 245, 245], dtype=np.uint8)
 
-    processed = _gray_from_rgb(spec.preprocess(image))
+    processed = _gray_from_rgb(spec.preprocess(image).ocr_rgb)
 
     assert processed[1, 1] == 0
     assert processed[5, 5] > 0
@@ -92,7 +92,7 @@ def test_morphology_close_bridges_small_gap() -> None:
     image[2:5, 2] = 255
     image[2:5, 4] = 255
 
-    processed = _gray_from_rgb(spec.preprocess(image))
+    processed = _gray_from_rgb(spec.preprocess(image).ocr_rgb)
 
     assert processed[3, 3] > 0
 
@@ -108,7 +108,7 @@ def test_single_line_repair_bridges_tiny_horizontal_hole() -> None:
     image[3, 2] = np.asarray([255, 255, 255], dtype=np.uint8)
     image[3, 4] = np.asarray([255, 255, 255], dtype=np.uint8)
 
-    processed = _gray_from_rgb(spec.preprocess(image))
+    processed = _gray_from_rgb(spec.preprocess(image).ocr_rgb)
 
     assert processed[3, 3] > 0
 
@@ -153,7 +153,7 @@ def test_post_scaling_resizes_ocr_output() -> None:
 
     processed = spec.preprocess(image)
 
-    assert processed.shape == (12, 12, 3)
+    assert processed.ocr_rgb.shape == (12, 12, 3)
 
 
 def test_invert_flips_thresholded_foreground_and_background() -> None:
@@ -166,7 +166,7 @@ def test_invert_flips_thresholded_foreground_and_background() -> None:
     image = np.zeros((5, 5, 3), dtype=np.uint8)
     image[2, 2] = np.asarray([255, 255, 255], dtype=np.uint8)
 
-    processed = _gray_from_rgb(spec.preprocess(image))
+    processed = _gray_from_rgb(spec.preprocess(image).ocr_rgb)
 
     assert processed[2, 2] == 0
     assert processed[0, 0] == 255
