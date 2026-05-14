@@ -66,7 +66,7 @@ def _write_region_debug_artifacts(
 
     cv2.imwrite(
         str(debug_dir / f'{basename}_preprocessed.png'),
-        _to_debug_image(preprocessed),
+        _to_debug_image(preprocessed.ocr_rgb),
     )
     cv2.imwrite(str(debug_dir / f'{basename}_signature.png'), signature)
 

@@ -306,7 +306,7 @@ COORDINATES = {
             }
         },
     },
-    (16, 10): {
+    (8, 5): {
         (1920, 1200): {
             # Supported 16:10 layout measurements.
             "terminal": Coordinates(142.9, 36.6, 171.4, 45.7),

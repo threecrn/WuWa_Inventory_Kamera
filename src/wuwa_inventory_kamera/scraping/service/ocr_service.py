@@ -189,7 +189,7 @@ def _preprocess_with_spec(
     import cv2
     spec = get_spec(roi_key)
     if spec is not None:
-        return spec.preprocess(bgr, rarity=rarity)
+        return spec.preprocess(bgr, rarity=rarity).ocr_rgb
     # No spec — return image as-is in RGB
     return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
 
@@ -392,11 +392,12 @@ class OcrService:
             preprocessed = _cv2.cvtColor(image_bgr, _cv2.COLOR_BGR2RGB)
 
         # OCR via CPU backend
+        ocr_image = preprocessed.ocr_rgb if hasattr(preprocessed, 'ocr_rgb') else preprocessed
         t0 = time.monotonic()
         if spec is not None and spec.single_line:
-            raw = self._cpu_backend.recognize_single_line(preprocessed)
+            raw = self._cpu_backend.recognize_single_line(ocr_image)
         else:
-            raw = self._cpu_backend.recognize(preprocessed)
+            raw = self._cpu_backend.recognize(ocr_image)
         elapsed = time.monotonic() - t0
         if spec is not None:
             self._ocr_cache.record_ocr_latency(roi_key, elapsed)
@@ -840,7 +841,7 @@ class OcrService:
         if miss_indices:
             # Preprocess and OCR the misses
             miss_preprocessed = [
-                spec.preprocess(images_bgr[idx], rarity=rarity)
+                spec.preprocess(images_bgr[idx], rarity=rarity).ocr_rgb
                 for idx in miss_indices
             ]
             t0 = time.monotonic()
