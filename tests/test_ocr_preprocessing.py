@@ -177,7 +177,7 @@ def test_signature_ignores_background_when_signing_preprocessed_image() -> None:
         roi_key="echoes.echoName",
         color_space="bgr",
         text_color_ranges=[((5, 5, 250), (5, 5, 250))],
-        sig_from_preprocessed=True,
+        signature_preprocess=SignaturePreprocessSpec(color_space="bgr"),
     )
     image_a = np.full((16, 16, 3), (30, 40, 60), dtype=np.uint8)
     image_b = np.full((16, 16, 3), (90, 140, 180), dtype=np.uint8)
@@ -192,8 +192,10 @@ def test_signature_stable_across_minor_shift() -> None:
         roi_key="echoes.fullStatsValue",
         threshold_mode="floor",
         floor_value=200,
-        sig_from_preprocessed=True,
-        signature_preprocess=SignaturePreprocessSpec(post_downscale=(8, 8)),
+        signature_preprocess=SignaturePreprocessSpec(
+            color_space="gray",
+            post_downscale=(8, 8),
+        ),
     )
     base = np.zeros((128, 128, 3), dtype=np.uint8)
     shifted = np.zeros((128, 128, 3), dtype=np.uint8)
@@ -208,9 +210,11 @@ def test_signature_thresholds_preprocessed_gray_before_hashing() -> None:
         roi_key="echoes.fullStatsName",
         threshold_mode="floor",
         floor_value=100,
-        sig_from_preprocessed=True,
         sig_text_floor=230,
-        signature_preprocess=SignaturePreprocessSpec(post_downscale=(32, 32)),
+        signature_preprocess=SignaturePreprocessSpec(
+            color_space="gray",
+            post_downscale=(32, 32),
+        ),
     )
     image_a = np.full((64, 64, 3), 110, dtype=np.uint8)
     image_b = np.full((64, 64, 3), 120, dtype=np.uint8)
@@ -225,7 +229,7 @@ def test_signature_falls_back_to_raw_image_when_preprocessed_plane_is_constant()
         roi_key="echoes.echoName",
         color_space="bgr",
         text_color_ranges=[((5, 5, 250), (5, 5, 250))],
-        sig_from_preprocessed=True,
+        signature_preprocess=SignaturePreprocessSpec(color_space="bgr"),
     )
     image_a = np.zeros((24, 24, 3), dtype=np.uint8)
     image_b = np.zeros((24, 24, 3), dtype=np.uint8)
@@ -240,7 +244,6 @@ def test_signature_can_use_separate_preprocess_spec() -> None:
         roi_key="echoes.echoName",
         color_space="bgr",
         text_color_ranges=[((5, 5, 250), (5, 5, 250))],
-        sig_from_preprocessed=True,
         signature_preprocess=SignaturePreprocessSpec(
             color_space="bgr",
             text_color_ranges=[((7, 240, 7), (7, 240, 7))],
@@ -267,7 +270,6 @@ def test_load_specs_from_toml_parses_rarity_and_fallback_color_space(tmp_path: P
                 '[echoes.echoName]',
                 'spec_version = "echo-name-spec"',
                 'color_space = "bgr"',
-                'sig_from_preprocessed = true',
                 'single_line = true',
                 '',
                 '[echoes.echoName.rarity_overrides."5"]',

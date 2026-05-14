@@ -133,11 +133,10 @@ class OcrRegionSpec:
     # ---- Signature parameters ----
     sig_text_floor: int = 200
     sig_max_spread: int = 32
-    sig_from_preprocessed: bool = False
 
-    # Optional signature-only preprocessing recipe.  If present, this takes
-    # precedence over sig_from_preprocessed and is used to derive the image
-    # hashed for cache keying.
+    # Optional signature-only preprocessing recipe. If present and it declares
+    # preprocess overrides, it is used to derive the image hashed for cache
+    # keying.
     signature_preprocess: SignaturePreprocessSpec | None = None
 
     # ---- Version tag (incorporated into cache keys) ----
@@ -211,7 +210,9 @@ class OcrRegionSpec:
                     if reject_mask is not None:
                         include_mask = include_mask & ~reject_mask
                 if self.single_line:
-                    include_mask = _repair_single_line_glyphs(np.uint8(include_mask) * 255) > 0
+                    include_mask = _repair_single_line_glyphs(
+                        np.where(include_mask, np.uint8(255), np.uint8(0))
+                    ) > 0
                 return include_mask
         # Fallback: threshold on grayscale
         gray = _to_gray(bgr)
@@ -243,8 +244,6 @@ class OcrRegionSpec:
         if out.ndim == 3 and text_mask.shape == out.shape[:2]:
             out[~text_mask] = 0
         return cv2.cvtColor(out, cv2.COLOR_BGR2RGB)
-
-    # _preprocess_scaled_plane is now obsolete and can be removed in future cleanup
 
     def _preprocess_plane(
         self,
@@ -303,11 +302,14 @@ class OcrRegionSpec:
         rarity: int | None,
     ) -> np.ndarray:
         sig = self.signature_preprocess
-        plane = self._preprocess_scaled_plane(
+        scaled_bgr = _apply_scaling_stage(
             bgr,
+            upscale_min=(sig.pre_upscale if sig is not None else None),
+            downscale_max=(sig.pre_downscale if sig is not None else None),
+        )
+        plane = self._preprocess_plane(
+            scaled_bgr,
             rarity,
-            pre_upscale=(sig.pre_upscale if sig is not None else None),
-            pre_downscale=(sig.pre_downscale if sig is not None else None),
             color_space=(sig.color_space if sig is not None and sig.color_space is not None else self.color_space),
             text_color_ranges=(
                 sig.text_color_ranges
@@ -350,8 +352,11 @@ class OcrRegionSpec:
                 if sig is not None and sig.fallback_color_space is not None
                 else self.fallback_color_space
             ),
-            post_upscale=(sig.post_upscale if sig is not None else None),
-            post_downscale=(
+        )
+        plane = _apply_scaling_stage(
+            plane,
+            upscale_min=(sig.post_upscale if sig is not None else None),
+            downscale_max=(
                 sig.post_downscale
                 if sig is not None and sig.post_downscale is not None
                 else _DEFAULT_SIGNATURE_POST_DOWNSCALE
@@ -432,7 +437,7 @@ class OcrRegionSpec:
         return self._finalize_signature_image(normalized)
 
     def _signature_uses_preprocessed_source(self) -> bool:
-        return self.sig_from_preprocessed or (
+        return (
             self.signature_preprocess is not None
             and self.signature_preprocess.has_preprocess_overrides()
         )
@@ -727,7 +732,7 @@ def _parse_section(
         "color_space", "text_color_ranges", "threshold_mode",
         "floor_value", "morphology", "allowed_chars", "cache_mode",
         "sig_text_floor", "sig_max_spread", "sig_downscale",
-        "sig_from_preprocessed", "invert", "background_color_ranges",
+        "invert", "background_color_ranges",
         "rarity_source", "rarity_overrides", "fallback", "single_line",
         "signature", "pre_upscale", "pre_downscale",
         "post_upscale", "post_downscale",
@@ -762,7 +767,7 @@ def _build_spec(
     for simple_key in (
         "color_space", "threshold_mode", "floor_value", "morphology",
         "allowed_chars", "cache_mode", "sig_text_floor", "sig_max_spread",
-        "sig_from_preprocessed", "invert", "single_line",
+        "invert", "single_line",
     ):
         if simple_key in data:
             kwargs[simple_key] = data[simple_key]

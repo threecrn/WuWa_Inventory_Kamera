@@ -59,7 +59,8 @@ text_color_ranges = [
 cache_mode = "persistent"
 post_upscale = [512, 512]
 
-#sig_from_preprocessed = true
+# TODO: If signature stability requires preprocessed-source signing,
+# add explicit [echoes.fullStatsName.signature] preprocess overrides.
 #signature.post_downscale = [64, 256]
 #sig_text_floor = 230
 #sig_max_spread = 32
@@ -78,7 +79,8 @@ allowed_chars = "0123456789.%+"
 cache_mode = "persistent"
 post_upscale = [128, 512]
 
-#sig_from_preprocessed = true
+# TODO: If signature stability requires preprocessed-source signing,
+# add explicit [echoes.fullStatsValue.signature] preprocess overrides.
 #signature.post_downscale = [128, 128]
 #sig_text_floor = 230
 #sig_max_spread = 32
@@ -106,7 +108,8 @@ allowed_chars = "0123456789+"
 cache_mode = "transient"
 
 
-#sig_from_preprocessed = true
+# TODO: If signature stability requires preprocessed-source signing,
+# add explicit [echoes.level.signature] preprocess overrides.
 
 [echoes.level.signature]
 color_space = "bgr"
@@ -125,7 +128,8 @@ text_color_ranges = [
 [weapons.name]
 color_space = "bgr"
 cache_mode = "persistent"
-sig_from_preprocessed = true
+# TODO: If weapon-name signatures should hash preprocessed text masks,
+# define explicit preprocess overrides in [weapons.name.signature].
 
 [weapons.name.rarity_overrides."5"]
 text_color_ranges = [
@@ -194,7 +198,8 @@ cache_mode = "persistent"
 [characters.weaponName]
 color_space = "bgr"
 cache_mode = "persistent"
-sig_from_preprocessed = true
+# TODO: If character weapon-name signatures should hash preprocessed text masks,
+# define explicit preprocess overrides in [characters.weaponName.signature].
 
 [characters.weaponName.rarity_overrides."5"]
 text_color_ranges = [
@@ -226,7 +231,8 @@ cache_mode = "persistent"
 [characters.weaponRank]
 color_space = "bgr"
 cache_mode = "persistent"
-sig_from_preprocessed = true
+# TODO: If weapon-rank signatures should hash preprocessed text masks,
+# define explicit preprocess overrides in [characters.weaponRank.signature].
 text_color_ranges = [
     [[40, 200, 230], [60, 255, 255]],
 ]

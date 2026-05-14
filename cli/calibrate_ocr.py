@@ -325,17 +325,6 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["none", "transient", "persistent"],
         help="Base cache mode.",
     )
-    sig_group = write.add_mutually_exclusive_group()
-    sig_group.add_argument(
-        "--sig-from-preprocessed",
-        action="store_true",
-        help="Set sig_from_preprocessed=true on the base section.",
-    )
-    sig_group.add_argument(
-        "--no-sig-from-preprocessed",
-        action="store_true",
-        help="Set sig_from_preprocessed=false on the base section.",
-    )
     write.add_argument("--sig-text-floor", type=int, default=None, help="Base signature text floor.")
     write.add_argument("--sig-max-spread", type=int, default=None, help="Base signature max spread.")
     write.add_argument(
@@ -819,7 +808,6 @@ def _print_section_preview(
             "pre_downscale",
             "post_upscale",
             "post_downscale",
-            "sig_from_preprocessed",
             "sig_text_floor",
             "sig_max_spread",
         ):
@@ -978,10 +966,6 @@ def cmd_write(args: argparse.Namespace) -> None:
 
     if args.cache_mode is not None:
         base_section["cache_mode"] = args.cache_mode
-    if args.sig_from_preprocessed:
-        base_section["sig_from_preprocessed"] = True
-    if args.no_sig_from_preprocessed:
-        base_section["sig_from_preprocessed"] = False
     if args.sig_text_floor is not None:
         base_section["sig_text_floor"] = args.sig_text_floor
     if args.sig_max_spread is not None:

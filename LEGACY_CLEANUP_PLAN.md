@@ -1,25 +1,25 @@
 # Legacy & Fallback Cleanup Plan
 
 Scan date: 2026-05-14.  
-Grouped by priority: **Bug** > **High** (dead code) > **Medium** (active legacy) > **Low** (design debt).
+Completed items are kept below as historical notes; remaining work is grouped by priority: **High** (dead code) > **Medium** (active legacy) > **Low** (design debt).
 
 ---
 
-## Bug: Phantom `_preprocess_scaled_plane` call
+## Completed: Phantom `_preprocess_scaled_plane` call
 
 **File:** `src/.../scraping/ocr/region_specs.py`, lines 306 & 247  
-**Impact:** `AttributeError` crash at runtime for any spec with `sig_from_preprocessed = true`.
+**Status:** Resolved in code on 2026-05-14; the crash path tied to `sig_from_preprocessed` has been removed.
 
-### Affected specs (from `ocr_region_specs.toml`)
+### Formerly affected specs (before TODO cleanup)
 - `weapons.name`
 - `characters.weaponName`
 - `characters.weaponRank`
 
 ### What happened
-`_preprocess_for_signature` calls `self._preprocess_scaled_plane(…)` (line 306), but that method no longer exists — it was deleted (or merged elsewhere), leaving a stale comment at line 247 and a dangling call site.  The existing `_preprocess_plane` (line 249) covers the same logic but lacks the surrounding scaling wraps.
+`_preprocess_for_signature` used to call `self._preprocess_scaled_plane(…)` (line 306), but that method no longer existed — it had been deleted (or merged elsewhere), leaving a stale comment at line 247 and a dangling call site. The existing `_preprocess_plane` (line 249) covered the same logic but lacked the surrounding scaling wraps.
 
-### Fix
-Replace the `self._preprocess_scaled_plane(…)` call in `_preprocess_for_signature` with explicit scaling + `_preprocess_plane`:
+### Resolution
+The `self._preprocess_scaled_plane(…)` call in `_preprocess_for_signature` was replaced with explicit scaling + `_preprocess_plane`:
 
 ```python
 def _preprocess_for_signature(self, bgr, rarity):
@@ -37,7 +37,7 @@ def _preprocess_for_signature(self, bgr, rarity):
     return plane
 ```
 
-After the fix, the comment at line 247 and the now-unused `_preprocess_plane` method can be evaluated for removal.
+The `sig_from_preprocessed` TOML field has also been removed. The formerly affected specs now use TODO comments to flag any future signature-preprocess revisit.
 
 ---
 
@@ -87,11 +87,9 @@ Note: `ui/` shims (`homeUI.py`, `inventoryUI.py`, `loadingUI.py`, `mainUI.py`, `
 
 ---
 
-## M-1: Remove `_preprocess_plane` dead method (post Bug fix)
+## Completed: Signature preprocessing helper cleanup
 
-After the Bug fix above, `_preprocess_scaled_plane` no longer exists.  `_preprocess_plane` will be called directly by `_preprocess_for_signature`.  Once that is stable, evaluate whether `_preprocess_plane` can be inlined or whether it is useful enough to keep.
-
-The comment `# _preprocess_scaled_plane is now obsolete and can be removed in future cleanup` at line 247 should be removed regardless.
+The stale `_preprocess_scaled_plane` comment and dangling call site were removed with the bug fix above. `_preprocess_plane` remains the shared helper for the active preprocess/signature pipeline.
 
 ---
 
@@ -215,7 +213,7 @@ This re-export exists so callers of the old `echo_ocr_cache` can use `ImageOcrRe
 ## Suggested Work Order
 
 ```
-Bug fix  →  H-1  →  H-2  →  M-1  →  M-2  →  M-3  →  M-4  →  M-5  →  L-*
+H-1  →  H-2  →  M-2  →  M-3  →  M-4  →  M-5  →  L-*
 ```
 
-The Bug fix is independent of everything else and should be first because it masks a live crash.  H-1 and H-2 are pure removals and reduce confusion for all subsequent work.  M-* items require a short audit step before the code change.  L-* items are deferrable.
+H-1 and H-2 are pure removals and reduce confusion for all subsequent work. M-* items require a short audit step before the code change. L-* items are deferrable.
