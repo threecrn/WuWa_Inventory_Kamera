@@ -78,7 +78,13 @@ text_color_ranges = [
 ]
 
 [echoes.level.ocr]
-render_mode = "luma_boost_color"
+render_mode = "anchor_contrast"
+anchor_contrast_sharpness = 12.0
+color_space = "bgr"
+text_color_ranges = [[[170, 160, 150], [195, 190, 175]]]
+background_color_ranges = [[[40, 30, 20], [60, 50, 40]]]
+#text_color_ranges = [[[150, 160, 170], [175, 190, 195]]]
+#background_color_ranges = [[[20, 30, 40], [40, 50, 60]]]
 single_line = true
 post_upscale = [64, 64]
 

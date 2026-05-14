@@ -149,7 +149,15 @@ class OcrRegionSpec:
         "masked_color",
         "neutral_bg_color",
         "luma_boost_color",
+        "anchor_contrast",
     ] = "legacy_binary_rgb"
+
+    # Controls the sigmoid transition steepness used by ``anchor_contrast``.
+    # Higher values make the boundary between text and background sharper
+    # (approaching a hard mask); lower values preserve more of the original
+    # anti-aliased gradient.  Normalised to the inter-anchor distance, so the
+    # same value works across different colour pairs without retuning.
+    anchor_contrast_sharpness: float = 8.0
 
     # ---- Cache tier ----
     cache_mode: Literal["none", "transient", "persistent"] = "persistent"
@@ -196,7 +204,7 @@ class OcrRegionSpec:
         # 2. Build text mask
         text_mask = self.build_text_mask(scaled_bgr, rarity)
         # 3. Render for OCR (currently legacy path, will expand)
-        rendered_rgb = self.render_for_ocr(scaled_bgr, text_mask)
+        rendered_rgb = self.render_for_ocr(scaled_bgr, text_mask, rarity=rarity)
         # 4. Post-scaling
         rendered_rgb = _apply_scaling_stage(
             rendered_rgb,
@@ -261,6 +269,7 @@ class OcrRegionSpec:
         self,
         bgr: np.ndarray,
         text_mask: np.ndarray | None,
+        rarity: int | None = None,
     ) -> np.ndarray:
         """
         Render a 3-channel RGB image for OCR using the text mask and original crop.
@@ -273,11 +282,36 @@ class OcrRegionSpec:
         *  ``masked_color`` — keep original text pixels in colour; black elsewhere.
         *  ``neutral_bg_color`` — keep text pixels on a neutral dark background.
         *  ``luma_boost_color`` — contrast-stretch the luma channel; keep chroma.
+        *  ``anchor_contrast`` — sigmoid distance-weighted interpolation between a
+           text colour anchor and a background colour anchor.  Anti-aliased edges
+           are preserved as a smooth gradient rather than collapsed to binary.
+           Requires ``text_color_ranges`` and benefits from
+           ``background_color_ranges``; falls back to ``neutral_bg_color`` if
+           no ranges are declared.
         """
         mode = self.render_mode
 
         if mode == "raw_passthrough":
             return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+
+        if mode == "anchor_contrast":
+            effective_ranges = self._resolve_text_ranges(rarity)
+            if effective_ranges:
+                text_anchor = _midpoint_of_ranges(effective_ranges)
+                bg_anchor = (
+                    _midpoint_of_ranges(self.background_color_ranges)
+                    if self.background_color_ranges
+                    else _NEUTRAL_BG_BGR
+                )
+                return _render_anchor_contrast(
+                    bgr, text_anchor, bg_anchor, self.anchor_contrast_sharpness
+                )
+            # No ranges declared — fall back to neutral_bg_color.
+            if text_mask is None:
+                gray = _to_gray(bgr)
+                plane = _apply_threshold(gray, self.threshold_mode, self.floor_value)
+                text_mask = plane > 0
+            return _render_neutral_bg_color(bgr, text_mask, self.morphology)
 
         if mode == "luma_boost_color":
             return _render_luma_boost_color(bgr, self.floor_value)
@@ -575,6 +609,90 @@ def _render_luma_boost_color(
     return cv2.cvtColor(out_bgr, cv2.COLOR_BGR2RGB)
 
 
+def _midpoint_of_ranges(ranges: ColorRangeList) -> tuple[int, int, int]:
+    """Return the mean midpoint BGR colour of a list of ``(lo, hi)`` ranges.
+
+    Each ``(lo, hi)`` pair contributes one midpoint; the final anchor is the
+    channel-wise average across all midpoints.  This gives a single
+    representative colour for a region's declared text or background family.
+    """
+    midpoints = [
+        tuple((int(lo[c]) + int(hi[c])) // 2 for c in range(3))
+        for lo, hi in ranges
+        if len(lo) >= 3 and len(hi) >= 3
+    ]
+    if not midpoints:
+        return (128, 128, 128)
+    n = len(midpoints)
+    return (
+        sum(p[0] for p in midpoints) // n,
+        sum(p[1] for p in midpoints) // n,
+        sum(p[2] for p in midpoints) // n,
+    )
+
+
+def _render_anchor_contrast(
+    bgr: np.ndarray,
+    text_anchor_bgr: tuple[int, int, int],
+    bg_anchor_bgr: tuple[int, int, int],
+    sharpness: float,
+) -> np.ndarray:
+    """Sigmoid distance-weighted contrast enhancement between two colour anchors.
+
+    For each pixel the Euclidean colour distance to *text_anchor_bgr* is
+    computed and mapped through a sigmoid to produce a weight *W* in [0, 1].
+    The pixel is then interpolated::
+
+        new_pixel = W * text_anchor + (1 - W) * bg_anchor
+
+    *W* is 1 (text anchor) for pixels that exactly match the text colour, and
+    0 (background anchor) for pixels far away.  Anti-aliased edge pixels fall
+    naturally in-between, preserving their sub-pixel gradient for the OCR
+    engine rather than collapsing them to binary.
+
+    The sigmoid threshold is set to half the inter-anchor distance so the
+    crossover always sits at the geometric midpoint between the two poles,
+    regardless of the actual colour distance.  *sharpness* controls how
+    steeply the curve transitions: higher values approach a hard mask, lower
+    values keep the gradient soft.
+
+    Parameters
+    ----------
+    bgr:
+        Input crop in BGR uint8.
+    text_anchor_bgr:
+        Representative BGR colour for the text (pulled from
+        ``text_color_ranges`` midpoint).
+    bg_anchor_bgr:
+        Representative BGR colour for the background (pulled from
+        ``background_color_ranges`` midpoint, or ``_NEUTRAL_BG_BGR`` if
+        no background ranges are declared).
+    sharpness:
+        Sigmoid steepness, normalised to the inter-anchor distance.  ``8.0``
+        is a sensible default; values in [4, 16] cover most use cases.
+    """
+    text_f32 = np.array(text_anchor_bgr, dtype=np.float32)
+    bg_f32 = np.array(bg_anchor_bgr, dtype=np.float32)
+
+    anchor_dist = float(np.linalg.norm(text_f32 - bg_f32))
+    if anchor_dist < 1.0:
+        # Anchors are identical; no contrast to enhance.
+        return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+
+    # Normalised distance: 0 at text anchor, 1 at bg anchor.
+    diff = bgr.astype(np.float32) - text_f32          # (H, W, 3)
+    dist_norm = np.linalg.norm(diff, axis=2) / anchor_dist  # (H, W)
+
+    # Sigmoid centred at 0.5: high weight = close to text anchor.
+    #   W = 1 / (1 + exp(sharpness * (dist_norm - 0.5)))
+    weight = 1.0 / (1.0 + np.exp(sharpness * (dist_norm - 0.5)))
+    weight = weight[..., np.newaxis]  # (H, W, 1) for broadcasting
+
+    rendered = weight * text_f32 + (1.0 - weight) * bg_f32
+    rendered_bgr = np.clip(rendered, 0, 255).astype(np.uint8)
+    return cv2.cvtColor(rendered_bgr, cv2.COLOR_BGR2RGB)
+
+
 # ======================================================================
 # Module-level helper functions
 # ======================================================================
@@ -595,14 +713,20 @@ def _mask_from_ranges(
     image: np.ndarray,
     ranges: ColorRangeList | None,
 ) -> np.ndarray | None:
-    """Build a boolean OR-mask from a list of (lo, hi) inclusive ranges."""
+    """Build a boolean OR-mask from a list of (lo, hi) inclusive ranges.
+
+    Range tuples are automatically truncated to match the channel count of
+    *image*.  This lets BGR-declared ranges be safely reused against a
+    grayscale (2-D) image without raising a ``cv2.error``.
+    """
     if not ranges:
         return None
 
+    n_ch = 1 if image.ndim == 2 else image.shape[2]
     combined: np.ndarray | None = None
     for lo, hi in ranges:
-        lo_arr = np.array(lo, dtype=np.uint8)
-        hi_arr = np.array(hi, dtype=np.uint8)
+        lo_arr = np.array(lo[:n_ch], dtype=np.uint8)
+        hi_arr = np.array(hi[:n_ch], dtype=np.uint8)
         mask = cv2.inRange(image, lo_arr, hi_arr) > 0
         if combined is None:
             combined = mask
@@ -861,6 +985,7 @@ def _parse_section(
         "spec_version",
         "ocr",        # new split-format OCR sub-section
         "render_mode",
+        "anchor_contrast_sharpness",
     }
     has_spec_keys = any(k in spec_keys for k in section)
     # "ocr" is now treated like "signature" — consumed by _build_spec, not
@@ -917,7 +1042,7 @@ def _build_spec(
     for simple_key in (
         "color_space", "threshold_mode", "floor_value", "morphology",
         "allowed_chars", "sig_text_floor", "sig_max_spread",
-        "invert", "single_line", "render_mode",
+        "invert", "single_line", "render_mode", "anchor_contrast_sharpness",
     ):
         if simple_key in ocr_source:
             kwargs[simple_key] = ocr_source[simple_key]
