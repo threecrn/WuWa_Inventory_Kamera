@@ -1,9 +1,3 @@
 """
-Root conftest.py — puts the project root on sys.path so that package imports
-like ``from scraping.processing.echoesValidator import ...`` work when pytest
-is invoked from any directory.
+Root conftest.py — shared pytest configuration.
 """
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent))

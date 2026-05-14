@@ -60,27 +60,21 @@ The `sig_from_preprocessed` TOML field has also been removed. The formerly affec
 
 ---
 
-## H-2: Remove root-level shim packages
+## Completed: H-2 — Remove root-level shim packages
 
-The root-level `scraping/`, `ui/`, and `updater/` trees are pure re-export shims to `wuwa_inventory_kamera.*`.  They exist only because a few files still import via old paths.
+**Status:** Resolved in code on 2026-05-14.
 
-### Active callers holding up removal
+The remaining callers were migrated to `wuwa_inventory_kamera.*` imports, the root-level `scraping/` and `ui/` shim trees were deleted, and `conftest.py` no longer injects the project root into `sys.path`.
 
-| Shim | Caller | Migration |
-|---|---|---|
-| `scraping/data.py` | `updater/databaseUpdater.py` | Change to `from wuwa_inventory_kamera.scraping.data import …` |
-| `scraping/utils/…` | `cli/debug_ocr.py` | Change to `from wuwa_inventory_kamera.scraping.utils import …` |
-| `scraping/processing/echoesProcessor.py` | `tests/test_ocrSubstatNames.py` | Update test import |
-| `scraping/processing/echoesValidator.py` | `conftest.py` mentions it; `session_tests/` | Update imports |
-| `scraping/models/rawScan.py` | (scan may be implicit via conftest path) | Update imports |
-| `game/screenInfo.py` (via conftest sys.path) | `tests/test_ocrSubstatNames.py` | Change to `from wuwa_inventory_kamera.game.screen_info import ScreenInfo` |
+### What changed
+- `updater/databaseUpdater.py` now imports `wuwa_inventory_kamera.scraping.data` directly.
+- `cli/debug_ocr.py` now imports `wuwa_inventory_kamera.scraping.utils.common` directly.
+- `tests/test_ocrSubstatNames.py` now imports `wuwa_inventory_kamera.scraping.processing.echoes_processor` and `wuwa_inventory_kamera.game.screen_info`.
+- `conftest.py` no longer mutates `sys.path`.
+- Deleted the root-level `scraping/` and `ui/` compatibility trees.
 
-### Steps
-1. Migrate all callers listed above to use `wuwa_inventory_kamera.*` imports directly.
-2. Update `conftest.py` — remove the `sys.path.insert(0, …)` hack once all tests use package imports.
-3. Delete `scraping/`, `ui/`, `updater/` shim trees from the project root.
-
-Note: `ui/` shims (`homeUI.py`, `inventoryUI.py`, `loadingUI.py`, `mainUI.py`, `settingsUI.py`) have no Python callers found; they may already be unused.  `updater/databaseUpdater.py` and `updater/assetsUpdater.py` still contain the Qt-dependent subclasses (`DataUpdater`, `AssetsUpdater`), so only the `from scraping.data import …` lines within them need updating — the files themselves must stay.
+### Note
+The root-level `updater/` directory remains in place because it contains the Qt-dependent compatibility subclasses (`DataUpdater`, `AssetsUpdater`) rather than a pure re-export shim.
 
 ---
 
@@ -210,7 +204,7 @@ This re-export exists so callers of the old `echo_ocr_cache` can use `ImageOcrRe
 ## Suggested Work Order
 
 ```
-H-1  →  H-2  →  M-2  →  M-3  →  M-4  →  M-5  →  L-*
+H-1  →  M-2  →  M-3  →  M-4  →  M-5  →  L-*
 ```
 
-H-1 and H-2 are pure removals and reduce confusion for all subsequent work. M-* items require a short audit step before the code change. L-* items are deferrable.
+H-1 was a pure removal and reduced confusion for the rest of the cleanup. H-2 is now complete as well; M-* items require a short audit step before the code change. L-* items are deferrable.

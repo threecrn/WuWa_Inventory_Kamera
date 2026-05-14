@@ -15,7 +15,7 @@ from wuwa_inventory_kamera.updater.database import BaseDataUpdater, FileConfig  
 from PySide6.QtCore import QObject, Signal
 
 from properties.config import cfg
-from scraping.data import (
+from wuwa_inventory_kamera.scraping.data import (
 	itemsID, charactersID, weaponsID,
 	echoesID, achievementsID, echoStats,
 	definedText, sonataName,

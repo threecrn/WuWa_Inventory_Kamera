@@ -35,12 +35,7 @@ from pathlib import Path
 
 import numpy as np
 
-# ---------------------------------------------------------------------------
-# Project path bootstrap
-# ---------------------------------------------------------------------------
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from scraping.utils import darken_background_preserve_edges_ndarray  # noqa: E402
+from wuwa_inventory_kamera.scraping.utils.common import darken_background_preserve_edges_ndarray
 
 logger = logging.getLogger('debug_ocr')
 

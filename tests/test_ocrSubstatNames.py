@@ -1,7 +1,7 @@
 import pytest
 
-from scraping.processing.echoesProcessor import _extractStats
-from game.screenInfo import ScreenInfo
+from wuwa_inventory_kamera.scraping.processing.echoes_processor import _extractStats
+from wuwa_inventory_kamera.game.screen_info import ScreenInfo
 import numpy as np
 from PIL import Image
 import logging
