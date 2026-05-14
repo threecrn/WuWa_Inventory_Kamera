@@ -63,7 +63,6 @@ class ScanThread(QThread):
         min_level: int,
         inventory_key: str,
         export_folder: str,
-        echo_stat_cache_path: str | None,
         ocr_cache_path: str | None = None,
         save_raw: bool = False,
         max_batch_size: int = 8,
@@ -77,7 +76,6 @@ class ScanThread(QThread):
         self._min_level = min_level
         self._inventory_key = inventory_key
         self._export_folder = export_folder
-        self._echo_stat_cache_path = echo_stat_cache_path
         self._ocr_cache_path = ocr_cache_path
         self._save_raw = save_raw
         self._max_batch_size = max_batch_size
@@ -100,10 +98,6 @@ class ScanThread(QThread):
                 max_batch_size=self._max_batch_size,
                 on_progress=lambda step, s, t: self.progress.emit(step, s, t),
                 windowed=self._windowed,
-                echo_stat_cache_path=(
-                    Path(self._echo_stat_cache_path)
-                    if self._echo_stat_cache_path else None
-                ),
                 ocr_cache_path=(
                     Path(self._ocr_cache_path)
                     if self._ocr_cache_path else None
@@ -458,7 +452,6 @@ class LControlPanel(QFrame):
             min_level=cfg.echoMinLevel.value,
             inventory_key=cfg.get(cfg.inventoryKeybind).lower(),
             export_folder=cfg.get(cfg.exportFolder),
-            echo_stat_cache_path=cfg.get(cfg.echoStatCachePath),
             ocr_cache_path=cfg.get(cfg.ocrCachePath),
             save_raw=cfg.saveRaw.value,
             max_batch_size=cfg.ocrBatchSize.value,
@@ -583,7 +576,6 @@ class LControlPanel(QFrame):
                 min_rarity=cfg.echoMinRarity.value,
                 min_level=cfg.echoMinLevel.value,
                 write_debug=cfg.writeDebug.value,
-                echo_stat_cache_path=cfg.get(cfg.echoStatCachePath),
                 ocr_cache_path=cfg.get(cfg.ocrCachePath),
                 raw_base=raw_base,
             )

@@ -36,7 +36,6 @@ from ..ocr.region_specs import OcrRegionSpec
 
 logger = logging.getLogger(__name__)
 
-# Re-export for backward compat
 ImageOcrResult = list[tuple[str, float, np.ndarray]]
 
 

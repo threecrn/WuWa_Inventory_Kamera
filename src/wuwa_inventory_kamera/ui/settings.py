@@ -26,7 +26,6 @@ from .config import (
     cfg, alphabethList, maxLength,
     HELP_URL, FEEDBACK_URL, LANGUAGES,
 )
-from ..scraping.service.echo_ocr_cache import EchoOcrCache
 from ..scraping.service.ocr_cache import OcrCache
 
 logger = logging.getLogger('SettingInterface')
@@ -138,13 +137,6 @@ class SettingInterface(ScrollArea):
             max_value=64,
             parent=self.ocrGroup,
         )
-        self.echoStatCachePathCard = FieldSettingCard(
-            cfg.echoStatCachePath,
-            FIF.SAVE,
-            self.tr('Echo stat OCR cache path'),
-            self.tr('SQLite file used to reuse stat-name/value OCR across repeated echo scans and service-mode reprocessing.'),
-            parent=self.ocrGroup,
-        )
         self.ocrCachePathCard = FieldSettingCard(
             cfg.ocrCachePath,
             FIF.SAVE,
@@ -239,7 +231,6 @@ class SettingInterface(ScrollArea):
         self.inGameGroup.addSettingCard(self.windowedCard)
         self.ocrGroup.addSettingCard(self.ocrBackendCard)
         self.ocrGroup.addSettingCard(self.ocrBatchSizeCard)
-        self.ocrGroup.addSettingCard(self.echoStatCachePathCard)
         self.ocrGroup.addSettingCard(self.ocrCachePathCard)
         self.ocrGroup.addSettingCard(self.cleanupCacheCard)
         self.advancedGroup.addSettingCard(self.logLevelCard)
@@ -276,15 +267,6 @@ class SettingInterface(ScrollArea):
     def __onCleanupCacheClicked(self):
         total_deleted = 0
         errors: list[str] = []
-
-        # Legacy echo-stat cache
-        try:
-            cache = EchoOcrCache(cfg.get(cfg.echoStatCachePath))
-            total_deleted += cache.cleanup_older_than(days=60)
-            cache.close()
-        except (OSError, sqlite3.Error) as exc:
-            logger.warning('Echo stat cache cleanup failed: %s', exc)
-            errors.append(str(exc))
 
         # Generalized OCR cache
         try:

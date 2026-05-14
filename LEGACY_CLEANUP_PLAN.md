@@ -41,25 +41,22 @@ The `sig_from_preprocessed` TOML field has also been removed. The formerly affec
 
 ---
 
-## H-1: Remove the `EchoOcrCache` stack (dead code)
+## Completed: H-1 — Remove the `EchoOcrCache` stack (dead code)
 
-`_ocr_images_with_cache` in `ocr_service.py` has **no callers** — the OCR preprocessing plan notes that all calls were removed from `_process_echoes` in favour of `_ocr_with_spec`.  The entire `echo-stat-ocr.sqlite3` cache path is wired but never exercised.
+**Status:** Resolved in code on 2026-05-14.
 
-### Files to change
+`_ocr_images_with_cache` in `ocr_service.py` had no callers — removed along with the entire `echo-stat-ocr.sqlite3` cache path wiring.
 
-| File | Change |
-|---|---|
-| `scraping/service/ocr_service.py` | Remove `_ocr_images_with_cache` method; remove `echo_stat_cache_path` param + `self._echo_stat_cache` from `__init__`; remove `EchoOcrCache` import |
-| `scraping/service/echo_reprocess.py` | Remove `echo_stat_cache_path` param |
-| `cli/scan.py` | Remove `--echo-stat-cache` arg and wiring |
-| `cli/reprocess.py` | Remove `--echo-stat-cache` arg and wiring |
-| `ui/home.py` | Remove `echo_stat_cache_path` param and `_echo_stat_cache_path` field |
-| `ui/settings.py` | Remove the "Legacy echo-stat cache" cleanup block and the settings card |
-| `ui/config.py` | Remove `echoStatCachePath` ConfigItem |
-| `config/app_config.py` | Remove `default_echo_stat_cache_path()` and `echoStatCachePath` attribute |
-| `scraping/service/echo_ocr_cache.py` | **Delete file** |
-
-Separately, the `export/echo-stat-ocr.sqlite3` database file in the repo can be removed once the UI setting is gone (it becomes an unreferenced artefact).
+### What was removed
+- `_ocr_images_with_cache` method from `ocr_service.py`
+- `echo_stat_cache_path` param / `self._echo_stat_cache_path` from `ui/home.py` `ScanThread`
+- `--echo-stat-cache` arg and wiring from `cli/scan.py` and `cli/reprocess.py`
+- `echo_stat_cache_path` param from `scraping/scanning/session_orchestrator.py`
+- `echoStatCachePathCard` settings card and `EchoOcrCache` cleanup block from `ui/settings.py`
+- `echoStatCachePath` `ConfigItem` from `ui/config.py`
+- `default_echo_stat_cache_path()` function and `echoStatCachePath` attribute from `config/app_config.py`
+- Deleted `scraping/service/echo_ocr_cache.py` and `tests/test_echo_ocr_cache.py`
+- Removed stale "Re-export for backward compat" comment from `ocr_cache.py`
 
 ---
 

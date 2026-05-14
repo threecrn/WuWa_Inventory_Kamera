@@ -59,7 +59,7 @@ from ..ocr._rapidocr import RapidOcrBackend
 from ..ocr.batch import BatchOcr
 from ..ocr.region_specs import OcrRegionSpec, get_spec
 from .ocr_cache import OcrCache
-from .echo_ocr_cache import EchoOcrCache
+
 from .captures import (
     _Stop,
     CaptureType,
@@ -297,7 +297,6 @@ class OcrService:
         max_batch_size: int = 32,
         min_rarity: int = 1,
         min_level: int = 0,
-        echo_stat_cache_path: str | None = None,
         ocr_cache_path: str | None = None,
         resolution: str | None = None,
         **backend_kwargs,
@@ -321,11 +320,6 @@ class OcrService:
         self._batch_timeout  = batch_timeout
         self._max_batch_size = max_batch_size
 
-        # Legacy echo stat cache (kept for backward compat)
-        self._echo_stat_cache = (
-            EchoOcrCache(echo_stat_cache_path)
-            if echo_stat_cache_path is not None else None
-        )
         # Generalized two-tier OCR cache
         self._ocr_cache = OcrCache(db_path=ocr_cache_path)
         self._resolution = resolution
@@ -343,8 +337,6 @@ class OcrService:
         )
         self._thread.start()
         logger.info('OcrService started (providers=%s)', providers)
-        if self._echo_stat_cache is not None:
-            logger.info('Echo stat OCR cache enabled: %s', self._echo_stat_cache.path)
         if self._ocr_cache.db_path is not None:
             logger.info('Generalized OCR cache enabled: %s', self._ocr_cache.db_path)
 
@@ -487,8 +479,6 @@ class OcrService:
             for line in self._ocr_cache.session_report():
                 logger.info(line)
             self._ocr_cache.close()
-            if self._echo_stat_cache is not None:
-                self._echo_stat_cache.close()
 
     def _drain_batch(self) -> list[_QueueItem] | None:
         """
@@ -797,44 +787,6 @@ class OcrService:
             except Exception as exc:
                 logger.exception('OcrService — echo %d assembly error', capture.echo_index)
                 item.future.set_exception(exc)
-
-    def _ocr_images_with_cache(
-        self,
-        crop_kind: str,
-        images: list[np.ndarray],
-    ) -> list[list[tuple[str, float, np.ndarray]]]:
-        """Run OCR for *images*, serving cached echo stat results when present.
-
-        This is the legacy path that uses the old ``EchoOcrCache``.
-        New workflows should use :meth:`_ocr_with_spec` instead.
-        """
-        cache = self._echo_stat_cache
-        if cache is None or not images or self._resolution is None:
-            return self._batch_ocr.ocr_images(images)
-
-        keys, cached_results, miss_indices = cache.lookup_many(resolution=self._resolution, crop_kind=crop_kind, images=images)
-        if miss_indices:
-            miss_images = [images[idx] for idx in miss_indices]
-            miss_results = self._batch_ocr.ocr_images(miss_images)
-            cache.store_many(
-                resolution=self._resolution,
-                crop_kind=crop_kind,
-                images=miss_images,
-                results=miss_results,
-                keys=[keys[idx] for idx in miss_indices],
-            )
-            for idx, image_results in zip(miss_indices, miss_results):
-                cached_results[idx] = image_results
-
-        hits = len(images) - len(miss_indices)
-        logger.debug(
-            'Echo OCR cache %s — hits=%d misses=%d total=%d',
-            crop_kind,
-            hits,
-            len(miss_indices),
-            len(images),
-        )
-        return [image_results or [] for image_results in cached_results]
 
     @staticmethod
     def _filter_allowed_chars(
