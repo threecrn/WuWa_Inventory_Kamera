@@ -14,6 +14,8 @@ Only 1920x1080 and 1920x1200 are supported.
 """
 from __future__ import annotations
 
+from wuwa_inventory_kamera.game.utils.geometry import reduce_ratio
+
 
 class Coordinates:
     def __init__(self, x: int | float = 0, y: int | float = 0, w: int | float = 0, h: int | float = 0):
@@ -146,7 +148,7 @@ class Coordinates:
 # ---------------------------------------------------------------------------
 
 COORDINATES = {
-    (16, 9): {
+    reduce_ratio(16, 9): {
         (1920, 1080): {
             "terminal": Coordinates(140, 40, 150, 40),
             "shell": Coordinates(1255, 38, 165, 50),
@@ -306,7 +308,7 @@ COORDINATES = {
             }
         },
     },
-    (8, 5): {
+    reduce_ratio(16, 10): {
         (1920, 1200): {
             # Supported 16:10 layout measurements.
             "terminal": Coordinates(142.9, 36.6, 171.4, 45.7),

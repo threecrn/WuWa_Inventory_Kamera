@@ -75,14 +75,8 @@ class ScreenInfo:
             return getattr(self.data, item)
         raise AttributeError(f"'ScreenInfo' object has no attribute '{item}'")
 
-    @staticmethod
-    def reduceRatio(width, height):
-        """Reduce width and height to their simplest ratio."""
-        from math import gcd
-
-        divisor = gcd(width, height)
-        return (width // divisor, height // divisor)
-
     def getRatio(self):
         """Return the simplified ratio of the screen."""
-        return self.reduceRatio(self.width, self.height)
+        from .utils.geometry import reduce_ratio
+        return reduce_ratio(self.width, self.height)
+
