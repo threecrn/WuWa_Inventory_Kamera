@@ -43,6 +43,9 @@ def savingScraped(scannedData: dict = {'inventory_wuwainventorykamera.json': (IN
 def screenshot(left: int = 0, top: int = 0, width: int = 0, height: int = 0, monitor: int = 1, bw: bool = False):
     import mss
     with mss.mss() as sct:
+        num_monitors = len(sct.monitors) - 1
+        if monitor < 1 or monitor > num_monitors:
+            monitor = min(max(1, monitor), max(1, num_monitors))
         mon = sct.monitors[monitor]
         if all(coord == 0 for coord in [top, left, width, height]):
             left, top, width, height = tuple(coord for coord in mon.values())

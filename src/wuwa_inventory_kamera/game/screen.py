@@ -249,7 +249,11 @@ class GameWindow:
         if self.windowed:
             return self.client_origin
         sct = _mss()
-        mon = sct.monitors[self.monitor_index]
+        num_monitors = len(sct.monitors) - 1
+        monitor_index = self.monitor_index
+        if monitor_index < 1 or monitor_index > num_monitors:
+            monitor_index = min(max(1, monitor_index), max(1, num_monitors))
+        mon = sct.monitors[monitor_index]
         return (mon['left'], mon['top'])
 
     def check_minimum_size(self) -> None:
@@ -434,6 +438,9 @@ def capture_full(
 def _capture_full_mss(width: int, height: int, monitor: int = 1) -> np.ndarray:
     """mss-based full screenshot (original fullscreen path)."""
     sct = _mss()
+    num_monitors = len(sct.monitors) - 1  # index 0 is the combined virtual monitor
+    if monitor < 1 or monitor > num_monitors:
+        monitor = min(max(1, monitor), max(1, num_monitors))
     mon = sct.monitors[monitor]
     region = {
         'top': mon['top'],
@@ -467,7 +474,11 @@ def capture_region(
             int(roi.x) : int(roi.x + roi.w),
         ]
     sct = _mss()
-    mon = sct.monitors[gw.monitor_index]
+    num_monitors = len(sct.monitors) - 1  # index 0 is the combined virtual monitor
+    monitor_index = gw.monitor_index
+    if monitor_index < 1 or monitor_index > num_monitors:
+        monitor_index = min(max(1, monitor_index), max(1, num_monitors))
+    mon = sct.monitors[monitor_index]
     region = {
         'top': mon['top'] + int(roi.y),
         'left': mon['left'] + int(roi.x),

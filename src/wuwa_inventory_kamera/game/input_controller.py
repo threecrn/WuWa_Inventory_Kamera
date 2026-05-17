@@ -117,6 +117,9 @@ class InputController:
 
         self._w32 = _w32
         self._sct = mss()
+        num_monitors = len(self._sct.monitors) - 1  # index 0 is the combined virtual monitor
+        if monitor_index < 1 or monitor_index > num_monitors:
+            monitor_index = min(max(1, monitor_index), max(1, num_monitors))
         self._monitor_index = monitor_index
         self._monitor = self._sct.monitors[monitor_index]
         self._get_origin = get_origin
