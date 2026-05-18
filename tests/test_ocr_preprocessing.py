@@ -133,6 +133,25 @@ def test_normalized_anchor_contrast_spreads_anchor_range_to_full_scale() -> None
     assert gray[0, 2] == 255
 
 
+def test_normalized_anchor_color_preserves_colour_endpoints() -> None:
+    spec = OcrRegionSpec(
+        roi_key="echoes.level",
+        render_mode="normalized_anchor_color",
+        text_color_ranges=[((220, 200, 100), (220, 200, 100))],
+        background_color_ranges=[((20, 40, 80), (20, 40, 80))],
+    )
+    image = np.zeros((1, 3, 3), dtype=np.uint8)
+    image[0, 0] = np.asarray([20, 40, 80], dtype=np.uint8)
+    image[0, 1] = np.asarray([120, 120, 90], dtype=np.uint8)
+    image[0, 2] = np.asarray([220, 200, 100], dtype=np.uint8)
+
+    processed = spec.preprocess(image).ocr_rgb
+
+    assert processed[0, 0].tolist() == [80, 40, 20]
+    assert processed[0, 1].tolist() == [90, 120, 120]
+    assert processed[0, 2].tolist() == [100, 200, 220]
+
+
 def test_packaged_echo_level_spec_uses_single_line_ocr() -> None:
     spec = get_spec("echoes.level")
 
