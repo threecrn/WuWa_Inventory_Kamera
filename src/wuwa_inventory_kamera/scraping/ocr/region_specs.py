@@ -143,6 +143,10 @@ class OcrRegionSpec:
     #  luma_boost_color  : contrast-stretch the luma channel while leaving
     #                      chroma intact.  Good for white/off-white text on
     #                      stable dark panels.
+    #  normalized_anchor_contrast : use the same distance-weighted soft edge
+    #                      model as ``anchor_contrast`` but remap the declared
+    #                      background/text anchors to black/white so the OCR
+    #                      input spans the full 0-255 range.
     render_mode: Literal[
         "legacy_binary_rgb",
         "raw_passthrough",
@@ -150,6 +154,7 @@ class OcrRegionSpec:
         "neutral_bg_color",
         "luma_boost_color",
         "anchor_contrast",
+        "normalized_anchor_contrast",
     ] = "legacy_binary_rgb"
 
     # Controls the sigmoid transition steepness used by ``anchor_contrast``.
@@ -288,13 +293,16 @@ class OcrRegionSpec:
            Requires ``text_color_ranges`` and benefits from
            ``background_color_ranges``; falls back to ``neutral_bg_color`` if
            no ranges are declared.
+          *  ``normalized_anchor_contrast`` — compute the same anchor-distance
+              weight as ``anchor_contrast`` but renormalize the declared anchor
+              endpoints to a full-range white-on-black plane.
         """
         mode = self.render_mode
 
         if mode == "raw_passthrough":
             return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
 
-        if mode == "anchor_contrast":
+        if mode in {"anchor_contrast", "normalized_anchor_contrast"}:
             effective_ranges = self._resolve_text_ranges(rarity)
             if effective_ranges:
                 text_anchor = _midpoint_of_ranges(effective_ranges)
@@ -303,6 +311,10 @@ class OcrRegionSpec:
                     if self.background_color_ranges
                     else _NEUTRAL_BG_BGR
                 )
+                if mode == "normalized_anchor_contrast":
+                    return _render_normalized_anchor_contrast(
+                        bgr, text_anchor, bg_anchor, self.anchor_contrast_sharpness
+                    )
                 return _render_anchor_contrast(
                     bgr, text_anchor, bg_anchor, self.anchor_contrast_sharpness
                 )
@@ -671,26 +683,84 @@ def _render_anchor_contrast(
         Sigmoid steepness, normalised to the inter-anchor distance.  ``8.0``
         is a sensible default; values in [4, 16] cover most use cases.
     """
-    text_f32 = np.array(text_anchor_bgr, dtype=np.float32)
-    bg_f32 = np.array(bg_anchor_bgr, dtype=np.float32)
-
-    anchor_dist = float(np.linalg.norm(text_f32 - bg_f32))
-    if anchor_dist < 1.0:
+    weight = _anchor_contrast_weight(
+        bgr,
+        text_anchor_bgr=text_anchor_bgr,
+        bg_anchor_bgr=bg_anchor_bgr,
+        sharpness=sharpness,
+    )
+    if weight is None:
         # Anchors are identical; no contrast to enhance.
         return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
 
-    # Normalised distance: 0 at text anchor, 1 at bg anchor.
-    diff = bgr.astype(np.float32) - text_f32          # (H, W, 3)
-    dist_norm = np.linalg.norm(diff, axis=2) / anchor_dist  # (H, W)
-
-    # Sigmoid centred at 0.5: high weight = close to text anchor.
-    #   W = 1 / (1 + exp(sharpness * (dist_norm - 0.5)))
-    weight = 1.0 / (1.0 + np.exp(sharpness * (dist_norm - 0.5)))
+    text_f32 = np.array(text_anchor_bgr, dtype=np.float32)
+    bg_f32 = np.array(bg_anchor_bgr, dtype=np.float32)
     weight = weight[..., np.newaxis]  # (H, W, 1) for broadcasting
 
     rendered = weight * text_f32 + (1.0 - weight) * bg_f32
     rendered_bgr = np.clip(rendered, 0, 255).astype(np.uint8)
     return cv2.cvtColor(rendered_bgr, cv2.COLOR_BGR2RGB)
+
+
+def _render_normalized_anchor_contrast(
+    bgr: np.ndarray,
+    text_anchor_bgr: tuple[int, int, int],
+    bg_anchor_bgr: tuple[int, int, int],
+    sharpness: float,
+) -> np.ndarray:
+    """Render anchor-distance weights as full-range grayscale RGB.
+
+    This uses the same sigmoid weight as ``_render_anchor_contrast`` but
+    renormalizes it so the declared background anchor maps to 0 and the text
+    anchor maps to 255.  The result is a soft-edged white-on-black plane that
+    spans the full OCR dynamic range.
+    """
+    weight = _anchor_contrast_weight(
+        bgr,
+        text_anchor_bgr=text_anchor_bgr,
+        bg_anchor_bgr=bg_anchor_bgr,
+        sharpness=sharpness,
+    )
+    if weight is None:
+        return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+
+    plane = np.rint(
+        np.clip(_normalize_anchor_weight(weight, sharpness) * 255.0, 0.0, 255.0)
+    ).astype(np.uint8)
+    return cv2.cvtColor(plane, cv2.COLOR_GRAY2RGB)
+
+
+def _anchor_contrast_weight(
+    bgr: np.ndarray,
+    *,
+    text_anchor_bgr: tuple[int, int, int],
+    bg_anchor_bgr: tuple[int, int, int],
+    sharpness: float,
+) -> np.ndarray | None:
+    text_f32 = np.array(text_anchor_bgr, dtype=np.float32)
+    bg_f32 = np.array(bg_anchor_bgr, dtype=np.float32)
+
+    anchor_dist = float(np.linalg.norm(text_f32 - bg_f32))
+    if anchor_dist < 1.0:
+        return None
+
+    # Normalised distance: 0 at text anchor, 1 at bg anchor.
+    diff = bgr.astype(np.float32) - text_f32
+    dist_norm = np.linalg.norm(diff, axis=2) / anchor_dist
+
+    # Sigmoid centred at 0.5: high weight = close to text anchor.
+    #   W = 1 / (1 + exp(sharpness * (dist_norm - 0.5)))
+    return 1.0 / (1.0 + np.exp(sharpness * (dist_norm - 0.5)))
+
+
+def _normalize_anchor_weight(weight: np.ndarray, sharpness: float) -> np.ndarray:
+    """Stretch the anchor sigmoid so declared endpoints land at 0 and 1."""
+    bg_weight = 1.0 / (1.0 + math.exp(sharpness * 0.5))
+    text_weight = 1.0 - bg_weight
+    span = text_weight - bg_weight
+    if abs(span) < 1e-6:
+        return np.clip(weight, 0.0, 1.0)
+    return np.clip((weight - bg_weight) / span, 0.0, 1.0)
 
 
 # ======================================================================
