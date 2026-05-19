@@ -21,11 +21,11 @@ from .echo_capture_utils import (
 logger = logging.getLogger('wuwa.echo_reprocess')
 
 
-_DEBUG_REGION_SPECS: tuple[tuple[str, str, str], ...] = (
-    ('echoes.echoName', 'echo_name', 'bgr'),
-    ('echoes.fullStatsName', 'stats_name', 'rgb'),
-    ('echoes.fullStatsValue', 'stats_value', 'rgb'),
-    ('echoes.level', 'level', 'rgb'),
+_DEBUG_REGION_SPECS: tuple[tuple[str, str], ...] = (
+    ('echoes.echoName', 'echo_name'),
+    ('echoes.fullStatsName', 'stats_name'),
+    ('echoes.fullStatsValue', 'stats_value'),
+    ('echoes.level', 'level'),
 )
 
 
@@ -82,6 +82,7 @@ def _write_echo_debug_artifacts(
     scan,
     *,
     raw_base: str | Path | None,
+    full_screenshot_space: str,
     detected_rarity: int | None,
     echo_name: np.ndarray | None,
     level: np.ndarray,
@@ -102,8 +103,14 @@ def _write_echo_debug_artifacts(
         'stats_name': stats_name,
         'stats_value': stats_value,
     }
+    region_source_spaces = {
+        'echo_name': 'bgr',
+        'level': full_screenshot_space,
+        'stats_name': full_screenshot_space,
+        'stats_value': full_screenshot_space,
+    }
 
-    for roi_key, basename, source_space in _DEBUG_REGION_SPECS:
+    for roi_key, basename in _DEBUG_REGION_SPECS:
         raw_image = region_images[basename]
         if raw_image is None:
             continue
@@ -111,7 +118,10 @@ def _write_echo_debug_artifacts(
             debug_dir,
             basename=basename,
             roi_key=roi_key,
-            raw_bgr=ensure_bgr_image(raw_image, source_space=source_space),
+            raw_bgr=ensure_bgr_image(
+                raw_image,
+                source_space=region_source_spaces[basename],
+            ),
             rarity=detected_rarity,
         )
 
@@ -207,6 +217,7 @@ def reprocess_echo_scans_with_service(
                 _write_echo_debug_artifacts(
                     scan,
                     raw_base=raw_base,
+                    full_screenshot_space='rgb',
                     detected_rarity=detected_rarity,
                     echo_name=echo_name,
                     level=level_crop,

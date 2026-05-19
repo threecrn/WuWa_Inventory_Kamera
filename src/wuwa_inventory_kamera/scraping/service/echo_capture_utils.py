@@ -34,6 +34,16 @@ def ensure_bgr_image(image: np.ndarray, *, source_space: str) -> np.ndarray:
     raise ValueError(f'Unsupported source_space: {source_space!r}')
 
 
+def ensure_rgb_image(image: np.ndarray, *, source_space: str) -> np.ndarray:
+    """Normalize a capture crop to RGB before OCR/cache processing."""
+
+    if image.ndim == 2 or source_space == 'rgb':
+        return image.copy()
+    if source_space == 'bgr':
+        return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    raise ValueError(f'Unsupported source_space: {source_space!r}')
+
+
 def parse_echo_level_text(level_text: str) -> int | None:
     """Return the first integer parsed from an OCR level string."""
 

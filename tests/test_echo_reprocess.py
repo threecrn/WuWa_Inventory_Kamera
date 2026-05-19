@@ -176,7 +176,10 @@ def test_reprocess_write_debug_dumps_region_images(monkeypatch, tmp_path) -> Non
         def preprocess(self, image, rarity=None):
             assert rarity == 5
             plane = image[:, :, 0] if image.ndim == 3 else image
-            return cv2.cvtColor(plane, cv2.COLOR_GRAY2RGB)
+            return SimpleNamespace(
+                ocr_rgb=cv2.cvtColor(plane, cv2.COLOR_GRAY2RGB),
+                signature_image=plane,
+            )
 
         def _image_for_signature(self, image, rarity):
             assert rarity == 5

@@ -122,6 +122,14 @@ def test_capture_echo_reuses_prefetched_level_without_second_ocr(monkeypatch) ->
     assert ocr.ocr_calls == 0
     assert ocr.submitted[0].detected_level == 25
     np.testing.assert_array_equal(ocr.submitted[0].sonata_icon, image[4:6, 2:4])
+    np.testing.assert_array_equal(
+        ocr.submitted[0].stats_name,
+        cv2.cvtColor(image[0:2, 2:4], cv2.COLOR_BGR2RGB),
+    )
+    np.testing.assert_array_equal(
+        ocr.submitted[0].stats_value,
+        cv2.cvtColor(image[2:4, 0:2], cv2.COLOR_BGR2RGB),
+    )
 
 
 def test_capture_echo_passes_level_crop_to_adhoc_ocr_in_bgr(monkeypatch) -> None:
@@ -243,4 +251,6 @@ def test_capture_echo_write_debug_passes_level_crop(monkeypatch, tmp_path) -> No
     )
 
     assert debug_call['scan_index'] == 7
+    assert debug_call['full_screenshot_space'] == 'bgr'
     np.testing.assert_array_equal(debug_call['level'], image[0:2, 4:6])
+    np.testing.assert_array_equal(debug_call['stats_name'], image[0:2, 2:4])

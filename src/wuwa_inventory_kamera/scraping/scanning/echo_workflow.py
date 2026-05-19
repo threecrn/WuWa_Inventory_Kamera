@@ -57,6 +57,7 @@ from ..service.captures import EchoCapture, EchoResult
 from ..service.echo_capture_utils import (
     decide_echo_level,
     ensure_bgr_image,
+    ensure_rgb_image,
     select_level_dependent_sonata_slot,
 )
 from ..service.ocr_service import OcrService
@@ -371,14 +372,16 @@ class EchoWorkflow:
             int(ei.echoCard.y) : int(ei.echoCard.y + ei.echoCard.h),
             int(ei.echoCard.x) : int(ei.echoCard.x + ei.echoCard.w),
         ]
-        stats_name = full[
+        stats_name_bgr = full[
             int(ei.fullStatsName.y) : int(ei.fullStatsName.y + ei.fullStatsName.h),
             int(ei.fullStatsName.x) : int(ei.fullStatsName.x + ei.fullStatsName.w),
         ]
-        stats_value = full[
+        stats_name = ensure_rgb_image(stats_name_bgr, source_space='bgr')
+        stats_value_bgr = full[
             int(ei.fullStatsValue.y) : int(ei.fullStatsValue.y + ei.fullStatsValue.h),
             int(ei.fullStatsValue.x) : int(ei.fullStatsValue.x + ei.fullStatsValue.w),
         ]
+        stats_value = ensure_rgb_image(stats_value_bgr, source_space='bgr')
 
         # ── Sonata icon crop (level-dependent for new UI) ────────────────
         # In the new UI the sonata icon sits immediately to the right of the
@@ -450,11 +453,12 @@ class EchoWorkflow:
             _write_echo_debug_artifacts(
                 SimpleNamespace(index=pos.scan_index),
                 raw_base=_debug_base,
+                full_screenshot_space='bgr',
                 detected_rarity=detected_rarity,
                 echo_name=echo_name,
                 level=level_crop,
-                stats_name=stats_name,
-                stats_value=stats_value,
+                stats_name=stats_name_bgr,
+                stats_value=stats_value_bgr,
             )
 
         capture = EchoCapture(
