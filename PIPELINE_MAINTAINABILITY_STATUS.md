@@ -1,11 +1,12 @@
-# Pipeline Maintainability Notes
+# Pipeline Maintainability Status
 
 ## Scope
 
-This document now records the current maintainability status of the active V2
-pipeline, not a proposed migration plan.
+This document records the current maintainability status of the live v2
+pipeline. It is a status note, not a migration proposal.
 
-The V2 stack under `src/wuwa_inventory_kamera/` is the live product surface:
+The live product surface is concentrated under `src/wuwa_inventory_kamera/`,
+especially:
 
 - [src/wuwa_inventory_kamera/scraping/scanning/session_orchestrator.py](src/wuwa_inventory_kamera/scraping/scanning/session_orchestrator.py)
 - [src/wuwa_inventory_kamera/scraping/scanning/echo_workflow.py](src/wuwa_inventory_kamera/scraping/scanning/echo_workflow.py)
@@ -19,47 +20,53 @@ The V2 stack under `src/wuwa_inventory_kamera/` is the live product surface:
 - [src/wuwa_inventory_kamera/scraping/service/ocr_service.py](src/wuwa_inventory_kamera/scraping/service/ocr_service.py)
 - [src/wuwa_inventory_kamera/scraping/service/assemblers/echo_assembler.py](src/wuwa_inventory_kamera/scraping/service/assemblers/echo_assembler.py)
 - [src/wuwa_inventory_kamera/scraping/models/raw_scan.py](src/wuwa_inventory_kamera/scraping/models/raw_scan.py)
+- [src/wuwa_inventory_kamera/scraping/utils/common.py](src/wuwa_inventory_kamera/scraping/utils/common.py)
 - [src/wuwa_inventory_kamera/scraping/ocr/region_specs.py](src/wuwa_inventory_kamera/scraping/ocr/region_specs.py)
 - [src/wuwa_inventory_kamera/config/ocr_region_specs.toml](src/wuwa_inventory_kamera/config/ocr_region_specs.toml)
 - [src/wuwa_inventory_kamera/game/screen_info.py](src/wuwa_inventory_kamera/game/screen_info.py)
+- [src/wuwa_inventory_kamera/config/app_config.py](src/wuwa_inventory_kamera/config/app_config.py)
+- [src/wuwa_inventory_kamera/ui/home.py](src/wuwa_inventory_kamera/ui/home.py)
 - [tests/test_echo_workflow.py](tests/test_echo_workflow.py)
 - [tests/test_echo_reprocess.py](tests/test_echo_reprocess.py)
 
-This document is still echo-heavy because echoes remain the most complicated
-surface from a maintainability perspective. They are the only major inventory
-surface that currently has both:
+This note remains echo-heavy because echoes are still the only major inventory
+surface that has both:
 
 - a live scan path driven by game navigation
 - an offline reprocess path driven by persisted raw screenshots
 
-That makes the echo pipeline the main place where capture drift, color-space
-contracts, and replay fidelity problems show up first.
+That is still the first place where capture drift, raw-session compatibility,
+color-space contracts, and replay fidelity problems show up.
 
 ## Status Snapshot
 
-The important status-quo facts are now:
+The important current facts are:
 
-1. The V2 pipeline is implemented and in use.
-  `SessionOrchestrator` drives echoes, weapons, items, characters,
-  achievements, and shell through one shared `OcrService`.
-2. `wuwa-reprocess` is an `OcrService` path.
-  The supported reprocess entry point is the service pipeline plus
-  assemblers, not the old extractor-selection surface.
-3. Tesseract is no longer part of the supported OCR architecture.
-  The active OCR path is RapidOCR plus the service layer.
+1. The v2 pipeline is implemented and in use.
+   `SessionOrchestrator` drives echoes, weapons, dev items/resources,
+   characters, achievements, and shell through one shared `OcrService`.
+2. `wuwa-reprocess` is a service-pipeline entry point.
+   The supported offline path is `loadRawScans()` plus
+   `reprocess_echo_scans_with_service()`, not the old extractor-selection
+   surface.
+3. Tesseract is not part of the supported OCR architecture.
+   The active OCR stack is RapidOCR plus the spec-driven service layer.
 4. Supported inventory layouts are intentionally narrow.
-  `ScreenInfo` now accepts only exact `1920x1080` and `1920x1200` layouts and
-  raises for anything else.
+   `ScreenInfo` accepts only exact `1920x1080` and `1920x1200` layouts and
+   raises for anything else.
 5. OCR preprocessing and cache signatures are centralized.
-  The main spec surface is
-  [src/wuwa_inventory_kamera/config/ocr_region_specs.toml](src/wuwa_inventory_kamera/config/ocr_region_specs.toml)
-  plus
-  [src/wuwa_inventory_kamera/scraping/ocr/region_specs.py](src/wuwa_inventory_kamera/scraping/ocr/region_specs.py).
-6. Legacy processing code still exists in-tree, but it is not the main product
-  surface anymore.
-  The active implementation lives under `src/wuwa_inventory_kamera/`, while
-  older `scraping/` modules and `scraping.restored/` are now mainly a
-  compatibility and reference burden.
+   The main spec surface is
+   [src/wuwa_inventory_kamera/config/ocr_region_specs.toml](src/wuwa_inventory_kamera/config/ocr_region_specs.toml)
+   plus
+   [src/wuwa_inventory_kamera/scraping/ocr/region_specs.py](src/wuwa_inventory_kamera/scraping/ocr/region_specs.py).
+6. Root-level `scraping/` and `ui/` shim packages are gone.
+   The remaining legacy burden now lives inside `src/wuwa_inventory_kamera/`,
+   mostly under `scraping/processing/`, `scraping/utils/common.py`,
+   `scraping/models/raw_scan.py`, and a few UI/CLI compatibility hooks.
+7. New live echo raw sessions use the simpler v2 format.
+   `EchoWorkflow._save_raw()` writes `full.png` and `meta.json`; `sonata.png`
+   is still supported only as a compatibility artifact for older raw sessions
+   and the legacy processor.
 
 ## Current Echo Pipeline Shape
 
@@ -70,16 +77,18 @@ Today the active echo pipeline has three main layers.
 There are still two active ways to create an `EchoCapture`:
 
 1. Live scan:
-  [src/wuwa_inventory_kamera/scraping/scanning/echo_workflow.py](src/wuwa_inventory_kamera/scraping/scanning/echo_workflow.py)
-  navigates the inventory grid, optionally pre-reads the current level for
-  min-level early stop, captures a full frame, derives the echo-specific crops,
-  and submits an `EchoCapture`.
+   [src/wuwa_inventory_kamera/scraping/scanning/echo_workflow.py](src/wuwa_inventory_kamera/scraping/scanning/echo_workflow.py)
+   navigates the inventory grid, optionally pre-reads the current level for
+   min-level early stop, captures a full frame, derives the echo-specific
+   crops, and submits an `EchoCapture`. If raw saving is enabled, it persists
+   `full.png` and `meta.json` for each echo.
 2. Offline reprocess:
-  [src/wuwa_inventory_kamera/cli/reprocess.py](src/wuwa_inventory_kamera/cli/reprocess.py)
-  loads `RawEchoScan` sessions, and
-  [src/wuwa_inventory_kamera/scraping/service/echo_reprocess.py](src/wuwa_inventory_kamera/scraping/service/echo_reprocess.py)
-  rebuilds the crops from the stored `full.png` frame before submitting the
-  same `EchoCapture` type.
+   [src/wuwa_inventory_kamera/cli/reprocess.py](src/wuwa_inventory_kamera/cli/reprocess.py)
+   loads `RawEchoScan` sessions through `loadRawScans()`, and
+   [src/wuwa_inventory_kamera/scraping/service/echo_reprocess.py](src/wuwa_inventory_kamera/scraping/service/echo_reprocess.py)
+   rebuilds the crops from `full.png` before submitting the same
+   `EchoCapture` type. `loadRawScans()` still accepts optional `sonata.png`
+   for older sessions.
 
 ### 2. OCR service
 
@@ -89,7 +98,7 @@ is the shared OCR boundary.
 For echoes it currently does all of the following:
 
 - batches OCR work in a single service thread
-- uses the generalized OCR cache and the legacy echo-stat cache shim
+- uses the generalized OCR cache
 - applies region-spec preprocessing and signature generation
 - runs the echo-name fallback policy inline
 - converts stat crops back to BGR before spec-driven OCR
@@ -106,12 +115,12 @@ The effective seam is now clearly:
 `frame -> EchoCapture -> OcrService -> EchoAssembler -> EchoResult`
 
 What is still missing is one canonical shared builder for the
-`frame -> EchoCapture` part.
+`frame -> EchoCapture` part and one canonical raw-session contract around it.
 
 ## Cleanup Already Landed
 
-The original maintainability note is stale in a few important ways because some
-of the previously proposed cleanup has already happened.
+The older maintainability note is stale in a few important ways because some of
+the previously proposed cleanup has already happened.
 
 ### Shared helper extraction has started
 
@@ -131,20 +140,30 @@ The live workflow now reuses the min-level pre-read when that OCR already ran
 for early-stop filtering, instead of forcing a second `echoes.level` OCR lookup
 for the same echo during capture preparation.
 
-### Reprocess now normalizes critical BGR surfaces explicitly
+### Reprocess now normalizes the critical BGR surfaces explicitly
 
 The reprocess path converts card, level, echo-name, and sonata-icon crops from
 the raw session's RGB reloads back to BGR before feeding OCR signatures or icon
-matching. That closes one of the biggest live-vs-reprocess drift sources that
-the older document called out.
+matching. That closes one of the biggest live-vs-reprocess drift sources the
+older document called out.
 
-### Tiny level-badge OCR is now more intentionally configured
+### Root-level import shims have been removed
 
-`echoes.level` is now treated as a single-line ROI with explicit resize tuning
-and transient caching in the OCR spec, which better matches the real shape of
-the badge crop than the earlier generic OCR assumptions did.
+The project no longer carries root-level `scraping/` and `ui/` compatibility
+packages. Active callers now import `wuwa_inventory_kamera.*` directly.
 
-### Focused regression tests now exist for helper parity slices
+### Supported resolution handling is intentionally strict now
+
+`ScreenInfo` and the ROI table only keep the exact supported layouts.
+Nearest-resolution fallback is gone.
+
+### New raw echo sessions no longer depend on `sonata.png`
+
+The live echo workflow writes `full.png` and `meta.json` only.
+`sonata.png` remains a compatibility concern for older sessions and the legacy
+processing path, not the active scan path.
+
+### Focused regression tests now exist for the most drift-prone helper seams
 
 The test suite now covers several echo-specific invariants that were missing
 when this document was first written, including:
@@ -153,14 +172,14 @@ when this document was first written, including:
 - BGR normalization for reprocess level OCR
 - live capture reuse of prefetched level values
 - debug artifact generation for the shared crop set
-- rarity helpers for BGR and RGB ordered pixels
+- rarity helpers for BGR- and RGB-ordered pixels
 
-Those tests are not full parity tests yet, but they do cover some of the
-smaller drift-prone seams that used to be unguarded.
+Those tests are not full parity tests yet, but they do cover several of the
+smaller seams that used to drift silently.
 
 ## Remaining Issues
 
-### 1. `EchoCapture` construction is still duplicated, just less than before
+### 1. `EchoCapture` construction is still duplicated
 
 The level helpers are shared now, but live scan and reprocess still each build
 the `EchoCapture` by hand.
@@ -173,12 +192,10 @@ Both paths still locally decide all of the following:
 - where to source rarity detection
 - how to thread capture-specific metadata into the service
 
-The most obvious duplication remains between:
+The duplication remains most obvious between:
 
 - [src/wuwa_inventory_kamera/scraping/scanning/echo_workflow.py](src/wuwa_inventory_kamera/scraping/scanning/echo_workflow.py)
 - [src/wuwa_inventory_kamera/scraping/service/echo_reprocess.py](src/wuwa_inventory_kamera/scraping/service/echo_reprocess.py)
-
-This is still the main place where future crop or metadata changes can diverge.
 
 Cleanup direction:
 
@@ -187,17 +204,16 @@ Cleanup direction:
 - let reprocess own frame loading only
 - keep crop resolution onward identical
 
-### 2. The `EchoCapture` color contract is more explicit, but still mixed
+### 2. The `EchoCapture` color contract is still mixed
 
-The current code is clearer than before, but `EchoCapture` still mixes channel
-orders inside one DTO:
+`EchoCapture` still mixes channel orders inside one DTO:
 
 - `card`, `echo_name`, and `sonata_icon` are treated as BGR
 - `stats_name` and `stats_value` are treated as RGB
 - `OcrService` converts stat crops back to BGR before spec-driven OCR
 
-That is a workable contract, and it is now documented in code and helper usage,
-but it is still not one canonical internal image space.
+That contract is more explicit than it used to be, but it is still not one
+canonical internal image space.
 
 Cleanup direction:
 
@@ -207,8 +223,8 @@ Cleanup direction:
 
 ### 3. OCR specs still do not own the full recognition policy
 
-`OcrRegionSpec` does a good job centralizing preprocessing and cache-signature
-rules, but the most echo-specific recognition behavior still lives inline in
+`OcrRegionSpec` centralizes preprocessing and cache-signature rules, but the
+most echo-specific recognition behavior still lives inline in
 `OcrService._process_echoes`.
 
 That currently includes:
@@ -218,9 +234,6 @@ That currently includes:
 - the multi-strategy fallback chain for the echo-name crop
 - echo-name-specific cache lookup and acceptance policy
 
-So the codebase has centralized image preprocessing, but not a cleanly isolated
-echo-name recognizer.
-
 Cleanup direction:
 
 - keep region specs focused on preprocessing and signatures
@@ -228,75 +241,92 @@ Cleanup direction:
 
 ### 4. Entry-point reverse dependencies remain, but only in two narrow places
 
-The old document overstated this issue. Most of the shared low-level logic is
-no longer trapped in the entry-point modules.
-
-The remaining reverse dependencies are now specifically:
+Most of the low-level logic is no longer trapped in entry-point modules. The
+remaining reverse dependencies are now specifically:
 
 - reprocess still imports `_rarity_from_rgb_pixel` from
   [src/wuwa_inventory_kamera/scraping/scanning/echo_workflow.py](src/wuwa_inventory_kamera/scraping/scanning/echo_workflow.py)
 - live workflow still imports `_write_echo_debug_artifacts` from
   [src/wuwa_inventory_kamera/scraping/service/echo_reprocess.py](src/wuwa_inventory_kamera/scraping/service/echo_reprocess.py)
 
-This is still worth cleaning up, but it is now a narrow helper-placement issue,
-not a broad architectural tangle.
-
 Cleanup direction:
 
 - move shared rarity and debug-artifact helpers into a neutral module alongside
   the existing capture helpers
 
-### 5. Raw-session persistence still replays from `full.png`, not from a canonical prepared capture
+### 5. Raw-session compatibility still has two competing shapes
 
-`RawEchoScan` still persists the raw session around the full-frame screenshot
-plus metadata, then asks reprocess to rebuild the actual prepared capture state
-later.
+The active live echo workflow writes one raw-session format, but the legacy
+helper/model layer still describes another.
 
-That means reprocess still has to:
+Current state:
 
-- crop the same regions again
-- sample rarity again
-- rerun level OCR again
-- rebuild sonata icon metadata again
+- `EchoWorkflow._save_raw()` writes `full.png` plus `meta.json`
+- `saveRawScan()` still writes `full.png` plus `sonata.png` plus `meta.json`
+- `RawEchoScan` still has `sonata_screenshot` and `sonata_path`
+- `loadRawScans()` accepts optional `sonata.png`
+- `scraping/processing/echoes_processor.py` still contains the old separate
+  `sonata.png` branch
 
-This is useful if the goal is to benefit from later ROI or OCR improvements,
-but it is not a faithful replay of the exact prepared capture state the live
-scan originally used.
+That is more precise than the older "full.png replay" concern: the codebase is
+currently supporting both a new raw-session contract and an older one.
 
 Cleanup direction:
 
-- minimum option: persist resolved capture metadata next to `full.png`
-- stronger option: persist a versioned prepared-capture bundle per echo
+- choose one canonical raw-session format for the active pipeline
+- either convert older sessions at the boundary or quarantine that support as a
+  legacy-only path
 
 ### 6. The assembly layer still reaches back into older processing modules
 
-`EchoAssembler` still imports validators from the older processing package, and
-the legacy processing modules still remain nearby in-tree.
+`EchoAssembler` still imports validators from
+`scraping/processing/echoesValidator.py`.
 
-That means the V2 assembler boundary is not fully self-contained yet.
+That means the v2 assembler boundary is not fully self-contained yet.
 
 Cleanup direction:
 
-- either move the remaining validator logic under the service/assembler surface
+- either move the validator logic under the service/assembler surface
 - or explicitly quarantine it as a stable legacy dependency instead of leaving
   ownership ambiguous
 
-### 7. Legacy processing and shim code still add search and ownership noise
+### 7. Mutable globals and compatibility helpers still add ownership noise
 
-The following still exist in parallel with the active V2 surface:
+The remaining repository noise is no longer root-level import shims. It is
+mostly package-local compatibility state and helper code such as:
 
-- [src/wuwa_inventory_kamera/scraping/processing/echoes_processor.py](src/wuwa_inventory_kamera/scraping/processing/echoes_processor.py)
-- [src/wuwa_inventory_kamera/scraping/processing/stats_extractor.py](src/wuwa_inventory_kamera/scraping/processing/stats_extractor.py)
-- project-root `scraping/` compatibility modules
-- `scraping.restored/`
+- `INVENTORY` and `FAILED` in `config/app_config.py`
+- `savingScraped()` in `scraping/utils/common.py`
+- `loadRawScans()` and `RawEchoScan`
+- project-root bootstrap via `sys.path.insert(...)` in CLI modules that still
+  support direct script execution
 
-This is not a user-path problem anymore, but it is still a maintenance problem
-because it makes ownership and code search noisier than they need to be.
+This is not the main user-path problem anymore, but it is still a maintenance
+problem because it leaves ownership split between the new pipeline and older
+compatibility habits.
 
 Cleanup direction:
 
-- move the remaining legacy code under an explicit `legacy/` namespace
-- or delete it once compatibility callers are gone
+- replace remaining shared mutable state with explicit session/result flow
+- keep compatibility loaders isolated from the core scan and OCR path
+- remove CLI bootstrap code once direct-script execution requirements are clear
+
+### 8. Test coverage still does not enforce full live/reprocess parity
+
+The current tests cover helper parity slices and some reprocess specifics, but
+they still do not assert:
+
+- that the same full frame produces the same prepared `EchoCapture` in live
+  scan and offline reprocess
+- that the same prepared single-echo input produces the same `EchoResult`
+  regardless of origin
+- that unsupported resolutions fail loudly and intentionally
+
+Cleanup direction:
+
+- add explicit capture-parity tests
+- add end-to-end service/assembler parity tests
+- add a focused `ScreenInfo` failure test for unsupported layouts
 
 ### 8. Test coverage is better, but it still does not enforce full live/reprocess parity
 

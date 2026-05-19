@@ -1,112 +1,108 @@
-# Legacy & Fallback Cleanup Plan
+# Legacy & Compatibility Cleanup Plan
 
-Scan date: 2026-05-14.  
-Completed items are kept below as historical notes; remaining work is grouped by priority: **High** (dead code) > **Medium** (active legacy) > **Low** (design debt).
+Scan date: 2026-05-19.  
+Completed items are kept below as historical notes; remaining work is grouped
+by priority: **High** (live-path format or ownership debt) > **Medium**
+(reachable legacy compatibility) > **Low** (design debt or optional cleanup).
 
 ---
 
 ## Completed: Phantom `_preprocess_scaled_plane` call
 
-**File:** `src/.../scraping/ocr/region_specs.py`, lines 306 & 247  
-**Status:** Resolved in code on 2026-05-14; the crash path tied to `sig_from_preprocessed` has been removed.
+**Status:** Resolved in code on 2026-05-14; the crash path tied to
+`sig_from_preprocessed` has been removed.
 
-### Formerly affected specs (before TODO cleanup)
-- `weapons.name`
-- `characters.weaponName`
-- `characters.weaponRank`
-
-### What happened
-`_preprocess_for_signature` used to call `self._preprocess_scaled_plane(…)` (line 306), but that method no longer existed — it had been deleted (or merged elsewhere), leaving a stale comment at line 247 and a dangling call site. The existing `_preprocess_plane` (line 249) covered the same logic but lacked the surrounding scaling wraps.
-
-### Resolution
-The `self._preprocess_scaled_plane(…)` call in `_preprocess_for_signature` was replaced with explicit scaling + `_preprocess_plane`:
-
-```python
-def _preprocess_for_signature(self, bgr, rarity):
-    sig = self.signature_preprocess
-    # 1. Pre-scale
-    scaled = _apply_scaling_stage(
-        bgr,
-        upscale_min=(sig.pre_upscale if sig is not None else None),
-        downscale_max=(sig.pre_downscale if sig is not None else None),
-    )
-    # 2. Preprocess plane (color → mask → binary)
-    plane = self._preprocess_plane(scaled, rarity, <merged sig+self kwargs>)
-    # 3. Post-scale
-    plane = _apply_scaling_stage(plane, upscale_min=..., downscale_max=...)
-    return plane
-```
-
-The `sig_from_preprocessed` TOML field has also been removed. The formerly affected specs now use TODO comments to flag any future signature-preprocess revisit.
+`_preprocess_for_signature` no longer calls a deleted helper, and the old
+`sig_from_preprocessed` TOML field has been removed.
 
 ---
 
-## Completed: H-1 — Remove the `EchoOcrCache` stack (dead code)
+## Completed: Remove the `EchoOcrCache` stack
 
 **Status:** Resolved in code on 2026-05-14.
 
-`_ocr_images_with_cache` in `ocr_service.py` had no callers — removed along with the entire `echo-stat-ocr.sqlite3` cache path wiring.
+The dead `_ocr_images_with_cache` path in `ocr_service.py` was removed along
+with the dedicated echo-stat cache wiring.
 
 ### What was removed
-- `_ocr_images_with_cache` method from `ocr_service.py`
-- `echo_stat_cache_path` param / `self._echo_stat_cache_path` from `ui/home.py` `ScanThread`
-- `--echo-stat-cache` arg and wiring from `cli/scan.py` and `cli/reprocess.py`
-- `echo_stat_cache_path` param from `scraping/scanning/session_orchestrator.py`
-- `echoStatCachePathCard` settings card and `EchoOcrCache` cleanup block from `ui/settings.py`
-- `echoStatCachePath` `ConfigItem` from `ui/config.py`
-- `default_echo_stat_cache_path()` function and `echoStatCachePath` attribute from `config/app_config.py`
-- Deleted `scraping/service/echo_ocr_cache.py` and `tests/test_echo_ocr_cache.py`
-- Removed stale "Re-export for backward compat" comment from `ocr_cache.py`
+- `_ocr_images_with_cache` from `ocr_service.py`
+- the `--echo-stat-cache` CLI/config/UI plumbing
+- `scraping/service/echo_ocr_cache.py`
+- `tests/test_echo_ocr_cache.py`
 
 ---
 
-## Completed: H-2 — Remove root-level shim packages
+## Completed: Remove root-level shim packages
 
 **Status:** Resolved in code on 2026-05-14.
 
-The remaining callers were migrated to `wuwa_inventory_kamera.*` imports, the root-level `scraping/` and `ui/` shim trees were deleted, and `conftest.py` no longer injects the project root into `sys.path`.
-
-### What changed
-- `updater/databaseUpdater.py` now imports `wuwa_inventory_kamera.scraping.data` directly.
-- `cli/debug_ocr.py` now imports `wuwa_inventory_kamera.scraping.utils.common` directly.
-- `tests/test_ocrSubstatNames.py` now imports `wuwa_inventory_kamera.scraping.processing.echoes_processor` and `wuwa_inventory_kamera.game.screen_info`.
-- `conftest.py` no longer mutates `sys.path`.
-- Deleted the root-level `scraping/` and `ui/` compatibility trees.
+The root-level `scraping/` and `ui/` compatibility trees were deleted and the
+remaining callers were migrated to `wuwa_inventory_kamera.*` imports.
 
 ### Note
-The root-level `updater/` directory remains in place because it contains the Qt-dependent compatibility subclasses (`DataUpdater`, `AssetsUpdater`) rather than a pure re-export shim.
+The root-level `updater/` directory still exists because it contains
+Qt-dependent compatibility subclasses rather than pure re-export shims.
 
 ---
 
-## Completed: Signature preprocessing helper cleanup
+## Completed: Remove the stale `ocr_cache.py` backward-compat comment
 
-The stale `_preprocess_scaled_plane` comment and dangling call site were removed with the bug fix above. `_preprocess_plane` remains the shared helper for the active preprocess/signature pipeline.
+**Status:** Resolved in code.
+
+The comment claiming a backward-compat re-export is gone. `ImageOcrResult`
+still exists, but only as the internal result type alias used by `OcrCache`
+itself.
 
 ---
 
-## M-2: Legacy sonata scan branch in `echoes_processor.py`
+## H-1: Align raw echo session persistence around one canonical format
 
-**File:** `src/.../scraping/processing/echoes_processor.py`, line 547
+The active live echo workflow and the older helper/model layer now describe two
+different raw-session shapes.
+
+### Current state
+- `EchoWorkflow._save_raw()` writes `full.png` plus `meta.json`.
+- `saveRawScan()` in `scraping/utils/common.py` still writes `full.png` plus
+  `sonata.png` plus `meta.json`.
+- `RawEchoScan` still carries `sonata_screenshot` and `sonata_path`.
+- `loadRawScans()` accepts optional `sonata.png`.
+- `scraping/processing/echoes_processor.py` still contains the old separate
+  `sonata.png` branch.
+- `saveRawScan()` currently has no active call sites in the live v2 path.
+
+### Plan
+1. Decide whether old raw sessions containing `sonata.png` still need first-class support.
+2. If not, remove `saveRawScan()`, `sonata_screenshot`, `sonata_path`, and the
+   old separate-sonata branch.
+3. If yes, keep that support behind an explicit legacy loader or one-time
+   converter so the active pipeline contract remains `full.png` plus `meta.json`.
+
+---
+
+## M-1: Legacy sonata scan branch in `echoes_processor.py`
+
+**File:** `src/.../scraping/processing/echoes_processor.py`
 
 ```python
 if scan.sonata_screenshot is not None:
-    # Legacy path: sonata.png was captured separately (old scanner with scroll-down).
-    sonata, sonata_raw = _extractSonata(scan.sonata_screenshot, …)
+    sonata, sonata_raw = _extractSonata(scan.sonata_screenshot, ...)
 else:
-    sonata = _extractSonataFromIcon(image, …)
+    sonata = _extractSonataFromIcon(image, ...)
 ```
 
-The `else` branch (icon matching) is the v2 path.  The `if` branch only triggers when reprocessing **old** raw-scan directories that contain a `sonata.png` file.
+The `else` branch is the v2 icon-matching path. The `if` branch only exists for
+old raw-scan directories that contain `sonata.png`.
 
 ### Plan
-1. Audit whether any user-facing raw-scan directories still ship `sonata.png`.
-2. If not (or after a suitable deprecation window), remove the `if` branch, `_extractSonata`, and `sonata_path` handling from `RawEchoScan`.
+Resolve H-1 first. If old `sonata.png` sessions are no longer supported in the
+main path, remove this branch, `_extractSonata`, and the related compatibility
+fields from `RawEchoScan`.
 
 ---
 
-## M-3: `ocr_service.py` — legacy echoName OCR path (no ROI)
+## M-2: `ocr_service.py` legacy echo-name OCR path for captures without a dedicated ROI
 
-**File:** `src/.../scraping/service/ocr_service.py`, line 744
+**File:** `src/.../scraping/service/ocr_service.py`
 
 ```python
 elif _has_usable_text(filtered_result):
@@ -114,97 +110,150 @@ elif _has_usable_text(filtered_result):
     ocr_result = filtered_result
 ```
 
-This branch fires when `EchoCapture` has no dedicated `echoName` region crop.  New captures always provide the ROI.
+This branch fires only when `EchoCapture` has no dedicated `echo_name` crop.
+Current live scan and v2 reprocess captures do populate that ROI.
 
 ### Plan
-Verify that `EchoCapture.echo_name_crop` (or equivalent) is always set in the live scan workflow and in v2 reprocess.  If so, remove this branch and the corresponding `_echo_name_spec is None` guard above it.
+Confirm that all active `EchoCapture` producers always provide `echo_name`.
+Then remove this branch and the corresponding guard logic above it.
 
 ---
 
-## M-4: `app_config.py` — mutable global state (`INVENTORY`, `FAILED`)
+## M-3: `echo_assembler.py` level OCR fallback for legacy captures
+
+**File:** `src/.../scraping/service/assemblers/echo_assembler.py`
+
+```python
+if capture.detected_level is not None:
+    level = capture.detected_level
+else:
+    level_text = card_lines[1] if len(card_lines) > 1 else ''
+    ...
+```
+
+The `else` branch exists for `EchoCapture` objects that did not receive
+`detected_level` from the scan layer, which is a pre-level-ROI pattern.
+
+### Plan
+Confirm that `detected_level` is always set in the live scan path and in the
+service reprocess path. If so, remove the fallback branch.
+
+---
+
+## M-4: `app_config.py` mutable global state (`INVENTORY`, `FAILED`)
 
 ```python
 INVENTORY: dict = {'items': {}, 'date': ''}
 FAILED: list = []
 ```
 
-These are module-level mutable globals imported by `ui/home.py` and `scraping/utils/common.py` (`savingScraped` uses `INVENTORY`). They represent implicit shared state between the UI and scanning layers.
+These module-level globals are still imported by `ui/home.py` and by
+`scraping/utils/common.py`. `savingScraped()` also captures `INVENTORY['items']`
+in its default argument, which is a Python footgun.
 
 ### Plan
-Pass scan results explicitly via return values / callback instead of mutating globals.  The `savingScraped` helper in `scraping/utils/common.py` is the main consumer; its default parameter `{'inventory_wuwainventorykamera.json': (INVENTORY['items'], dict)}` bakes in a reference to the global at definition time, which is a Python trap.
+Pass scan results explicitly via return values or callbacks instead of mutating
+shared module state. Rewrite `savingScraped()` to avoid the default argument
+capturing global mutable data.
 
 ---
 
-## M-5: `echo_assembler.py` — level OCR fallback for legacy captures
+## M-5: Entry-point helper cross-imports between live scan and reprocess
+
+Current narrow reverse dependencies:
+
+- `echo_reprocess.py` imports `_rarity_from_rgb_pixel` from `echo_workflow.py`
+- `echo_workflow.py` imports `_write_echo_debug_artifacts` from
+  `echo_reprocess.py`
+
+### Plan
+Move rarity helpers and shared debug-artifact helpers into a neutral helper
+module so both entry points depend on that module, not on each other.
+
+---
+
+## M-6: CLI project-root bootstrap still exists in a couple of modules
+
+Current occurrences:
+
+- `src/wuwa_inventory_kamera/cli/reprocess.py`
+- `src/wuwa_inventory_kamera/cli/detect_sonata_icon.py`
+
+Both still prepend the project root to `sys.path` to support direct-script
+execution.
+
+### Plan
+Decide whether direct execution of these modules outside installed/package mode
+is still a supported workflow. If not, remove the bootstrap. If it is, isolate
+it to one small compatibility wrapper instead of keeping it inline in each CLI
+module.
+
+---
+
+## M-7: `echo_assembler.py` still depends on the legacy validator module
+
+`EchoAssembler` imports `infer_cost`, `expected_sub_count`, and
+`validate_echo_stats` from `scraping/processing/echoesValidator.py`.
+
+### Plan
+Either move those validators under the service/assembler surface or explicitly
+quarantine `echoesValidator.py` as an intentional legacy dependency.
+
+---
+
+## L-1: `_rapidocr.py` `fallback_text_score` second OCR pass
+
+`RapidOcrBackend` still constructs a second `RapidOCR()` instance
+(`self._fallback_ocr`) with a lower `text_score` threshold and merges its
+results in `thorough_recognize()`.
+
+### Plan
+1. Determine empirically whether the fallback pass improves real scan results.
+2. If the improvement is negligible, set `fallback_text_score=None` for the DML
+   path and remove the fallback-OCR branch.
+
+---
+
+## L-2: `region_specs.py` still labels parts of the render/signature flow as a "legacy path"
+
+Current comments include:
 
 ```python
-if capture.detected_level is not None:
-    level = capture.detected_level
-else:
-    # card layout: [name, level, cost] — level is at index 1
-    level_text = card_lines[1] if len(card_lines) > 1 else ''
-    …
-    # Fallback: trailing digits in name (phantom OCR merges name + level)
+# 3. Render for OCR (currently legacy path, will expand)
+# 5. Signature image (legacy path)
 ```
 
-The else-branch is for `EchoCapture` objects that did not receive `detected_level` from the scan layer — a pattern from before the level ROI was added.
+This is not dead code, but it signals unresolved design intent in the OCR spec
+pipeline.
 
 ### Plan
-Confirm that `detected_level` is always set in the live scan path and v2 reprocess path.  If so, the else-branch (including the inline `import re`) can be removed.
+Either update the comments to describe the current implementation plainly, or
+continue the color-aware rendering work and remove the "legacy path" wording.
 
 ---
 
-## L-1: `_rapidocr.py` — `fallback_text_score` second OCR pass
+## L-3: `region_specs.py` still accepts the `sig_downscale` TOML alias
 
-`RapidOcrBackend` constructs a second `RapidOCR()` instance (`self._fallback_ocr`) with a lower `text_score` threshold (default `0.3`) and merges its results in `thorough_recognize`.  This effectively doubles the model-session count for DML backends.
+`_build_region_spec_from_dict()` still reads `sig_downscale` as a compatibility
+alias for `signature.post_downscale`.
 
-The memory notes document a hypothesis that 6 DML sessions (3 main + 3 fallback) contribute to VRAM pressure, though A/B tests with allocator knobs were inconclusive.
+### Current audit result
+No current TOML entries under `src/wuwa_inventory_kamera/config/` use
+`sig_downscale`.
 
 ### Plan
-1. Determine empirically whether the fallback pass improves any real scan result (compare OCR quality with and without).
-2. If the improvement is negligible, pass `fallback_text_score=None` to the DML `RapidOcrBackend` and remove the fallback-OCR path from `_rapidocr.py` (`_fallback_ocr`, `_fallback_text_score`, `thorough_recognize` merge logic).
-
----
-
-## L-2: `region_specs.py` — `render_for_ocr` "legacy path" comment
-
-`render_for_ocr` contains:
-```
-Currently: legacy path (grayscale to RGB). Later: color-aware rendering.
-```
-
-The full-color rendering path is partially implemented (`text_mask`-based clearing), but the comment implies a planned improvement.  This is a design note, not dead code — track separately in the OCR preprocessing plan.
-
----
-
-## L-3: `region_specs.py` — `sig_downscale` TOML alias
-
-`_build_region_spec_from_dict` reads `sig_downscale` from TOML as a compatibility alias for `signature.post_downscale`:
-
-```python
-legacy_sig_downscale = data.get("sig_downscale")
-```
-
-### Plan
-Grep all TOML files for `sig_downscale`.  If none exist, remove the alias loader.  Otherwise, migrate the TOML entries to `[….signature] post_downscale = …` and then remove the alias.
-
----
-
-## L-4: `ocr_cache.py` — stale re-export comment
-
-```python
-# Re-export for backward compat
-ImageOcrResult = list[tuple[str, float, np.ndarray]]
-```
-
-This re-export exists so callers of the old `echo_ocr_cache` can use `ImageOcrResult` from `ocr_cache`.  Once H-1 (EchoOcrCache removal) is done, check whether any remaining callers still import `ImageOcrResult` from `ocr_cache` and remove the comment + alias if not.
+Remove the alias loader and its compatibility diagnostics once there is no need
+to preserve older TOML files.
 
 ---
 
 ## Suggested Work Order
 
-```
-H-1  →  M-2  →  M-3  →  M-4  →  M-5  →  L-*
+```text
+H-1  ->  M-1/M-2/M-3  ->  M-5/M-6/M-7  ->  M-4  ->  L-*
 ```
 
-H-1 was a pure removal and reduced confusion for the rest of the cleanup. H-2 is now complete as well; M-* items require a short audit step before the code change. L-* items are deferrable.
+H-1 is the most important because the split raw-session contract is the biggest
+remaining source of confusion between the live path, reprocess path, and legacy
+processor. The M-* items are all local follow-ons once that format boundary is
+settled. L-* items are still deferrable.
