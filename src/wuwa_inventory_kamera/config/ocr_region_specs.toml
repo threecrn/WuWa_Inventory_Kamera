@@ -28,6 +28,7 @@ text_color_ranges = [[[55, 60, 150], [70, 255, 255]]]
 
 # Exact-match signature recipe for cache keying.
 [echoes.echoName.signature]
+single_line = true
 cache_mode = "persistent"
 color_space = "bgr"
 pre_downscale = [512, 32]
@@ -53,10 +54,15 @@ text_color_ranges = [
 ]
 
 [echoes.fullStatsName.ocr]
-render_mode = "luma_boost_color"
+#render_mode = "luma_boost_color"
+render_mode = "normalized_anchor_contrast"
+anchor_contrast_sharpness = 7.0
+text_color_ranges = [[[255, 255, 249], [255, 255, 249]]]
+background_color_ranges = [[[80, 66, 50], [220, 215, 200]]]
 post_upscale = [512, 512]
 
 [echoes.fullStatsName.signature]
+#spec_version = "3.3-new-ui-v2-stats-v2"
 cache_mode = "persistent"
 color_space = "bgr"
 #pre_downscale = [128,128]
@@ -65,11 +71,16 @@ text_color_ranges = [
 ]
 
 [echoes.fullStatsValue.ocr]
-render_mode = "luma_boost_color"
+#render_mode = "luma_boost_color"
+render_mode = "normalized_anchor_contrast"
+anchor_contrast_sharpness = 7.0
+text_color_ranges = [[[255, 255, 249], [255, 255, 249]]]
+background_color_ranges = [[[80, 66, 50], [220, 215, 200]]]
 allowed_chars = "0123456789.%+"
 post_upscale = [128, 512]
 
 [echoes.fullStatsValue.signature]
+#spec_version = "3.3-new-ui-v2-stats-v2"
 cache_mode = "persistent"
 color_space = "bgr"
 #pre_downscale = [64, 128]
@@ -78,9 +89,11 @@ text_color_ranges = [
 ]
 
 [echoes.level.ocr]
-render_mode = "anchor_contrast"
+render_mode = "normalized_anchor_contrast"
+#render_mode = "anchor_contrast"
 anchor_contrast_sharpness = 12.0
 color_space = "bgr"
+#text_anchor =
 text_color_ranges = [[[170, 160, 150], [195, 190, 175]]]
 background_color_ranges = [[[40, 30, 20], [60, 50, 40]]]
 #text_color_ranges = [[[150, 160, 170], [175, 190, 195]]]
@@ -91,15 +104,17 @@ post_upscale = [64, 64]
 allowed_chars = "0123456789+"
 
 [echoes.level.signature]
+#spec_version = "3.3-new-ui-v2-level-v2"
 cache_mode = "transient"
 color_space = "bgr"
 # Signature colors are keyed against the shared BGR-normalized level crop
 # used by both live capture and raw-session reprocess.
 #pre_downscale = [32, 32]
+single_line = true
 text_color_ranges = [
-#    [[197, 185, 173], [197, 185, 173]],    
+#    [[197, 185, 173], [197, 185, 173]],
 #    [[189, 185, 169], [217, 205, 193]],
-    [[185, 181, 165], [189, 185, 169]],
+    [[180, 180, 170], [194, 196, 190]],
 ]
 
 # =====================================================================

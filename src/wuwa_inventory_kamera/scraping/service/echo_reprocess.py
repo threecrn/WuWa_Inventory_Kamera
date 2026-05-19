@@ -44,6 +44,13 @@ def _to_debug_image(image: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
 
+def _crop_roi(image: np.ndarray, roi) -> np.ndarray:
+    return image[
+        int(roi.y): int(roi.y + roi.h),
+        int(roi.x): int(roi.x + roi.w),
+    ]
+
+
 def _write_region_debug_artifacts(
     debug_dir: Path,
     *,
@@ -153,29 +160,17 @@ def reprocess_echo_scans_with_service(
 
             si = ScreenInfo(scan.screen_width, scan.screen_height).echoes
 
-            card_rgb = scan.full_screenshot[
-                si.echoCard.y: si.echoCard.y + si.echoCard.h,
-                si.echoCard.x: si.echoCard.x + si.echoCard.w,
-            ]
+            card_rgb = _crop_roi(scan.full_screenshot, si.echoCard)
             card = ensure_bgr_image(card_rgb, source_space='rgb')
-            stats_name = scan.full_screenshot[
-                si.fullStatsName.y: si.fullStatsName.y + si.fullStatsName.h,
-                si.fullStatsName.x: si.fullStatsName.x + si.fullStatsName.w,
-            ]
-            stats_value = scan.full_screenshot[
-                si.fullStatsValue.y: si.fullStatsValue.y + si.fullStatsValue.h,
-                si.fullStatsValue.x: si.fullStatsValue.x + si.fullStatsValue.w,
-            ]
+            stats_name = _crop_roi(scan.full_screenshot, si.fullStatsName)
+            stats_value = _crop_roi(scan.full_screenshot, si.fullStatsValue)
 
             si_raw = si.sonataIcon
             sonata_icon_cx: float | None = None
             sonata_icon_cy: float | None = None
             sonata_icon_r: float | None = None
             detected_level: int | None = None
-            level_crop = scan.full_screenshot[
-                int(si.level.y): int(si.level.y + si.level.h),
-                int(si.level.x): int(si.level.x + si.level.w),
-            ]
+            level_crop = _crop_roi(scan.full_screenshot, si.level)
             level_crop_bgr = ensure_bgr_image(level_crop, source_space='rgb')
             level_decision = decide_echo_level(
                 level_text=svc.ocr_adhoc_text(level_crop_bgr, 'echoes.level')
@@ -190,19 +185,13 @@ def reprocess_echo_scans_with_service(
             sonata_icon_r = si_raw.radius
             detected_level = level_decision.detected_level
 
-            sonata_icon_rgb = scan.full_screenshot[
-                int(icon_roi.y): int(icon_roi.y + icon_roi.h),
-                int(icon_roi.x): int(icon_roi.x + icon_roi.w),
-            ]
+            sonata_icon_rgb = _crop_roi(scan.full_screenshot, icon_roi)
             sonata_icon = ensure_bgr_image(sonata_icon_rgb, source_space='rgb')
 
             echo_name = None
             if hasattr(si, 'echoName'):
                 en = si.echoName
-                echo_name_rgb = scan.full_screenshot[
-                    int(en.y): int(en.y + en.h),
-                    int(en.x): int(en.x + en.w),
-                ]
+                echo_name_rgb = _crop_roi(scan.full_screenshot, en)
                 echo_name = ensure_bgr_image(echo_name_rgb, source_space='rgb')
 
             detected_rarity: int | None = None
