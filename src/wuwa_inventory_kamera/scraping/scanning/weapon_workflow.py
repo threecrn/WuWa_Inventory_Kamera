@@ -65,6 +65,8 @@ class WeaponWorkflow:
     save_raw:
         If set, raw screenshots are saved to this directory for offline
         reprocessing.
+    write_debug:
+        If set, write OCR debug crops and preprocessed/signature artifacts.
     """
 
     def __init__(
@@ -76,6 +78,7 @@ class WeaponWorkflow:
         sort_order: SortOrder | None = None,
         save_raw: Path | None = None,
         stop_event: threading.Event | None = None,
+        write_debug: bool = False,
     ) -> None:
         self.nav = nav
         self.ocr = ocr_service
@@ -84,6 +87,7 @@ class WeaponWorkflow:
         self.sort_order = sort_order
         self.save_raw = save_raw
         self._stop_event = stop_event
+        self.write_debug = write_debug
 
     def run(self, on_progress: Callable | None = None) -> list[dict]:
         """
@@ -166,6 +170,14 @@ class WeaponWorkflow:
                     int(wi.rank.x) : int(wi.rank.x + wi.rank.w),
                 ]
 
+            if self.write_debug:
+                self._write_debug_artifacts(
+                    position,
+                    name=name_crop,
+                    value=value_crop,
+                    rank=rank_crop,
+                )
+
             capture = WeaponCapture(
                 index=position.scan_index,
                 name=name_crop,
@@ -213,6 +225,49 @@ class WeaponWorkflow:
             len(results), total_items,
         )
         return results
+
+    def _debug_base(self) -> Path:
+        if self.save_raw is not None:
+            return self.save_raw
+        from ...config.app_config import app_config
+
+        return Path(app_config.exportFolder) / self.session.session_id / 'raw'
+
+    def _write_debug_artifacts(
+        self,
+        pos: GridPosition,
+        *,
+        name: np.ndarray,
+        value: np.ndarray,
+        rank: np.ndarray | None,
+    ) -> None:
+        from ..service.echo_reprocess import _write_region_debug_artifacts
+
+        debug_dir = self._debug_base() / f'weapon_{pos.scan_index:04d}' / 'debug'
+        value_basename = 'level' if rank is not None else 'value'
+        value_roi_key = 'weapons.level' if rank is not None else 'weapons.value'
+        _write_region_debug_artifacts(
+            debug_dir,
+            basename='name',
+            roi_key='weapons.name',
+            raw_bgr=name,
+            rarity=None,
+        )
+        _write_region_debug_artifacts(
+            debug_dir,
+            basename=value_basename,
+            roi_key=value_roi_key,
+            raw_bgr=value,
+            rarity=None,
+        )
+        if rank is not None:
+            _write_region_debug_artifacts(
+                debug_dir,
+                basename='rank',
+                roi_key='weapons.rank',
+                raw_bgr=rank,
+                rarity=None,
+            )
 
     # ── Raw image persistence ────────────────────────────────────────────
 

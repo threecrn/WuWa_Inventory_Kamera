@@ -78,6 +78,8 @@ class CharacterWorkflow:
     save_raw:
         If set, raw screenshots are saved to this directory for offline
         reprocessing.
+    write_debug:
+        If set, write OCR debug crops and preprocessed/signature artifacts.
     """
 
     def __init__(
@@ -88,6 +90,7 @@ class CharacterWorkflow:
         resonator_key: str = 'c',
         stop_event: threading.Event | None = None,
         save_raw: Path | None = None,
+        write_debug: bool = False,
     ) -> None:
         self.nav = nav
         self.ocr = ocr_service
@@ -95,6 +98,7 @@ class CharacterWorkflow:
         self._resonator_key = resonator_key
         self._stop_event = stop_event
         self.save_raw = save_raw
+        self.write_debug = write_debug
 
     # ------------------------------------------------------------------
     # Public
@@ -143,13 +147,17 @@ class CharacterWorkflow:
                     int(ch.resonatorLevel.x) : int(ch.resonatorLevel.x + ch.resonatorLevel.w),
                 ]
 
+                overview_crops = {'name': name_crop, 'level': level_crop}
+
                 if self.save_raw:
                     self._save_raw(char_index, 0, {'full': full})
+                if self.write_debug:
+                    self._write_debug_artifacts(char_index, 0, overview_crops)
 
                 sec0_cap = CharCapture(
                     char_index=char_index,
                     section=0,
-                    crops={'name': name_crop, 'level': level_crop},
+                    crops=overview_crops,
                 )
                 sec0_result: CharResult = self.ocr.submit(sec0_cap).result(timeout=30)
 
@@ -177,16 +185,22 @@ class CharacterWorkflow:
                     int(ch.weaponRank.y) : int(ch.weaponRank.y + ch.weaponRank.h),
                     int(ch.weaponRank.x) : int(ch.weaponRank.x + ch.weaponRank.w),
                 ]
+
+                weapon_crops = {
+                    'weaponName': wname_crop,
+                    'weaponLevel': wlevel_crop,
+                    'weaponRank': wrank_crop,
+                }
+
                 if self.save_raw:
                     self._save_raw(char_index, 1, {'full': full})
+                if self.write_debug:
+                    self._write_debug_artifacts(char_index, 1, weapon_crops)
+
                 sec1_cap = CharCapture(
                     char_index=char_index,
                     section=1,
-                    crops={
-                        'weaponName':  wname_crop,
-                        'weaponLevel': wlevel_crop,
-                        'weaponRank':  wrank_crop,
-                    },
+                    crops=weapon_crops,
                 )
                 self.ocr.submit(sec1_cap).result(timeout=30)
 
@@ -203,6 +217,8 @@ class CharacterWorkflow:
 
                 if self.save_raw:
                     self._save_raw(char_index, 3, skill_crops)
+                if self.write_debug:
+                    self._write_debug_artifacts(char_index, 3, skill_crops)
 
                 sec3_cap = CharCapture(
                     char_index=char_index,
@@ -224,6 +240,8 @@ class CharacterWorkflow:
 
                 if self.save_raw:
                     self._save_raw(char_index, 4, chain_crops)
+                if self.write_debug:
+                    self._write_debug_artifacts(char_index, 4, chain_crops)
 
                 sec4_cap = CharCapture(
                     char_index=char_index,
@@ -302,6 +320,36 @@ class CharacterWorkflow:
             'skills': dict(skills_out),
             'chain':  chain_count,
         }
+
+    def _debug_base(self) -> Path:
+        if self.save_raw is not None:
+            return self.save_raw
+        from ...config.app_config import app_config
+
+        return Path(app_config.exportFolder) / self.session.session_id / 'raw'
+
+    def _write_debug_artifacts(
+        self,
+        char_index: int,
+        section: int,
+        images: dict[str, np.ndarray],
+    ) -> None:
+        from ..service.echo_reprocess import _write_region_debug_artifacts
+
+        debug_dir = (
+            self._debug_base()
+            / f'char_{char_index:04d}'
+            / f'section_{section}'
+            / 'debug'
+        )
+        for name, image in images.items():
+            _write_region_debug_artifacts(
+                debug_dir,
+                basename=name,
+                roi_key=f'characters.{name}',
+                raw_bgr=image,
+                rarity=None,
+            )
 
     # ── Raw image persistence ────────────────────────────────────────────
 

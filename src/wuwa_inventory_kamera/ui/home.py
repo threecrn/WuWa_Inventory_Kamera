@@ -61,6 +61,8 @@ class ScanThread(QThread):
         ocr_providers: list[str] | None,
         min_rarity: int,
         min_level: int,
+        weapon_min_rarity: int | None,
+        weapon_min_level: int | None,
         inventory_key: str,
         export_folder: str,
         ocr_cache_path: str | None = None,
@@ -74,6 +76,8 @@ class ScanThread(QThread):
         self._ocr_providers = ocr_providers
         self._min_rarity = min_rarity
         self._min_level = min_level
+        self._weapon_min_rarity = min_rarity if weapon_min_rarity is None else weapon_min_rarity
+        self._weapon_min_level = min_level if weapon_min_level is None else weapon_min_level
         self._inventory_key = inventory_key
         self._export_folder = export_folder
         self._ocr_cache_path = ocr_cache_path
@@ -92,6 +96,8 @@ class ScanThread(QThread):
                 ocr_providers=self._ocr_providers,
                 min_rarity=self._min_rarity,
                 min_level=self._min_level,
+                weapon_min_rarity=self._weapon_min_rarity,
+                weapon_min_level=self._weapon_min_level,
                 sort_order=SortOrder.LEVEL,
                 save_raw=Path(self._export_folder) if self._save_raw else None,
                 inventory_key=self._inventory_key,
@@ -450,6 +456,8 @@ class LControlPanel(QFrame):
             ocr_providers=ocr_providers,
             min_rarity=cfg.echoMinRarity.value,
             min_level=cfg.echoMinLevel.value,
+            weapon_min_rarity=cfg.weaponsMinRarity.value,
+            weapon_min_level=cfg.weaponsMinLevel.value,
             inventory_key=cfg.get(cfg.inventoryKeybind).lower(),
             export_folder=cfg.get(cfg.exportFolder),
             ocr_cache_path=cfg.get(cfg.ocrCachePath),
@@ -619,7 +627,7 @@ class TControlPanel(QFrame):
     def __setupLayout(self):
         self.weaponsMinRarity.setRange(1, 5)
         self.echoMinRarity.setRange(1, 5)
-        self.weaponsMinLevel.setRange(1, 90)
+        self.weaponsMinLevel.setRange(0, 90)
         self.echoMinLevel.setRange(0, 25)
 
         echoRarityLayout = QVBoxLayout()

@@ -284,8 +284,10 @@ class OcrService:
     max_batch_size:
         Hard cap on captures processed per batch iteration.
     min_rarity / min_level:
-        Forwarded to :class:`EchoAssembler` and :class:`WeaponAssembler`
-        for threshold filtering.
+        Forwarded to :class:`EchoAssembler` for threshold filtering.
+    weapon_min_rarity / weapon_min_level:
+        Forwarded to :class:`WeaponAssembler`. If omitted, the echo
+        thresholds are reused for backwards compatibility.
     backend_kwargs:
         Additional keyword arguments forwarded to :class:`RapidOcrBackend`.
     """
@@ -297,12 +299,19 @@ class OcrService:
         max_batch_size: int = 32,
         min_rarity: int = 1,
         min_level: int = 0,
+        weapon_min_rarity: int | None = None,
+        weapon_min_level: int | None = None,
         ocr_cache_path: str | None = None,
         resolution: str | None = None,
         **backend_kwargs,
     ) -> None:
         if providers is None:
             providers = ['DmlExecutionProvider', 'CPUExecutionProvider']
+
+        if weapon_min_rarity is None:
+            weapon_min_rarity = min_rarity
+        if weapon_min_level is None:
+            weapon_min_level = min_level
 
         self._backend = RapidOcrBackend(onnx_providers=providers, **backend_kwargs)
         self._batch_ocr = BatchOcr(self._backend)
@@ -326,7 +335,10 @@ class OcrService:
 
         # Assemblers
         self._echo_asm        = EchoAssembler(min_rarity=min_rarity, min_level=min_level)
-        self._weapon_asm      = WeaponAssembler(min_rarity=min_rarity, min_level=min_level)
+        self._weapon_asm      = WeaponAssembler(
+            min_rarity=weapon_min_rarity,
+            min_level=weapon_min_level,
+        )
         self._item_asm        = ItemAssembler()
         self._char_asm        = CharAssembler()
         self._achievement_asm = AchievementAssembler()
@@ -875,16 +887,28 @@ class OcrService:
 
     def _process_weapons(self, group: list[_QueueItem]) -> None:
         """Run batched OCR and assembly for a group of :class:`WeaponCapture` objects."""
-        captures = [it.capture for it in group]
+        captures = [cast(WeaponCapture, it.capture) for it in group]
 
         name_results  = self._ocr_with_spec('weapons.name', [c.name for c in captures])
-        value_results = self._ocr_with_spec('weapons.value', [c.value for c in captures])
+        value_results: list[list] = [[] for _ in captures]
+
+        weapon_present = [i for i, c in enumerate(captures) if c.rank is not None]
+        if weapon_present:
+            level_results = self._ocr_with_spec('weapons.level', [captures[i].value for i in weapon_present])
+            for list_pos, capture_idx in enumerate(weapon_present):
+                value_results[capture_idx] = level_results[list_pos]
+
+        item_present = [i for i, c in enumerate(captures) if c.rank is None]
+        if item_present:
+            item_value_results = self._ocr_with_spec('weapons.value', [captures[i].value for i in item_present])
+            for list_pos, capture_idx in enumerate(item_present):
+                value_results[capture_idx] = item_value_results[list_pos]
 
         # Rank is optional — only batch images that are present
         rank_present = [i for i, c in enumerate(captures) if c.rank is not None]
         rank_results_map: dict[int, list] = {}
         if rank_present:
-            rank_images = [captures[i].rank for i in rank_present]
+            rank_images = [cast(np.ndarray, captures[i].rank) for i in rank_present]
             rank_all    = self._batch_ocr.ocr_images(rank_images)
             for list_pos, capture_idx in enumerate(rank_present):
                 rank_results_map[capture_idx] = rank_all[list_pos]
@@ -893,18 +917,19 @@ class OcrService:
             return [(box.tolist(), text, conf) for text, conf, box in image_results]
 
         for i, item in enumerate(group):
+            capture = captures[i]
             rank_raw = rank_results_map.get(i)
             rank_tok = [to_tokens(rank_raw)] if rank_raw is not None else None
             try:
                 result = self._weapon_asm.assemble(
-                    item.capture,
+                    capture,
                     to_tokens(name_results[i]),
                     to_tokens(value_results[i]),
                     rank_tok[0] if rank_tok else None,
                 )
                 item.future.set_result(result)
             except Exception as exc:
-                logger.exception('OcrService — weapon %d assembly error', item.capture.index)
+                logger.exception('OcrService — weapon %d assembly error', capture.index)
                 item.future.set_exception(exc)
 
     def _process_items(self, group: list[_QueueItem]) -> None:

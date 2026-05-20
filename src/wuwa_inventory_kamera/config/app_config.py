@@ -70,7 +70,7 @@ class AppConfig:
         self.echoMinRarity: int = 1
         self.echoMinLevel: int = 0
         self.weaponsMinRarity: int = 1
-        self.weaponsMinLevel: int = 1
+        self.weaponsMinLevel: int = 0
 
         # Scanner toggles
         self.scanCharacters: bool = False

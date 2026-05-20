@@ -144,6 +144,11 @@ text_color_ranges = [[[25,70,200],[27,90,255]]]
 [weapons.level.ocr]
 single_line = true
 character_whitelist = "0123456789/"
+color_space = "rgb"
+text_color_ranges = [
+    [[230, 220, 150], [255, 255, 190]],
+    [[170, 190, 190], [200, 210, 210]]
+]
 
 [weapons.name.ocr]
 color_space = "hsv"

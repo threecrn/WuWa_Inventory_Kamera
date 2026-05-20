@@ -136,7 +136,7 @@ class Config(QConfig):
     echoMinRarity = ConfigItem("Scanner", "EchoMinRarity", 1, RangeValidator(1, 5))
     echoMinLevel = ConfigItem("Scanner", "EchoMinLevel", 0, RangeValidator(0, 25))
     weaponsMinRarity = ConfigItem("Scanner", "WeaponsMinRarity", 1, RangeValidator(1, 5))
-    weaponsMinLevel = ConfigItem("Scanner", "WeaponsMinLevel", 1, RangeValidator(1, 90))
+    weaponsMinLevel = ConfigItem("Scanner", "WeaponsMinLevel", 0, RangeValidator(0, 90))
 
     # OCR backend
     ocrBackend = OptionsConfigItem(

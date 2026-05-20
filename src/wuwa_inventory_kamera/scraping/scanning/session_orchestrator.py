@@ -58,7 +58,10 @@ class SessionOrchestrator:
     ocr_providers:
         ONNX providers for the OcrService.
     min_rarity / min_level:
-        Quality thresholds forwarded to the OcrService assemblers.
+        Echo quality thresholds forwarded to the OcrService.
+    weapon_min_rarity / weapon_min_level:
+        Weapon quality thresholds forwarded to the OcrService. If omitted,
+        the echo thresholds are reused for backwards compatibility.
     sort_order:
         Sort order to set before scanning.
     save_raw:
@@ -78,6 +81,8 @@ class SessionOrchestrator:
         ocr_providers: list[str] | None = None,
         min_rarity: int = 1,
         min_level: int = 0,
+        weapon_min_rarity: int | None = None,
+        weapon_min_level: int | None = None,
         sort_order: SortOrder | None = None,
         save_raw: Path | None = None,
         inventory_key: str = 'b',
@@ -92,6 +97,8 @@ class SessionOrchestrator:
         self.ocr_providers = ocr_providers
         self.min_rarity = min_rarity
         self.min_level = min_level
+        self.weapon_min_rarity = min_rarity if weapon_min_rarity is None else weapon_min_rarity
+        self.weapon_min_level = min_level if weapon_min_level is None else weapon_min_level
         self.sort_order = sort_order
         self.save_raw = save_raw
         self.inventory_key = inventory_key
@@ -147,6 +154,8 @@ class SessionOrchestrator:
             providers=self.ocr_providers,
             min_rarity=self.min_rarity,
             min_level=self.min_level,
+            weapon_min_rarity=self.weapon_min_rarity,
+            weapon_min_level=self.weapon_min_level,
             max_batch_size=self.max_batch_size,
             ocr_cache_path=(
                 str(self.ocr_cache_path)
@@ -262,13 +271,17 @@ class SessionOrchestrator:
             session_id=session_id,
         )
 
+        raw_path = self.save_raw / session_id / 'raw' if self.save_raw else None
+
         wf = WeaponWorkflow(
             nav=nav,
             ocr_service=ocr_service,
             session=session,
             tab=tab,
             sort_order=self.sort_order,
+            save_raw=raw_path,
             stop_event=stop_event,
+            write_debug=self.write_debug,
         )
 
         def _on_progress(scanned: int, total: int) -> None:
@@ -291,11 +304,15 @@ class SessionOrchestrator:
             session_id=session_id,
         )
 
+        raw_path = self.save_raw / session_id / 'raw' if self.save_raw else None
+
         wf = CharacterWorkflow(
             nav=nav,
             ocr_service=ocr_service,
             session=session,
+            save_raw=raw_path,
             stop_event=stop_event,
+            write_debug=self.write_debug,
         )
 
         def _on_progress(scanned: int, total: int) -> None:
