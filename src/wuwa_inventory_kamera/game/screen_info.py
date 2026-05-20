@@ -5,8 +5,9 @@ wuwa_inventory_kamera.game.screen_info
 Coordinate resolver for the supported WuWa game UI layouts.
 
 This is a migration of ``game/screenInfo.py`` from the legacy package root
-into the ``wuwa_inventory_kamera`` package.  Only the actively supported
-layouts are retained: 1920x1080 and 1920x1200.
+into the ``wuwa_inventory_kamera`` package.  The coordinate tables provide
+base layouts for 1920x1080 and 1920x1200, and same-aspect-ratio resolutions
+are scaled from those layouts at runtime.
 
 Usage::
 
@@ -44,18 +45,18 @@ class ScreenInfo:
         self.height = int(height)
         self.monitor = monitor
 
-        try:
-            self.data = COORDINATES[self.getRatio()][(self.width, self.height)]
-        except KeyError:
-            supported = ', '.join(
-                f'{supported_width}x{supported_height}'
-                for ratio in COORDINATES.values()
-                for supported_width, supported_height in ratio
-            )
+        ratio = self.getRatio()
+        ratio_coordinates = COORDINATES.get(ratio)
+        if ratio_coordinates is None:
             raise ValueError(
                 f'Unsupported WuWa resolution {self.width}x{self.height}. '
-                f'Supported resolutions: {supported}'
+                f'Supported base resolutions: {self._supported_resolutions()}. '
+                'Scaled resolutions with the same aspect ratio are also supported.'
             )
+
+        self.data = ratio_coordinates.get((self.width, self.height))
+        if self.data is None:
+            self.data = self._scale_from_reference(ratio_coordinates)
 
         self.data = self._convertToObject(self.data)
 
@@ -66,6 +67,50 @@ class ScreenInfo:
         if isinstance(obj, dict):
             return ScreenInfoObject(obj)
         return obj
+
+    @staticmethod
+    def _supported_resolutions() -> str:
+        return ', '.join(
+            f'{supported_width}x{supported_height}'
+            for ratio_coordinates in COORDINATES.values()
+            for supported_width, supported_height in sorted(ratio_coordinates)
+        )
+
+    def _scale_from_reference(self, ratio_coordinates):
+        reference_resolution = min(
+            ratio_coordinates,
+            key=lambda size: abs(size[0] - self.width) + abs(size[1] - self.height),
+        )
+        reference_data = ratio_coordinates[reference_resolution]
+        width_scale = self.width / reference_resolution[0]
+        height_scale = self.height / reference_resolution[1]
+
+        def _scale(data, *, skip_scale: bool = False):
+            if isinstance(data, Coordinates):
+                if skip_scale:
+                    return data
+                return Coordinates(
+                    x=self._scale_value(data.x, width_scale),
+                    y=self._scale_value(data.y, height_scale),
+                    w=self._scale_value(data.w, width_scale),
+                    h=self._scale_value(data.h, height_scale),
+                )
+            if isinstance(data, dict):
+                return {
+                    key: _scale(value, skip_scale=(skip_scale or key == 'scroll'))
+                    for key, value in data.items()
+                }
+            if isinstance(data, list):
+                return [_scale(item, skip_scale=skip_scale) for item in data]
+            if isinstance(data, (int, float)) and not skip_scale:
+                return self._scale_value(data, width_scale)
+            return data
+
+        return _scale(reference_data)
+
+    @staticmethod
+    def _scale_value(value: int | float, scale: float):
+        return value * scale
 
     def __getattr__(self, item):
         """Dynamically access attributes from the nested data dictionary."""

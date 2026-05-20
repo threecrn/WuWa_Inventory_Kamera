@@ -55,16 +55,21 @@ import argparse
 import io
 import json
 import logging
+import os
 import re
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 
 logger = logging.getLogger('wuwa.nav')
+
+_REPL_ANSI_ESCAPE_RE = re.compile(
+    r'\x1b(?:\[[0-?]*[ -/]*[@-~]|O[@-~]|\][^\x07]*(?:\x07|\x1b\\))'
+)
 
 
 # ---------------------------------------------------------------------------
@@ -382,24 +387,25 @@ class NavSession:
         """
         import code as _code
         af_line = (
-            'Auto-focus ON  — game is focused before each command, '
+            'Auto-focus ON  - game is focused before each command, '
             'terminal restored after.\n'
             if auto_focus else
-            'Auto-focus OFF — call focus_window() manually as needed.\n'
+            'Auto-focus OFF - call focus_window() manually as needed.\n'
         )
         banner = (
-            'WuWa Navigator â€" Python REPL\n'
+            'WuWa Navigator - Python REPL\n'
             + af_line +
             'Nav functions are already in scope.  '
             'Type help(focus_window) for docs.\n'
-            'Press Ctrl-D (Ctrl-Z on Windows) to quit.\n'
+            'Press Ctrl-D to quit. If plain Windows input is active, use Ctrl-Z.\n'
         )
         ns = self._script_namespace()
         if auto_focus:
             console = _AutoFocusConsole(self, ns)
             console.interact(banner=banner, exitmsg='')
         else:
-            _code.interact(local=ns, banner=banner, exitmsg='')
+            readfunc = _build_repl_readfunc()
+            _code.interact(local=ns, banner=banner, exitmsg='', readfunc=readfunc)
 
     def _script_namespace(self) -> dict:
         """Build the globals dict exposed to scripts and the REPL."""
@@ -672,14 +678,12 @@ class NavSession:
                 else capture_region(self.gw, roi_obj)
             )
             if annotate is not None:
-                origin = (0.0, 0.0) if roi_obj is None else (roi_obj.x, roi_obj.y)
                 bgr = _draw_annotations(bgr, layout, annotate, origin)
             return bgr
 
         out_path = Path(out) if out is not None else None
         if out_path is None:
             ts = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
-            self.screenshot_dir.mkdir(parents=True, exist_ok=True)
             out_path = self.screenshot_dir / f'screenshot_{ts}.png'
 
         logger.info('screenshot roi=%s annotate=%s out=%s', roi, annotate, out_path)
@@ -797,12 +801,67 @@ def _setup_readline() -> None:
     """
     try:
         import readline
-        readline.parse_and_bind('tab: complete')
     except ImportError:
         try:
             import pyreadline3  # noqa: F401 — self-registers as readline on import
+            import readline
         except ImportError:
-            pass
+            return
+    parse_and_bind = getattr(readline, 'parse_and_bind', None)
+    if callable(parse_and_bind):
+        parse_and_bind('tab: complete')
+
+
+def _build_repl_readfunc() -> 'Callable[[str], str]':
+    """
+    Return the line-reader used by the interactive REPL.
+
+    On Windows terminals such as Git Bash, the standard ``input()`` path has
+    no readline editing, and ``pyreadline3`` only helps for native console
+    hosts. ``prompt_toolkit`` handles VT-style terminals directly, so prefer
+    it whenever stdin/stdout are attached to a TTY. Otherwise fall back to
+    ``input()`` with best-effort readline setup.
+    """
+    stdin = sys.stdin
+    stdout = sys.stdout
+    if stdin is None:
+        return input
+
+    stdin_is_tty = bool(getattr(stdin, 'isatty', lambda: False)())
+    stdout_is_tty = bool(getattr(stdout, 'isatty', lambda: False)()) if stdout is not None else False
+    term = os.environ.get('TERM', '').lower()
+    is_windows_pty = bool(
+        sys.platform.startswith('win')
+        and (os.environ.get('MSYSTEM') or os.environ.get('MINTTY_SHORTCUT') or term.startswith(('xterm', 'msys', 'cygwin')))
+    )
+
+    if not stdin_is_tty:
+        return input
+
+    base_readfunc: 'Callable[[str], str]'
+    try:
+        from prompt_toolkit import PromptSession
+        from prompt_toolkit.history import InMemoryHistory
+    except ImportError:
+        _setup_readline()
+        base_readfunc = input
+    else:
+        if not stdout_is_tty and not is_windows_pty:
+            _setup_readline()
+            base_readfunc = input
+        else:
+            session = PromptSession(history=InMemoryHistory())
+            base_readfunc = session.prompt
+
+    def readfunc(prompt: str) -> str:
+        line = base_readfunc(prompt)
+        line = _REPL_ANSI_ESCAPE_RE.sub('', line)
+        return ''.join(
+            ch for ch in line
+            if ch == '\t' or (' ' <= ch and ch != '\x7f')
+        )
+
+    return readfunc
 
 
 # ---------------------------------------------------------------------------
@@ -830,8 +889,7 @@ class _AutoFocusConsole:
         self._console.runcode = self._runcode  # type: ignore[method-assign]
         # Capture terminal HWND now while we still have focus.
         self._terminal_hwnd: int = ctypes.windll.user32.GetForegroundWindow()
-        # Enable readline history (no-op if pyreadline3 is absent).
-        _setup_readline()
+        self._readfunc = _build_repl_readfunc()
 
     def interact(self, *, banner: str, exitmsg: str) -> None:
         """
@@ -848,7 +906,7 @@ class _AutoFocusConsole:
         while True:
             prompt = ps2 if more else ps1
             try:
-                line = input(prompt)
+                line = self._readfunc(prompt)
             except EOFError:          # Ctrl+D (readline) or Ctrl+Z+Enter (Windows)
                 sys.stdout.write('\n')
                 break

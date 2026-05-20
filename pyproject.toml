@@ -13,6 +13,7 @@ license = { file = "LICENSE" }
 dependencies = [
     "numpy",
     "opencv-python",
+    "prompt_toolkit>=3.0; sys_platform == 'win32'",
     "rapidocr-onnxruntime",
     "PyYAML",
     "babel",
@@ -24,7 +25,6 @@ dependencies = [
 # Full application (UI + game capture)
 app = [
     "PySide6-Fluent-Widgets>=1.8.7",
-    "PySide6",
     "mss>=10.1.0",
     "PyWinCtl>=0.4.1",
     "PyMonCtl>=0.92",
