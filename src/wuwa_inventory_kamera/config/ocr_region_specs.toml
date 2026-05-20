@@ -125,44 +125,67 @@ text_color_ranges = [
 # Weapon workflow
 # =====================================================================
 
-[weapons.name]
-color_space = "bgr"
+[weapons.page.ocr]
+single_line = true
+character_whitelist = "0123456789/"
+
+[weapons.equipped.ocr]
+single_line = true
+color_space = "hsv"
+render_mode = "masked_normalized_anchor_contrast"
+text_color_ranges = [[[25,70,200],[27,90,255]]]
+
+[weapons.rank.ocr]
+single_line = true
+color_space = "hsv"
+render_mode = "masked_normalized_anchor_contrast"
+text_color_ranges = [[[25,70,200],[27,90,255]]]
+
+[weapons.level.ocr]
+single_line = true
+character_whitelist = "0123456789/"
+
+[weapons.name.ocr]
+color_space = "hsv"
+single_line = true
+pre_upscale = [512, 64]
+render_mode = "masked_normalized_anchor_contrast"
+anchor_contrast_sharpness = 6.0
+#background_color_ranges = [[[80, 66, 50], [220, 215, 200]]]
+
+[weapons.name.ocr.rarity_overrides."5"]
+#text_color_ranges = [[[20, 60, 150], [32, 255, 255]]]
+text_color_ranges = [[[25,70,200],[27,90,255]]]
+[weapons.name.ocr.rarity_overrides."4"]
+text_color_ranges = [[[135, 60, 150], [150, 255, 255]]]
+[weapons.name.ocr.rarity_overrides."3"]
+text_color_ranges = [[[112, 60, 150], [125, 255, 255]]]
+[weapons.name.ocr.rarity_overrides."2"]
+text_color_ranges = [[[55, 60, 150], [70, 255, 255]]]
+
+[weapons.name.signature]
+single_line = true
 cache_mode = "persistent"
-# TODO: If weapon-name signatures should hash preprocessed text masks,
-# define explicit preprocess overrides in [weapons.name.signature].
+color_space = "bgr"
+pre_downscale = [512, 32]
 
-[weapons.name.rarity_overrides."5"]
-text_color_ranges = [
-    [[166, 235, 247], [166, 235, 247]],
-]
+[weapons.name.signature.rarity_overrides."5"]
+text_color_ranges = [[[166, 235, 247], [166, 235, 247]]]
 
-[weapons.name.rarity_overrides."4"]
-text_color_ranges = [
-    [[185, 135, 200], [185, 135, 200]],
-]
+[weapons.name.signature.rarity_overrides."4"]
+text_color_ranges = [[[185, 135, 200], [185, 135, 200]]]
 
-[weapons.name.rarity_overrides."3"]
-text_color_ranges = [
-    [[220, 180, 120], [220, 180, 120]],
-]
+[weapons.name.signature.rarity_overrides."3"]
+text_color_ranges = [[[220, 180, 120], [220, 180, 120]]]
 
-[weapons.name.rarity_overrides."2"]
-text_color_ranges = [
-    [[130, 210, 140], [130, 210, 140]],
-]
+[weapons.name.signature.rarity_overrides."2"]
+text_color_ranges = [[[130, 210, 140], [130, 210, 140]]]
 
 [weapons.value]
 color_space = "gray"
 threshold_mode = "floor"
 floor_value = 150
 allowed_chars = "0123456789"
-cache_mode = "persistent"
-
-[weapons.level]
-color_space = "gray"
-threshold_mode = "floor"
-floor_value = 150
-allowed_chars = "0123456789Lv./"
 cache_mode = "persistent"
 
 # =====================================================================

@@ -173,12 +173,13 @@ COORDINATES = {
                 "description": Coordinates(1296, 114, 558, 820)
             },
             "weapons": {
-                "page": Coordinates(200, 50, 130, 40),
-                "start": Coordinates(205, 122, 151, 181),
+                "page": Coordinates(102, 50, 400, 40),
+                "start": Coordinates(176, 135, 151, 181),
                 "rarityColorPick": Coordinates(1313, 423), 
-                "name": Coordinates(1305, 116, 545, 55),
+                "name": Coordinates(1328, 116, 525, 55),
                 "value": Coordinates(1655, 320, 190, 40),
                 "level": Coordinates(1660, 235, 180, 45),
+                "equipped": Coordinates(1364, 933, 480, 39),
                 #"rank": Coordinates(1300, 530, 115, 50),
                 # Sort dropdown — same button as echoes; 3 options at 72 px spacing.
                 # Options top→bottom: Sort by Rarity / Sort by Level / Sort by Amount.
@@ -334,13 +335,14 @@ COORDINATES = {
                 "description": Coordinates(1298.3, 176.0, 554.3, 817.1)
             },
             "weapons": {
-                "page": Coordinates(200.0, 45.7, 148.6, 45.7),
-                "start": Coordinates(205.7, 118.9, 148.6, 185.1),
+                "page": Coordinates(102, 52, 400, 45),
+                "start": Coordinates(176, 135, 148.6, 185.1),
                 "rarityColorPick": Coordinates(1313, 482), 
-                "name": Coordinates(1302.9, 173.7, 548.6, 57.1),
+                "name": Coordinates(1328, 173.7, 525, 57.1),
                 "value": Coordinates(1634.3, 377.1, 217.1, 45.7),
-                "level": Coordinates(1640.0, 291.4, 205.7, 51.4),
-                "rank": Coordinates(1297.1, 582.9, 114.3, 57.1),
+                "level": Coordinates(1329, 299, 218, 38),
+                "equipped": Coordinates(1364, 933, 480, 39),
+                "rank": Coordinates(1331, 635, 100, 42),
                 "sort": {
                     "button": Coordinates(430.9, 1069.7),
                     "items": [
