@@ -667,11 +667,10 @@ class NavSession:
                 return None
             layout  = self.nav.layout
             roi_obj = _resolve_roi(layout, roi)
-            img = (
+            bgr = (
                 capture(self.gw) if roi_obj is None
                 else capture_region(self.gw, roi_obj)
             )
-            bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
             if annotate is not None:
                 origin = (0.0, 0.0) if roi_obj is None else (roi_obj.x, roi_obj.y)
                 bgr = _draw_annotations(bgr, layout, annotate, origin)
@@ -689,11 +688,10 @@ class NavSession:
 
         layout  = self.nav.layout
         roi_obj = _resolve_roi(layout, roi)
-        img = (
+        bgr = (
             capture(self.gw) if roi_obj is None
             else capture_region(self.gw, roi_obj)
         )
-        bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
         if annotate is not None:
             origin = (0.0, 0.0) if roi_obj is None else (roi_obj.x, roi_obj.y)
             bgr = _draw_annotations(bgr, layout, annotate, origin)
