@@ -147,6 +147,12 @@ class OcrRegionSpec:
     #                      model as ``anchor_contrast`` but remap the declared
     #                      background/text anchors to black/white so the OCR
     #                      input spans the full 0-255 range.
+    #  masked_normalized_anchor_contrast : same as
+    #                      ``normalized_anchor_contrast`` but restrict the
+    #                      output to a one-pixel halo around the computed
+    #                      text mask. This lets HSV/BGR text ranges suppress
+    #                      unrelated background pixels without flattening
+    #                      anti-aliased glyph edges.
     #  normalized_anchor_color : use the same normalized anchor-distance
     #                      weight as ``normalized_anchor_contrast`` but keep a
     #                      3-channel colour blend between the declared
@@ -159,6 +165,7 @@ class OcrRegionSpec:
         "luma_boost_color",
         "anchor_contrast",
         "normalized_anchor_contrast",
+        "masked_normalized_anchor_contrast",
         "normalized_anchor_color",
     ] = "legacy_binary_rgb"
 
@@ -239,19 +246,7 @@ class OcrRegionSpec:
         """
         Build a boolean mask of likely text pixels using color ranges and thresholding.
         """
-        used_rarity_override = (
-            rarity is not None
-            and self.text_color_ranges_by_rarity is not None
-            and rarity in self.text_color_ranges_by_rarity
-        )
-        if used_rarity_override:
-            effective_ranges: ColorRangeList | None = self.text_color_ranges_by_rarity[rarity]  # type: ignore[index]
-            effective_cs: str = self.color_space
-        else:
-            effective_ranges = self.text_color_ranges
-            # When no rarity override, evaluate base ranges in fallback_color_space
-            # if specified (e.g. HSV band for echo name without rarity context).
-            effective_cs = self.fallback_color_space or self.color_space
+        effective_ranges, effective_cs = self._resolve_text_ranges_and_color_space(rarity)
 
         color_view = _convert_color_space(bgr, effective_cs)
         reject_mask = _mask_from_ranges(color_view, self.background_color_ranges)
@@ -301,6 +296,11 @@ class OcrRegionSpec:
           *  ``normalized_anchor_contrast`` — compute the same anchor-distance
               weight as ``anchor_contrast`` but renormalize the declared anchor
               endpoints to a full-range white-on-black plane.
+          *  ``masked_normalized_anchor_contrast`` — compute the same
+              normalized anchor-distance weight but zero everything outside a
+              one-pixel expansion of the computed text mask. This uses the
+              declared text ranges as a hard gate for background suppression
+              while preserving soft anti-aliased edge weights next to the mask.
           *  ``normalized_anchor_color`` — compute the same normalized
               anchor-distance weight but keep the result in colour by blending
               between the declared background and text anchors.
@@ -313,19 +313,35 @@ class OcrRegionSpec:
         if mode in {
             "anchor_contrast",
             "normalized_anchor_contrast",
+            "masked_normalized_anchor_contrast",
             "normalized_anchor_color",
         }:
-            effective_ranges = self._resolve_text_ranges(rarity)
+            effective_ranges, effective_cs = self._resolve_text_ranges_and_color_space(rarity)
             if effective_ranges:
-                text_anchor = _midpoint_of_ranges(effective_ranges)
+                text_anchor = _midpoint_of_ranges_bgr(
+                    effective_ranges,
+                    color_space=effective_cs,
+                )
                 bg_anchor = (
-                    _midpoint_of_ranges(self.background_color_ranges)
+                    _midpoint_of_ranges_bgr(
+                        self.background_color_ranges,
+                        color_space=effective_cs,
+                    )
                     if self.background_color_ranges
                     else _NEUTRAL_BG_BGR
                 )
                 if mode == "normalized_anchor_contrast":
                     return _render_normalized_anchor_contrast(
                         bgr, text_anchor, bg_anchor, self.anchor_contrast_sharpness
+                    )
+                if mode == "masked_normalized_anchor_contrast":
+                    return _render_masked_normalized_anchor_contrast(
+                        bgr,
+                        text_anchor,
+                        bg_anchor,
+                        self.anchor_contrast_sharpness,
+                        text_mask,
+                        self.morphology,
                     )
                 if mode == "normalized_anchor_color":
                     return _render_normalized_anchor_color(
@@ -517,6 +533,16 @@ class OcrRegionSpec:
                 return override
         return self.text_color_ranges
 
+    def _resolve_text_ranges_and_color_space(
+        self,
+        rarity: int | None,
+    ) -> tuple[ColorRangeList | None, str]:
+        if rarity is not None and self.text_color_ranges_by_rarity:
+            override = self.text_color_ranges_by_rarity.get(rarity)
+            if override is not None:
+                return override, self.color_space
+        return self.text_color_ranges, self.fallback_color_space or self.color_space
+
     def _image_for_signature(
         self,
         bgr: np.ndarray,
@@ -637,26 +663,57 @@ def _render_luma_boost_color(
     return cv2.cvtColor(out_bgr, cv2.COLOR_BGR2RGB)
 
 
-def _midpoint_of_ranges(ranges: ColorRangeList) -> tuple[int, int, int]:
-    """Return the mean midpoint BGR colour of a list of ``(lo, hi)`` ranges.
+def _midpoint_of_ranges(
+    ranges: ColorRangeList,
+    *,
+    channels: int = 3,
+) -> tuple[int, ...]:
+    """Return the mean midpoint colour of a list of ``(lo, hi)`` ranges.
 
     Each ``(lo, hi)`` pair contributes one midpoint; the final anchor is the
     channel-wise average across all midpoints.  This gives a single
     representative colour for a region's declared text or background family.
     """
     midpoints = [
-        tuple((int(lo[c]) + int(hi[c])) // 2 for c in range(3))
+        tuple((int(lo[c]) + int(hi[c])) // 2 for c in range(channels))
         for lo, hi in ranges
-        if len(lo) >= 3 and len(hi) >= 3
+        if len(lo) >= channels and len(hi) >= channels
     ]
     if not midpoints:
-        return (128, 128, 128)
+        return tuple(128 for _ in range(channels))
     n = len(midpoints)
-    return (
-        sum(p[0] for p in midpoints) // n,
-        sum(p[1] for p in midpoints) // n,
-        sum(p[2] for p in midpoints) // n,
-    )
+    return tuple(sum(p[channel] for p in midpoints) // n for channel in range(channels))
+
+
+def _midpoint_of_ranges_bgr(
+    ranges: ColorRangeList,
+    *,
+    color_space: str,
+) -> tuple[int, int, int]:
+    """Return the representative midpoint colour converted into BGR space."""
+    if color_space == "gray":
+        if any(len(lo) >= 3 and len(hi) >= 3 for lo, hi in ranges):
+            color_space = "bgr"
+        else:
+            gray = int(_midpoint_of_ranges(ranges, channels=1)[0])
+            return (gray, gray, gray)
+
+    if color_space == "gray":
+        gray = int(_midpoint_of_ranges(ranges, channels=1)[0])
+        return (gray, gray, gray)
+
+    midpoint = np.array([[_midpoint_of_ranges(ranges, channels=3)]], dtype=np.uint8)
+    if color_space == "bgr":
+        bgr = midpoint
+    elif color_space == "rgb":
+        bgr = cv2.cvtColor(midpoint, cv2.COLOR_RGB2BGR)
+    elif color_space == "hsv":
+        bgr = cv2.cvtColor(midpoint, cv2.COLOR_HSV2BGR)
+    else:
+        raise ValueError(f"Unknown color_space: {color_space!r}")
+
+    converted = bgr[0, 0]
+    return int(converted[0]), int(converted[1]), int(converted[2])
 
 
 def _render_anchor_contrast(
@@ -776,6 +833,39 @@ def _render_normalized_anchor_color(
     return cv2.cvtColor(rendered_bgr, cv2.COLOR_BGR2RGB)
 
 
+def _render_masked_normalized_anchor_contrast(
+    bgr: np.ndarray,
+    text_anchor_bgr: tuple[int, int, int],
+    bg_anchor_bgr: tuple[int, int, int],
+    sharpness: float,
+    text_mask: np.ndarray | None,
+    morphology: str,
+) -> np.ndarray:
+    """Render normalized anchor contrast, gated by a small text-mask halo.
+
+    The declared text ranges still decide which pixels are definitely text via
+    ``text_mask``. A one-pixel dilation of that mask acts as a support window,
+    so immediate anti-aliased edge pixels can keep their soft anchor-derived
+    grayscale while distant background pixels are forced to black.
+    """
+    weight = _anchor_contrast_weight(
+        bgr,
+        text_anchor_bgr=text_anchor_bgr,
+        bg_anchor_bgr=bg_anchor_bgr,
+        sharpness=sharpness,
+    )
+    if weight is None:
+        return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+
+    normalized = _normalize_anchor_weight(weight, sharpness)
+    if text_mask is not None:
+        support = _expanded_text_support_mask(text_mask, morphology)
+        normalized = normalized * support
+
+    plane = np.rint(np.clip(normalized * 255.0, 0.0, 255.0)).astype(np.uint8)
+    return cv2.cvtColor(plane, cv2.COLOR_GRAY2RGB)
+
+
 def _anchor_contrast_weight(
     bgr: np.ndarray,
     *,
@@ -889,6 +979,15 @@ def _apply_morphology(plane: np.ndarray, mode: str) -> np.ndarray:
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
         return cv2.morphologyEx(plane, cv2.MORPH_CLOSE, kernel)
     raise ValueError(f"Unknown morphology: {mode!r}")
+
+
+def _expanded_text_support_mask(text_mask: np.ndarray, morphology: str) -> np.ndarray:
+    """Expand a binary text mask by one pixel to retain anti-aliased fringes."""
+    mask_plane = np.where(text_mask, np.uint8(255), np.uint8(0))
+    mask_plane = _apply_morphology(mask_plane, morphology)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    expanded = cv2.dilate(mask_plane, kernel, iterations=1)
+    return expanded.astype(np.float32) / 255.0
 
 
 def _repair_single_line_glyphs(plane: np.ndarray) -> np.ndarray:

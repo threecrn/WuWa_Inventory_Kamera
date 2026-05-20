@@ -15,10 +15,14 @@ spec_version = "3.3-new-ui-v2"
 [echoes.echoName.ocr]
 color_space = "hsv"
 single_line = true
-#post_upscale = [1024, 64]
+pre_upscale = [512, 64]
+render_mode = "masked_normalized_anchor_contrast"
+anchor_contrast_sharpness = 6.0
+#background_color_ranges = [[[80, 66, 50], [220, 215, 200]]]
 
 [echoes.echoName.ocr.rarity_overrides."5"]
-text_color_ranges = [[[20, 60, 150], [32, 255, 255]]]
+#text_color_ranges = [[[20, 60, 150], [32, 255, 255]]]
+text_color_ranges = [[[25,70,200],[27,90,255]]]
 [echoes.echoName.ocr.rarity_overrides."4"]
 text_color_ranges = [[[135, 60, 150], [150, 255, 255]]]
 [echoes.echoName.ocr.rarity_overrides."3"]

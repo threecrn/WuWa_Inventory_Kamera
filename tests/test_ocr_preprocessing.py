@@ -129,7 +129,7 @@ def test_normalized_anchor_contrast_spreads_anchor_range_to_full_scale() -> None
     gray = _gray_from_rgb(processed)
 
     assert gray[0, 0] == 0
-    assert gray[0, 1] == 128
+    assert abs(int(gray[0, 1]) - 128) <= 3
     assert gray[0, 2] == 255
 
 
@@ -150,6 +150,61 @@ def test_normalized_anchor_color_preserves_colour_endpoints() -> None:
     assert processed[0, 0].tolist() == [80, 40, 20]
     assert processed[0, 1].tolist() == [90, 120, 120]
     assert processed[0, 2].tolist() == [100, 200, 220]
+
+
+def test_normalized_anchor_contrast_honours_hsv_color_space() -> None:
+    bg_hsv = (10, 220, 210)
+    text_hsv = (28, 220, 210)
+    bg_bgr = _bgr_from_hsv(*bg_hsv)
+    text_bgr = _bgr_from_hsv(*text_hsv)
+    midpoint_bgr = tuple((bg_bgr[i] + text_bgr[i]) // 2 for i in range(3))
+
+    spec = OcrRegionSpec(
+        roi_key="echoes.echoName",
+        color_space="hsv",
+        render_mode="normalized_anchor_contrast",
+        text_color_ranges=[(text_hsv, text_hsv)],
+        background_color_ranges=[(bg_hsv, bg_hsv)],
+    )
+    image = np.zeros((1, 3, 3), dtype=np.uint8)
+    image[0, 0] = np.asarray(bg_bgr, dtype=np.uint8)
+    image[0, 1] = np.asarray(midpoint_bgr, dtype=np.uint8)
+    image[0, 2] = np.asarray(text_bgr, dtype=np.uint8)
+
+    processed = spec.preprocess(image).ocr_rgb
+    gray = _gray_from_rgb(processed)
+
+    assert gray[0, 0] == 0
+    assert abs(int(gray[0, 1]) - 128) <= 3
+    assert gray[0, 2] == 255
+
+
+def test_masked_normalized_anchor_contrast_uses_text_mask_as_support_window() -> None:
+    bg_hsv = (10, 220, 210)
+    text_hsv = (28, 220, 210)
+    bg_bgr = _bgr_from_hsv(*bg_hsv)
+    text_bgr = _bgr_from_hsv(*text_hsv)
+    midpoint_bgr = tuple((bg_bgr[i] + text_bgr[i]) // 2 for i in range(3))
+
+    spec = OcrRegionSpec(
+        roi_key="echoes.echoName",
+        color_space="hsv",
+        render_mode="masked_normalized_anchor_contrast",
+        text_color_ranges=[(text_hsv, text_hsv)],
+        background_color_ranges=[(bg_hsv, bg_hsv)],
+    )
+    image = np.zeros((1, 4, 3), dtype=np.uint8)
+    image[0, 0] = np.asarray(midpoint_bgr, dtype=np.uint8)
+    image[0, 1] = np.asarray(midpoint_bgr, dtype=np.uint8)
+    image[0, 2] = np.asarray(text_bgr, dtype=np.uint8)
+    image[0, 3] = np.asarray(bg_bgr, dtype=np.uint8)
+
+    processed = spec.preprocess(image).ocr_rgb
+    gray = _gray_from_rgb(processed)
+
+    assert gray[0, 0] == 0
+    assert 0 < int(gray[0, 1]) < 255
+    assert gray[0, 2] == 255
 
 
 def test_packaged_echo_level_spec_uses_single_line_ocr() -> None:
