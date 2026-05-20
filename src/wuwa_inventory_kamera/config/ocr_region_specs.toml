@@ -141,6 +141,10 @@ color_space = "hsv"
 render_mode = "masked_normalized_anchor_contrast"
 text_color_ranges = [[[25,70,200],[27,90,255]]]
 
+[weapons.rank.singature]
+single_line = true
+text_color_ranges = [[[25,70,200],[27,90,255]]]
+
 [weapons.level.ocr]
 single_line = true
 character_whitelist = "0123456789/"

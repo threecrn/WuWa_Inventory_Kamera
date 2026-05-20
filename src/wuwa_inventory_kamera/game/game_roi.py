@@ -342,13 +342,13 @@ COORDINATES = {
                 "value": Coordinates(1634.3, 377.1, 217.1, 45.7),
                 "level": Coordinates(1329, 299, 218, 38),
                 "equipped": Coordinates(1364, 933, 480, 39),
-                "rank": Coordinates(1331, 635, 100, 42),
+                "rank": Coordinates(1331, 635, 96, 42),
                 "sort": {
-                    "button": Coordinates(430.9, 1069.7),
+                    "button": Coordinates(431, 1110),
                     "items": [
-                        Coordinates(430.9, 861.7),   # 0 – Sort by Rarity
-                        Coordinates(430.9, 941.7),   # 1 – Sort by Level
-                        Coordinates(430.9, 1021.7),  # 2 – Sort by Amount
+                        Coordinates(431,  900),  # 0 – Sort by Rarity
+                        Coordinates(431,  980),  # 1 – Sort by Level
+                        Coordinates(431, 1060),  # 2 – Sort by Amount
                     ],
                 },
             },

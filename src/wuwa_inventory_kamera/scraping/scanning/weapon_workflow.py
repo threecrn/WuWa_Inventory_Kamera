@@ -30,6 +30,7 @@ from ...game.navigation import (
     SortOrder,
 )
 from ...game.screen import capture_full
+from .echo_workflow import _rarity_from_capture_pixel
 from .grid_navigator import GridNavigator
 from .scan_state import (
     GridPosition,
@@ -153,6 +154,19 @@ class WeaponWorkflow:
                 int(wi.name.y) : int(wi.name.y + wi.name.h),
                 int(wi.name.x) : int(wi.name.x + wi.name.w),
             ]
+            detected_rarity: int | None = None
+            if not is_item_tab and hasattr(wi, 'rarityColorPick'):
+                rcp = wi.rarityColorPick
+                rarity_pixel = full[int(rcp.y), int(rcp.x)]
+                detected_rarity, rarity_order, rarity_dist = _rarity_from_capture_pixel(rarity_pixel)
+                logger.debug(
+                    'Weapon %d — rarity pixel raw=%s interpreted_as=%s → rarity %d (dist=%.1f)',
+                    position.scan_index,
+                    rarity_pixel.tolist(),
+                    rarity_order,
+                    detected_rarity,
+                    rarity_dist,
+                )
             if is_item_tab:
                 value_roi = wi.value
             else:
@@ -176,6 +190,7 @@ class WeaponWorkflow:
                     name=name_crop,
                     value=value_crop,
                     rank=rank_crop,
+                    detected_rarity=detected_rarity,
                 )
 
             capture = WeaponCapture(
@@ -183,6 +198,7 @@ class WeaponWorkflow:
                 name=name_crop,
                 value=value_crop,
                 rank=rank_crop,
+                detected_rarity=detected_rarity,
             )
 
             # Submit and block — weapons are fast enough to do synchronously
@@ -240,6 +256,7 @@ class WeaponWorkflow:
         name: np.ndarray,
         value: np.ndarray,
         rank: np.ndarray | None,
+        detected_rarity: int | None,
     ) -> None:
         from ..service.echo_reprocess import _write_region_debug_artifacts
 
@@ -251,7 +268,7 @@ class WeaponWorkflow:
             basename='name',
             roi_key='weapons.name',
             raw_bgr=name,
-            rarity=None,
+            rarity=detected_rarity if rank is not None else None,
         )
         _write_region_debug_artifacts(
             debug_dir,

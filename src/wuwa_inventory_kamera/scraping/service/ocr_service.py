@@ -889,7 +889,20 @@ class OcrService:
         """Run batched OCR and assembly for a group of :class:`WeaponCapture` objects."""
         captures = [cast(WeaponCapture, it.capture) for it in group]
 
-        name_results  = self._ocr_with_spec('weapons.name', [c.name for c in captures])
+        name_results: list[list] = [[] for _ in captures]
+        name_rarity_groups: dict[int | None, list[int]] = defaultdict(list)
+        for idx, capture in enumerate(captures):
+            rarity = capture.detected_rarity if capture.rank is not None else None
+            name_rarity_groups[rarity].append(idx)
+        for rarity, indices in name_rarity_groups.items():
+            group_results = self._ocr_with_spec(
+                'weapons.name',
+                [captures[i].name for i in indices],
+                rarity=rarity,
+            )
+            for list_pos, capture_idx in enumerate(indices):
+                name_results[capture_idx] = group_results[list_pos]
+
         value_results: list[list] = [[] for _ in captures]
 
         weapon_present = [i for i, c in enumerate(captures) if c.rank is not None]

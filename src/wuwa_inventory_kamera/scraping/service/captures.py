@@ -71,6 +71,7 @@ class WeaponCapture:
     name:  np.ndarray           # weapon / item name region (RGB)
     value: np.ndarray           # quantity (items) or level string (weapons) (RGB)
     rank:  np.ndarray | None    # refinement rank digit; None for plain items (RGB)
+    detected_rarity: int | None = None
     _uid: int = field(default=-1, init=False, repr=False, compare=False)
 
 

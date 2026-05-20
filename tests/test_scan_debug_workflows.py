@@ -66,6 +66,7 @@ def test_weapon_workflow_write_debug_dumps_region_artifacts(monkeypatch, tmp_pat
             level=SimpleNamespace(x=2, y=0, w=2, h=2),
             value=SimpleNamespace(x=4, y=0, w=2, h=2),
             rank=SimpleNamespace(x=0, y=2, w=2, h=2),
+            rarityColorPick=SimpleNamespace(x=1, y=1),
         ),
     )
     nav = SimpleNamespace(
@@ -84,6 +85,12 @@ def test_weapon_workflow_write_debug_dumps_region_artifacts(monkeypatch, tmp_pat
         def submit(self, capture) -> _FakeFuture:
             return _FakeFuture()
 
+    monkeypatch.setattr(
+        weapon_workflow_module,
+        '_rarity_from_capture_pixel',
+        lambda _pixel: (5, 'BGR', 0.0),
+    )
+
     workflow = WeaponWorkflow(
         nav=cast(Any, nav),
         ocr_service=cast(Any, _FakeOcrService()),
@@ -101,6 +108,7 @@ def test_weapon_workflow_write_debug_dumps_region_artifacts(monkeypatch, tmp_pat
         'weapons.level',
         'weapons.rank',
     ]
+    assert [call['rarity'] for call in debug_calls] == [5, None, None]
     assert all(
         call['debug_dir'] == tmp_path / 'raw' / 'weapon_0007' / 'debug'
         for call in debug_calls
@@ -112,12 +120,16 @@ def test_weapon_workflow_write_debug_dumps_region_artifacts(monkeypatch, tmp_pat
 
 def test_ocr_service_uses_level_spec_for_weapons_and_value_spec_for_items() -> None:
     service = ocr_service_module.OcrService.__new__(ocr_service_module.OcrService)
-    spec_calls: list[tuple[str, int]] = []
+    spec_calls: list[tuple[str, int, int | None]] = []
     assemble_calls: list[dict[str, object]] = []
     image = np.zeros((2, 2, 3), dtype=np.uint8)
 
-    def _fake_ocr_with_spec(roi_key: str, images: list[np.ndarray]) -> list[list[tuple[str, float, np.ndarray]]]:
-        spec_calls.append((roi_key, len(images)))
+    def _fake_ocr_with_spec(
+        roi_key: str,
+        images: list[np.ndarray],
+        rarity: int | None = None,
+    ) -> list[list[tuple[str, float, np.ndarray]]]:
+        spec_calls.append((roi_key, len(images), rarity))
         return [[(roi_key, 1.0, np.array([0, 0, 1, 1]))] for _ in images]
 
     class _FakeBatchOcr:
@@ -145,7 +157,7 @@ def test_ocr_service_uses_level_spec_for_weapons_and_value_spec_for_items() -> N
 
     group = [
         ocr_service_module._QueueItem(
-            WeaponCapture(index=1, name=image, value=image, rank=image),
+            WeaponCapture(index=1, name=image, value=image, rank=image, detected_rarity=5),
             0,
             concurrent.futures.Future(),
         ),
@@ -159,10 +171,13 @@ def test_ocr_service_uses_level_spec_for_weapons_and_value_spec_for_items() -> N
     service._process_weapons(group)
 
     assert spec_calls == [
-        ('weapons.name', 2),
-        ('weapons.level', 1),
-        ('weapons.value', 1),
+        ('weapons.name', 1, 5),
+        ('weapons.name', 1, None),
+        ('weapons.level', 1, None),
+        ('weapons.value', 1, None),
     ]
+    assert assemble_calls[0]['name_texts'] == ['weapons.name']
+    assert assemble_calls[1]['name_texts'] == ['weapons.name']
     assert assemble_calls[0]['value_texts'] == ['weapons.level']
     assert assemble_calls[1]['value_texts'] == ['weapons.value']
     assert group[0].future.result().is_weapon is True
