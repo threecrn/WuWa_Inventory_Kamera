@@ -58,7 +58,7 @@ text_color_ranges = [
 ]
 
 [echoes.fullStatsName.ocr]
-color_space = "rgb"
+#color_space = "rgb"
 render_mode = "masked_normalized_anchor_contrast"
 anchor_contrast_sharpness = 4.0
 text_color_ranges = [[[230, 235, 235], [255, 255, 249]]]
@@ -75,7 +75,7 @@ text_color_ranges = [
 ]
 
 [echoes.fullStatsValue.ocr]
-color_space = "rgb"
+#color_space = "rgb"
 render_mode = "masked_normalized_anchor_contrast"
 anchor_contrast_sharpness = 4.0
 text_color_ranges = [[[230, 235, 235], [255, 255, 249]]]
