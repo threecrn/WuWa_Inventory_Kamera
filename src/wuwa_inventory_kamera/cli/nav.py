@@ -186,6 +186,43 @@ def _iter_coordinates(obj, prefix: str = ''):
             yield from _iter_coordinates(val, f'{prefix}[{i}]')
 
 
+def _capture_roi(obj, roi_name):
+    """
+    Normalize a resolved ROI into a concrete capture rectangle.
+
+    Section objects such as ``echoes`` and ``echoes.sonataIcon`` are reduced
+    to the union of their nested rectangular coordinates. Zero-area helper
+    coordinates such as click targets, scroll deltas, and local circle centers
+    are ignored for capture purposes.
+    """
+    from ..game.game_roi import Coordinates as _Coords
+    from ..game.screen_info import ScreenInfoObject as _SIO
+
+    if obj is None or isinstance(obj, _Coords):
+        return obj
+    if not isinstance(obj, (_SIO, dict, list)):
+        raise NavError(
+            f'ROI {roi_name!r} resolved to unsupported capture type {type(obj).__name__!r}'
+        )
+
+    rectangles = [
+        coord
+        for _, coord in _iter_coordinates(obj)
+        if isinstance(coord, _Coords) and coord.w > 0 and coord.h > 0
+    ]
+    if not rectangles:
+        raise NavError(
+            f'ROI {roi_name!r} resolved to a section with no rectangular capture regions; '
+            'use a concrete leaf ROI instead'
+        )
+
+    min_x = min(coord.x for coord in rectangles)
+    min_y = min(coord.y for coord in rectangles)
+    max_x = max(coord.x + coord.w for coord in rectangles)
+    max_y = max(coord.y + coord.h for coord in rectangles)
+    return _Coords(min_x, min_y, max_x - min_x, max_y - min_y)
+
+
 def _draw_single_coord(
     img: 'np.ndarray',
     label: str,
@@ -639,7 +676,8 @@ class NavSession:
             ``'full'``, a named ROI (``'echo-card'``, ``'sonata'``, …), a
             dot-path into the layout tree (e.g. ``'echoes.echoCard'``),
             a numeric tuple ``(x, y, w, h)``, or a comma-separated string
-            ``'x,y,w,h'``.
+            ``'x,y,w,h'``. Section names such as ``'echoes'`` are captured as
+            the bounding box of their nested rectangular ROIs.
         out:
             Output file path.  Auto-generated under ``screenshot_dir`` if
             omitted.  Ignored when *as_image* is ``True``.
@@ -673,11 +711,13 @@ class NavSession:
                 return None
             layout  = self.nav.layout
             roi_obj = _resolve_roi(layout, roi)
+            capture_roi = _capture_roi(roi_obj, roi)
             bgr = (
                 capture(self.gw) if roi_obj is None
-                else capture_region(self.gw, roi_obj)
+                else capture_region(self.gw, capture_roi)
             )
             if annotate is not None:
+                origin = (0.0, 0.0) if capture_roi is None else (capture_roi.x, capture_roi.y)
                 bgr = _draw_annotations(bgr, layout, annotate, origin)
             return bgr
 
@@ -692,12 +732,13 @@ class NavSession:
 
         layout  = self.nav.layout
         roi_obj = _resolve_roi(layout, roi)
+        capture_roi = _capture_roi(roi_obj, roi)
         bgr = (
             capture(self.gw) if roi_obj is None
-            else capture_region(self.gw, roi_obj)
+            else capture_region(self.gw, capture_roi)
         )
         if annotate is not None:
-            origin = (0.0, 0.0) if roi_obj is None else (roi_obj.x, roi_obj.y)
+            origin = (0.0, 0.0) if capture_roi is None else (capture_roi.x, capture_roi.y)
             bgr = _draw_annotations(bgr, layout, annotate, origin)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(out_path), bgr)
@@ -734,7 +775,8 @@ class NavSession:
         roi:
             ROI name, dot-path, numeric tuple ``(x, y, w, h)``, or
             comma-separated string ``'x,y,w,h'`` — same values accepted
-            as :meth:`screenshot`.
+            as :meth:`screenshot`, including section names captured as the
+            union of nested rectangular ROIs.
         mode:
             ``None`` (default) — normal multi-line detection.
             ``'thorough'`` — multi-pass detection (higher recall, ~3× slower).
@@ -753,9 +795,10 @@ class NavSession:
 
         layout  = self.nav.layout
         roi_obj = _resolve_roi(layout, roi)
+        capture_roi = _capture_roi(roi_obj, roi)
         crop = (
             capture(self.gw) if roi_obj is None
-            else capture_region(self.gw, roi_obj)
+            else capture_region(self.gw, capture_roi)
         )
         if self._ocr_backend is None:
             self._ocr_backend = RapidOcrBackend()
