@@ -121,6 +121,17 @@ text_color_ranges = [
     [[180, 180, 170], [194, 196, 190]],
 ]
 
+[echoes.equipped.ocr]
+single_line = true
+color_space = "hsv"
+render_mode = "masked_normalized_anchor_contrast"
+text_color_ranges = [[[25,70,200],[27,90,255]]]
+
+[echoes.equipped.signature]
+single_line = true
+color_space = "hsv"
+text_color_ranges = [[[25,70,200],[27,90,255]]]
+
 # =====================================================================
 # Weapon workflow
 # =====================================================================
@@ -133,6 +144,11 @@ character_whitelist = "0123456789/"
 single_line = true
 color_space = "hsv"
 render_mode = "masked_normalized_anchor_contrast"
+text_color_ranges = [[[25,70,200],[27,90,255]]]
+
+[weapons.equipped.signature]
+single_line = true
+color_space = "hsv"
 text_color_ranges = [[[25,70,200],[27,90,255]]]
 
 [weapons.rank.ocr]

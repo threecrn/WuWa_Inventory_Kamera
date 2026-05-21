@@ -40,6 +40,7 @@ from ...ocr._types import OcrResult
 from ...ocr import tokens_to_lines
 from ...matching.sonata_icon import SonataIconMatcher
 from ..captures import EchoCapture, EchoResult
+from ._equipped import parse_equipped_character
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +156,7 @@ class EchoAssembler:
         card_tokens:    list[OcrResult],
         name_tokens:    list[OcrResult],
         value_tokens:   list[OcrResult],
+        equipped_tokens: list[OcrResult] | None = None,
     ) -> EchoResult:
         """
         Assemble *capture* from pre-computed OCR tokens.
@@ -171,6 +173,8 @@ class EchoAssembler:
             OCR tokens from the stat-name column.
         value_tokens:
             OCR tokens from the stat-value column.
+        equipped_tokens:
+            OCR tokens from the equipped-text region.
 
         Returns
         -------
@@ -263,6 +267,9 @@ class EchoAssembler:
         # ── Assemble echo dict ────────────────────────────────────────────
         echo = self._build_echo(name, level, tune_lv, sonata, rarity, stats, echoesID, echoStats)
         echo_data = next(iter(echo.values()))
+        equipped_character = parse_equipped_character(equipped_tokens)
+        if equipped_character is not None:
+            echo_data['_equipped'] = equipped_character
         echo_data['_scanIndex'] = idx
 
         monster_id = echoesID.get(name)

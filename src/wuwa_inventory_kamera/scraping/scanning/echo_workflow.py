@@ -438,6 +438,14 @@ class EchoWorkflow:
                 int(en.x) : int(en.x + en.w),
             ]
 
+        equipped = None
+        if hasattr(si, 'equipped'):
+            eq = si.equipped
+            equipped = full[
+                int(eq.y) : int(eq.y + eq.h),
+                int(eq.x) : int(eq.x + eq.w),
+            ]
+
         # Optionally save raw images
         if self.save_raw:
             self._save_raw(pos, full)
@@ -465,6 +473,7 @@ class EchoWorkflow:
             echo_index=pos.scan_index,
             card=card,
             echo_name=echo_name,
+            equipped=equipped,
             detected_level=detected_level,
             detected_rarity=detected_rarity,
             sonata_icon=sonata_icon,

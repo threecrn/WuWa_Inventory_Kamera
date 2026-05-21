@@ -22,6 +22,7 @@ import re
 from ...ocr._types import OcrResult
 from ...ocr import tokens_to_string
 from ..captures import WeaponCapture, WeaponResult
+from ._equipped import parse_equipped_character
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,7 @@ class WeaponAssembler:
         name_tokens:  list[OcrResult],
         value_tokens: list[OcrResult],
         rank_tokens:  list[OcrResult] | None,
+        equipped_tokens: list[OcrResult] | None = None,
     ) -> WeaponResult:
         """
         Parameters
@@ -74,6 +76,8 @@ class WeaponAssembler:
         rank_tokens:
             OCR tokens from the rank badge, or ``None`` if this is a plain
             item (where there is no rank badge).
+        equipped_tokens:
+            OCR tokens from the equipped-text region.
         """
         weaponsID, itemsID = _get_data()
         idx = capture.index
@@ -120,6 +124,9 @@ class WeaponAssembler:
             m_rank = _RANK_RE.search(rank_text)
             rank = int(m_rank.group()) if m_rank else 1
             data: dict = {'id': lookup_id, 'level': level, 'maxLevel': max_lv, 'rank': rank}
+            equipped_character = parse_equipped_character(equipped_tokens)
+            if equipped_character is not None:
+                data['_equipped'] = equipped_character
         else:
             try:
                 quantity = int(re.sub(r'[^\d]', '', value_text))

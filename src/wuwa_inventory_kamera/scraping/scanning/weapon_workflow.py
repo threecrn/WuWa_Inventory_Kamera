@@ -184,6 +184,13 @@ class WeaponWorkflow:
                     int(wi.rank.x) : int(wi.rank.x + wi.rank.w),
                 ]
 
+            equipped_crop = None
+            if not is_item_tab and hasattr(wi, 'equipped'):
+                equipped_crop = full[
+                    int(wi.equipped.y) : int(wi.equipped.y + wi.equipped.h),
+                    int(wi.equipped.x) : int(wi.equipped.x + wi.equipped.w),
+                ]
+
             if self.write_debug:
                 self._write_debug_artifacts(
                     position,
@@ -198,6 +205,7 @@ class WeaponWorkflow:
                 name=name_crop,
                 value=value_crop,
                 rank=rank_crop,
+                equipped=equipped_crop,
                 detected_rarity=detected_rarity,
             )
 

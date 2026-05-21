@@ -220,6 +220,7 @@ COORDINATES = {
                 "mouseMovement": Coordinates(1576.5, 665.5),
                 "fullStatsName": Coordinates(1367, 455, 378, 398),
                 "fullStatsValue": Coordinates(1742, 455, 115, 398),
+                "equipped": Coordinates(1364, 933, 480, 39),
                 # Sort dropdown (opens upward from the button).
                 # Measured from screenshots/screenshot_inventory_echoes_sort_drop_down.png
                 # at 1920x1080.  button = trigger that opens the dropdown;
@@ -374,6 +375,7 @@ COORDINATES = {
                 "mouseMovement": Coordinates(1801.7, 760.6),
                 "fullStatsName": Coordinates(1367, 521, 378, 398),  # measured
                 "fullStatsValue": Coordinates(1742, 521, 115, 398), # measured
+                "equipped": Coordinates(1364, 933, 480, 39),
                 "sort": {
                     "button": Coordinates(431, 1111), # measured
                     "items": [

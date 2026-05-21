@@ -39,6 +39,7 @@ class EchoCapture:
     stats_name:      np.ndarray        # stat name column (RGB)
     stats_value:     np.ndarray        # stat value column (RGB)
     echo_name:       np.ndarray | None = None  # raw BGR crop of echoName ROI (colour-filtered for OCR)
+    equipped:        np.ndarray | None = None  # raw BGR crop of equipped-text ROI
     sonata_icon:     np.ndarray | None = None  # small circular sonata icon crop (BGR)
     full_screenshot: np.ndarray | None = None  # full frame, debug mode only
     sonata_icon_cx:  float | None = None  # circle centre-x in icon-crop space
@@ -71,6 +72,7 @@ class WeaponCapture:
     name:  np.ndarray           # weapon / item name region (RGB)
     value: np.ndarray           # quantity (items) or level string (weapons) (RGB)
     rank:  np.ndarray | None    # refinement rank digit; None for plain items (RGB)
+    equipped: np.ndarray | None = None
     detected_rarity: int | None = None
     _uid: int = field(default=-1, init=False, repr=False, compare=False)
 

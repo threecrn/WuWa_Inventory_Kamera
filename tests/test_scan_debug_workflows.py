@@ -15,7 +15,13 @@ from wuwa_inventory_kamera.game.navigation import InventoryTab
 from wuwa_inventory_kamera.scraping.scanning.character_workflow import CharacterWorkflow
 from wuwa_inventory_kamera.scraping.scanning.session_orchestrator import SessionOrchestrator
 from wuwa_inventory_kamera.scraping.scanning.weapon_workflow import WeaponWorkflow
-from wuwa_inventory_kamera.scraping.service.captures import CharResult, WeaponCapture, WeaponResult
+from wuwa_inventory_kamera.scraping.service.captures import (
+    CharResult,
+    EchoCapture,
+    EchoResult,
+    WeaponCapture,
+    WeaponResult,
+)
 
 
 def test_weapon_workflow_write_debug_dumps_region_artifacts(monkeypatch, tmp_path) -> None:
@@ -137,12 +143,13 @@ def test_ocr_service_uses_level_spec_for_weapons_and_value_spec_for_items() -> N
             return [[('1', 1.0, np.array([0, 0, 1, 1]))] for _ in images]
 
     class _FakeWeaponAssembler:
-        def assemble(self, capture, name_tokens, value_tokens, rank_tokens):
+        def assemble(self, capture, name_tokens, value_tokens, rank_tokens, equipped_tokens=None):
             assemble_calls.append({
                 'index': capture.index,
                 'name_texts': [tok[1] for tok in name_tokens],
                 'value_texts': [tok[1] for tok in value_tokens],
                 'rank_tokens': rank_tokens,
+                'equipped_texts': [tok[1] for tok in equipped_tokens] if equipped_tokens else [],
             })
             return WeaponResult(
                 index=capture.index,
@@ -157,7 +164,7 @@ def test_ocr_service_uses_level_spec_for_weapons_and_value_spec_for_items() -> N
 
     group = [
         ocr_service_module._QueueItem(
-            WeaponCapture(index=1, name=image, value=image, rank=image, detected_rarity=5),
+            WeaponCapture(index=1, name=image, value=image, rank=image, equipped=image, detected_rarity=5),
             0,
             concurrent.futures.Future(),
         ),
@@ -175,13 +182,93 @@ def test_ocr_service_uses_level_spec_for_weapons_and_value_spec_for_items() -> N
         ('weapons.name', 1, None),
         ('weapons.level', 1, None),
         ('weapons.value', 1, None),
+        ('weapons.equipped', 1, None),
     ]
     assert assemble_calls[0]['name_texts'] == ['weapons.name']
     assert assemble_calls[1]['name_texts'] == ['weapons.name']
     assert assemble_calls[0]['value_texts'] == ['weapons.level']
     assert assemble_calls[1]['value_texts'] == ['weapons.value']
+    assert assemble_calls[0]['equipped_texts'] == ['weapons.equipped']
+    assert assemble_calls[1]['equipped_texts'] == []
     assert group[0].future.result().is_weapon is True
     assert group[1].future.result().is_weapon is False
+
+
+def test_ocr_service_passes_equipped_tokens_for_echoes() -> None:
+    service = ocr_service_module.OcrService.__new__(ocr_service_module.OcrService)
+    spec_calls: list[tuple[str, int, int | None]] = []
+    assemble_calls: list[dict[str, object]] = []
+    image = np.zeros((2, 2, 3), dtype=np.uint8)
+    box = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=np.float32)
+
+    def _fake_ocr_with_spec(
+        roi_key: str,
+        images: list[np.ndarray],
+        rarity: int | None = None,
+    ) -> list[list[tuple[str, float, np.ndarray]]]:
+        spec_calls.append((roi_key, len(images), rarity))
+        return [[(roi_key, 1.0, box)] for _ in images]
+
+    class _FakeBatchOcr:
+        def ocr_images(self, images: list[np.ndarray]) -> list[list[tuple[str, float, np.ndarray]]]:
+            return [[('echo-card', 1.0, box)] for _ in images]
+
+    class _FakeOcrCache:
+        def lookup(self, *_args, **_kwargs):
+            return None
+
+        def store(self, *_args, **_kwargs) -> None:
+            return None
+
+    class _FakeEchoAssembler:
+        def assemble(self, capture, card_tokens, name_tokens, value_tokens, equipped_tokens=None):
+            assemble_calls.append({
+                'index': capture.echo_index,
+                'card_texts': [tok[1] for tok in card_tokens],
+                'name_texts': [tok[1] for tok in name_tokens],
+                'value_texts': [tok[1] for tok in value_tokens],
+                'equipped_texts': [tok[1] for tok in equipped_tokens] if equipped_tokens else [],
+            })
+            return EchoResult(
+                echo_index=capture.echo_index,
+                data={'echo': {'id': capture.echo_index}},
+                warnings=[],
+                retried=False,
+                detected_level=0,
+            )
+
+    service._ocr_with_spec = _fake_ocr_with_spec
+    service._batch_ocr = _FakeBatchOcr()
+    service._ocr_cache = _FakeOcrCache()
+    service._echo_asm = _FakeEchoAssembler()
+
+    group = [
+        ocr_service_module._QueueItem(
+            EchoCapture(echo_index=1, card=image, stats_name=image, stats_value=image, equipped=image),
+            0,
+            concurrent.futures.Future(),
+        ),
+        ocr_service_module._QueueItem(
+            EchoCapture(echo_index=2, card=image, stats_name=image, stats_value=image),
+            1,
+            concurrent.futures.Future(),
+        ),
+    ]
+
+    service._process_echoes(group)
+
+    assert spec_calls == [
+        ('echoes.fullStatsName', 2, None),
+        ('echoes.fullStatsValue', 2, None),
+        ('echoes.equipped', 1, None),
+    ]
+    assert assemble_calls[0]['card_texts'] == ['echo-card']
+    assert assemble_calls[0]['name_texts'] == ['echoes.fullStatsName']
+    assert assemble_calls[0]['value_texts'] == ['echoes.fullStatsValue']
+    assert assemble_calls[0]['equipped_texts'] == ['echoes.equipped']
+    assert assemble_calls[1]['equipped_texts'] == []
+    assert group[0].future.result().echo_index == 1
+    assert group[1].future.result().echo_index == 2
 
 
 def test_character_workflow_write_debug_dumps_section_artifacts(monkeypatch, tmp_path) -> None:

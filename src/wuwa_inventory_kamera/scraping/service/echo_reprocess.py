@@ -204,6 +204,12 @@ def reprocess_echo_scans_with_service(
                 echo_name_rgb = _crop_roi(scan.full_screenshot, en)
                 echo_name = ensure_bgr_image(echo_name_rgb, source_space='rgb')
 
+            equipped = None
+            if hasattr(si, 'equipped'):
+                eq = si.equipped
+                equipped_rgb = _crop_roi(scan.full_screenshot, eq)
+                equipped = ensure_bgr_image(equipped_rgb, source_space='rgb')
+
             detected_rarity: int | None = None
             if hasattr(si, 'rarityColorPick'):
                 from ..scanning.echo_workflow import _rarity_from_rgb_pixel
@@ -229,6 +235,7 @@ def reprocess_echo_scans_with_service(
                 echo_index=scan.index,
                 card=card,
                 echo_name=echo_name,
+                equipped=equipped,
                 sonata_icon=sonata_icon,
                 sonata_icon_cx=sonata_icon_cx,
                 sonata_icon_cy=sonata_icon_cy,

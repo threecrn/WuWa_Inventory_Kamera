@@ -774,27 +774,38 @@ class OcrService:
             'echoes.fullStatsValue',
             stats_value_bgr,
         )
+        equipped_results_map: dict[int, list] = {}
+        equipped_present = [i for i, c in enumerate(captures) if c.equipped is not None]
+        if equipped_present:
+            equipped_all = self._ocr_with_spec(
+                'echoes.equipped',
+                [cast(np.ndarray, captures[i].equipped) for i in equipped_present],
+            )
+            for list_pos, capture_idx in enumerate(equipped_present):
+                equipped_results_map[capture_idx] = equipped_all[list_pos]
 
-        # Convert [[( text, conf, box ), ...], ...] → [[OcrResult, ...], ...]
-        # OcrResult = (bbox_list, text, conf); box is (4,2) ndarray so convert.
-        def to_tokens(ocr_result_list):
-            return [
-                [(box.tolist(), text, conf) for text, conf, box in image_results]
-                for image_results in ocr_result_list
-            ]
+        # Convert OCR batch output to OcrResult tuples.
+        def to_image_tokens(image_results):
+            return [(box.tolist(), text, conf) for text, conf, box in image_results]
 
-        card_tok   = to_tokens(final_card_results)
-        name_tok   = to_tokens(name_results)
-        value_tok  = to_tokens(value_results)
+        def to_batch_tokens(ocr_result_list):
+            return [to_image_tokens(image_results) for image_results in ocr_result_list]
+
+        card_tok   = to_batch_tokens(final_card_results)
+        name_tok   = to_batch_tokens(name_results)
+        value_tok  = to_batch_tokens(value_results)
 
         for i, item in enumerate(group):
             capture = captures[i]
+            equipped_raw = equipped_results_map.get(i)
+            equipped_tok = to_image_tokens(equipped_raw) if equipped_raw is not None else None
             try:
                 result = self._echo_asm.assemble(
                     capture,
                     card_tok[i],
                     name_tok[i],
                     value_tok[i],
+                    equipped_tok,
                 )
                 item.future.set_result(result)
             except Exception as exc:
@@ -917,6 +928,19 @@ class OcrService:
             for list_pos, capture_idx in enumerate(item_present):
                 value_results[capture_idx] = item_value_results[list_pos]
 
+        equipped_present = [
+            i for i, c in enumerate(captures)
+            if c.rank is not None and c.equipped is not None
+        ]
+        equipped_results_map: dict[int, list] = {}
+        if equipped_present:
+            equipped_all = self._ocr_with_spec(
+                'weapons.equipped',
+                [cast(np.ndarray, captures[i].equipped) for i in equipped_present],
+            )
+            for list_pos, capture_idx in enumerate(equipped_present):
+                equipped_results_map[capture_idx] = equipped_all[list_pos]
+
         # Rank is optional — only batch images that are present
         rank_present = [i for i, c in enumerate(captures) if c.rank is not None]
         rank_results_map: dict[int, list] = {}
@@ -933,12 +957,15 @@ class OcrService:
             capture = captures[i]
             rank_raw = rank_results_map.get(i)
             rank_tok = [to_tokens(rank_raw)] if rank_raw is not None else None
+            equipped_raw = equipped_results_map.get(i)
+            equipped_tok = to_tokens(equipped_raw) if equipped_raw is not None else None
             try:
                 result = self._weapon_asm.assemble(
                     capture,
                     to_tokens(name_results[i]),
                     to_tokens(value_results[i]),
                     rank_tok[0] if rank_tok else None,
+                    equipped_tok,
                 )
                 item.future.set_result(result)
             except Exception as exc:
