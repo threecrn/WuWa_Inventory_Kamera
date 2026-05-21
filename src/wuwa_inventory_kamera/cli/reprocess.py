@@ -58,6 +58,11 @@ _RAW_SESSION_TYPES: dict[str, dict[str, str]] = {
         'item_label': 'weapon',
         'output_filename': 'weapons_wuwainventorykamera.json',
     },
+    'characters': {
+        'directory_prefix': 'char_',
+        'item_label': 'character',
+        'output_filename': 'characters_wuwainventorykamera.json',
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -173,7 +178,7 @@ def _describe_raw_session(raw_dir: Path) -> str:
     ) + ')'
 
 
-def _write_output(records: list[dict], output_dir: Path, filename: str) -> Path:
+def _write_output(records: list[dict] | dict[str, dict], output_dir: Path, filename: str) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     out_path = output_dir / filename
     with open(out_path, 'w', encoding='utf-8') as f:
@@ -207,12 +212,18 @@ def _resolve_raw_dir(args, export_folder: str) -> Path:
 
 
 def _load_session_scans(raw_dir: Path, session_kind: str) -> list:
-    from ..scraping.utils.common import loadRawScans, loadWeaponRawScans
+    from ..scraping.utils.common import (
+        loadCharacterRawScans,
+        loadRawScans,
+        loadWeaponRawScans,
+    )
 
     if session_kind == 'echoes':
         return loadRawScans(raw_dir)
     if session_kind == 'weapons':
         return loadWeaponRawScans(raw_dir)
+    if session_kind == 'characters':
+        return loadCharacterRawScans(raw_dir)
     raise ValueError(f'Unsupported raw session kind: {session_kind!r}')
 
 
@@ -334,6 +345,26 @@ def _run_weapon_service(
         providers=providers,
         min_rarity=min_rarity,
         min_level=min_level,
+        write_debug=write_debug,
+        max_batch_size=max_batch_size,
+        ocr_cache_path=ocr_cache_path,
+        raw_base=raw_dir,
+    )
+
+
+def _run_character_service(
+    scans,
+    raw_dir: Path,
+    providers: list[str],
+    write_debug: bool,
+    max_batch_size: int,
+    ocr_cache_path: Path | None,
+) -> dict[str, dict]:
+    from ..scraping.service.character_reprocess import reprocess_character_scans_with_service
+
+    return reprocess_character_scans_with_service(
+        scans,
+        providers=providers,
         write_debug=write_debug,
         max_batch_size=max_batch_size,
         ocr_cache_path=ocr_cache_path,
@@ -491,7 +522,7 @@ def main() -> None:
             )
         else:
             logger.error(
-                'No supported raw scans found in %s. Expected echo_XXXX/ or weapon_XXXX/ directories.',
+                'No supported raw scans found in %s. Expected echo_XXXX/, weapon_XXXX/, or char_XXXX/ directories.',
                 raw_dir,
             )
         sys.exit(1)
@@ -499,16 +530,27 @@ def main() -> None:
     if session_kind == 'weapons':
         config_min_rarity = app_config.weaponsMinRarity if app_config else 1
         config_min_level = app_config.weaponsMinLevel if app_config else 0
-    else:
+        min_rarity: int = config_min_rarity if args.min_rarity is None else args.min_rarity
+        min_level: int = config_min_level if args.min_level is None else args.min_level
+        max_level = 90
+    elif session_kind == 'echoes':
         config_min_rarity = app_config.echoMinRarity if app_config else 1
         config_min_level = app_config.echoMinLevel if app_config else 0
+        min_rarity = config_min_rarity if args.min_rarity is None else args.min_rarity
+        min_level = config_min_level if args.min_level is None else args.min_level
+        max_level = 25
+    else:
+        if args.min_rarity is not None:
+            logger.warning('--min-rarity is ignored for character sessions.')
+        if args.min_level is not None:
+            logger.warning('--min-level is ignored for character sessions.')
+        min_rarity = 1
+        min_level = 0
+        max_level = 90
 
-    min_rarity: int = config_min_rarity if args.min_rarity is None else args.min_rarity
-    min_level: int = config_min_level if args.min_level is None else args.min_level
     scan_label = _RAW_SESSION_TYPES[session_kind]['item_label']
-    max_level = 90 if session_kind == 'weapons' else 25
 
-    if min_level < 0 or min_level > max_level:
+    if session_kind != 'characters' and (min_level < 0 or min_level > max_level):
         logger.error(
             '--min-level must be between 0 and %d for %s sessions.',
             max_level,
@@ -520,8 +562,11 @@ def main() -> None:
     logger.info('Type      : %s', session_kind)
     logger.info('Raw dir   : %s', raw_dir)
     logger.info('Output dir: %s', output_dir)
-    logger.info('Min rarity: %d', min_rarity)
-    logger.info('Min level : %d', min_level)
+    if session_kind == 'characters':
+        logger.info('Filters   : none (character sessions are unfiltered)')
+    else:
+        logger.info('Min rarity: %d', min_rarity)
+        logger.info('Min level : %d', min_level)
 
     # ── Load raw scans ─────────────────────────────────────────────────────
     scans = _load_session_scans(raw_dir, session_kind)
@@ -551,6 +596,15 @@ def main() -> None:
             providers=providers,
             min_rarity=min_rarity,
             min_level=min_level,
+            write_debug=args.write_debug,
+            max_batch_size=args.max_batch_size,
+            ocr_cache_path=ocr_cache_path,
+        )
+    elif session_kind == 'characters':
+        records = _run_character_service(
+            scans,
+            raw_dir,
+            providers=providers,
             write_debug=args.write_debug,
             max_batch_size=args.max_batch_size,
             ocr_cache_path=ocr_cache_path,

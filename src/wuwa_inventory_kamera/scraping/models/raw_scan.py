@@ -134,3 +134,63 @@ class RawEchoScan:
             f"screen={self.screen_width}x{self.screen_height}, "
             f"monitor={self.monitor})"
         )
+
+
+@dataclass
+class RawCharacterScan:
+    """
+    Disk-backed raw capture for one scanned character.
+
+    Session folder layout
+    ---------------------
+    export/{session_id}/raw/
+        char_0000/
+            meta.json
+            section_0/
+                full.png
+            section_1/
+                full.png
+            section_3/
+                skill_0.png
+                ...
+            section_4/
+                chain_0.png
+                ...
+    """
+
+    index: int
+    screen_width: int = 1920
+    screen_height: int = 1080
+    monitor: int = 1
+    section_paths: dict[int, dict[str, Path]] = field(
+        default_factory=dict,
+        repr=False,
+        compare=False,
+    )
+    base_path: Path | None = field(default=None, repr=False, compare=False)
+
+    def load_section_images(self, section: int) -> dict[str, np.ndarray]:
+        """Load all saved PNGs for *section* into memory."""
+        paths = self.section_paths.get(section)
+        if not paths:
+            raise FileNotFoundError(
+                f'Character scan {self.index}: no saved images for section {section}.'
+            )
+
+        images: dict[str, np.ndarray] = {}
+        for name, path in paths.items():
+            bgr = cv2.imread(str(path))
+            if bgr is None:
+                raise FileNotFoundError(
+                    f'Character scan {self.index}: could not read {path}'
+                )
+            images[name] = bgr
+        return images
+
+    def __repr__(self) -> str:
+        sections = ','.join(str(section) for section in sorted(self.section_paths))
+        return (
+            f"RawCharacterScan(index={self.index}, "
+            f"screen={self.screen_width}x{self.screen_height}, "
+            f"monitor={self.monitor}, sections=[{sections}])"
+        )

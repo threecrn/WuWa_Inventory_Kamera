@@ -262,3 +262,77 @@ def loadWeaponRawScans(base_path: Path) -> list:
     """Reconstruct raw scan records from ``weapon_XXXX/`` directories."""
 
     return _load_raw_scans(Path(base_path), directory_glob='weapon_*/')
+
+
+def loadCharacterRawScans(base_path: Path) -> list:
+    """Reconstruct character raw scans from ``char_XXXX/`` directories."""
+    from ..models.raw_scan import RawCharacterScan  # local import — avoids circular deps
+
+    base_path = Path(base_path)
+    scans: list[RawCharacterScan] = []
+
+    manifest_file = base_path.parent / 'manifest.json'
+    session_manifest: dict = {}
+    if manifest_file.exists():
+        with open(manifest_file, 'r', encoding='utf-8') as mf:
+            session_manifest = json.load(mf)
+
+    required_sections = (0, 1, 3, 4)
+
+    for char_dir in sorted(base_path.glob('char_*/')):
+        meta_path = char_dir / 'meta.json'
+        if not meta_path.exists():
+            _raw_logger.warning(
+                'Skipping incomplete raw character directory: %s (missing: meta.json)',
+                char_dir,
+            )
+            continue
+
+        with open(meta_path, 'r', encoding='utf-8') as f:
+            meta = json.load(f)
+
+        section_paths: dict[int, dict[str, Path]] = {}
+        missing: list[str] = []
+
+        for section in required_sections:
+            section_dir = char_dir / f'section_{section}'
+            if not section_dir.is_dir():
+                missing.append(f'section_{section}/')
+                continue
+
+            if section in (0, 1):
+                full_path = section_dir / 'full.png'
+                if not full_path.exists():
+                    missing.append(f'section_{section}/full.png')
+                    continue
+                section_paths[section] = {'full': full_path}
+                continue
+
+            image_paths = {
+                path.stem: path
+                for path in sorted(section_dir.glob('*.png'))
+            }
+            if not image_paths:
+                missing.append(f'section_{section}/*.png')
+                continue
+            section_paths[section] = image_paths
+
+        if missing:
+            _raw_logger.warning(
+                'Skipping incomplete raw character directory: %s (missing: %s)',
+                char_dir,
+                ', '.join(missing),
+            )
+            continue
+
+        scans.append(RawCharacterScan(
+            index=meta.get('char_index', int(char_dir.name.split('_')[1])),
+            screen_width=meta.get('screen_width', session_manifest.get('screen_width', 1920)),
+            screen_height=meta.get('screen_height', session_manifest.get('screen_height', 1080)),
+            monitor=meta.get('monitor', session_manifest.get('monitor', 1)),
+            section_paths=section_paths,
+            base_path=char_dir,
+        ))
+
+    _raw_logger.debug('Loaded %d raw character scan(s) from %s', len(scans), base_path)
+    return scans

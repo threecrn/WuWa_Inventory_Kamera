@@ -12,6 +12,13 @@ def test_detect_raw_session_kind_recognizes_weapon_sessions(tmp_path) -> None:
     assert reprocess._detect_raw_session_kind(raw_dir) == 'weapons'
 
 
+def test_detect_raw_session_kind_recognizes_character_sessions(tmp_path) -> None:
+    raw_dir = tmp_path / 'raw'
+    (raw_dir / 'char_0001').mkdir(parents=True)
+
+    assert reprocess._detect_raw_session_kind(raw_dir) == 'characters'
+
+
 def test_filter_scans_supports_generic_scan_ids() -> None:
     scans = [
         SimpleNamespace(index=3),
