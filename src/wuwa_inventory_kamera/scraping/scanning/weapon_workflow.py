@@ -197,6 +197,7 @@ class WeaponWorkflow:
                     name=name_crop,
                     value=value_crop,
                     rank=rank_crop,
+                    equipped=equipped_crop,
                     detected_rarity=detected_rarity,
                 )
 
@@ -264,6 +265,7 @@ class WeaponWorkflow:
         name: np.ndarray,
         value: np.ndarray,
         rank: np.ndarray | None,
+        equipped: np.ndarray | None,
         detected_rarity: int | None,
     ) -> None:
         from ..service.echo_reprocess import _write_region_debug_artifacts
@@ -291,6 +293,14 @@ class WeaponWorkflow:
                 basename='rank',
                 roi_key='weapons.rank',
                 raw_bgr=rank,
+                rarity=None,
+            )
+        if equipped is not None:
+            _write_region_debug_artifacts(
+                debug_dir,
+                basename='equipped',
+                roi_key='weapons.equipped',
+                raw_bgr=equipped,
                 rarity=None,
             )
 

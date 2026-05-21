@@ -78,6 +78,7 @@ class _FakeScreenInfo:
             fullStatsName=SimpleNamespace(x=2, y=0, w=2, h=2),
             fullStatsValue=SimpleNamespace(x=0, y=2, w=2, h=2),
             echoName=SimpleNamespace(x=2, y=2, w=2, h=2),
+            equipped=SimpleNamespace(x=4, y=2, w=2, h=2),
             level=SimpleNamespace(x=4, y=0, w=2, h=2),
             sonataIcon=SimpleNamespace(
                 radius=1.0,
@@ -127,6 +128,10 @@ def test_reprocess_reconstructs_echo_name_crop(monkeypatch) -> None:
     np.testing.assert_array_equal(
         capture.echo_name,
         cv2.cvtColor(image[2:4, 2:4], cv2.COLOR_RGB2BGR),
+    )
+    np.testing.assert_array_equal(
+        capture.equipped,
+        cv2.cvtColor(image[2:4, 4:6], cv2.COLOR_RGB2BGR),
     )
 
 
@@ -214,6 +219,9 @@ def test_reprocess_write_debug_dumps_region_images(monkeypatch, tmp_path) -> Non
         'echo_name.png',
         'echo_name_preprocessed.png',
         'echo_name_signature.png',
+        'equipped.png',
+        'equipped_preprocessed.png',
+        'equipped_signature.png',
         'level.png',
         'level_preprocessed.png',
         'level_signature.png',
@@ -231,10 +239,12 @@ def test_reprocess_write_debug_dumps_region_images(monkeypatch, tmp_path) -> Non
         assert saved is not None, filename
 
     echo_name_raw = cv2.imread(str(debug_dir / 'echo_name.png'), cv2.IMREAD_COLOR)
+    equipped_raw = cv2.imread(str(debug_dir / 'equipped.png'), cv2.IMREAD_COLOR)
     level_raw = cv2.imread(str(debug_dir / 'level.png'), cv2.IMREAD_COLOR)
     stats_name_raw = cv2.imread(str(debug_dir / 'stats_name.png'), cv2.IMREAD_COLOR)
     stats_value_raw = cv2.imread(str(debug_dir / 'stats_value.png'), cv2.IMREAD_COLOR)
     np.testing.assert_array_equal(echo_name_raw, cv2.cvtColor(image[2:4, 2:4], cv2.COLOR_RGB2BGR))
+    np.testing.assert_array_equal(equipped_raw, cv2.cvtColor(image[2:4, 4:6], cv2.COLOR_RGB2BGR))
     np.testing.assert_array_equal(level_raw, cv2.cvtColor(image[0:2, 4:6], cv2.COLOR_RGB2BGR))
     np.testing.assert_array_equal(stats_name_raw, cv2.cvtColor(image[0:2, 2:4], cv2.COLOR_RGB2BGR))
     np.testing.assert_array_equal(stats_value_raw, cv2.cvtColor(image[2:4, 0:2], cv2.COLOR_RGB2BGR))

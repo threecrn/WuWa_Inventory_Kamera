@@ -79,6 +79,7 @@ def test_capture_echo_reuses_prefetched_level_without_second_ocr(monkeypatch) ->
             fullStatsName=SimpleNamespace(x=2, y=0, w=2, h=2),
             fullStatsValue=SimpleNamespace(x=0, y=2, w=2, h=2),
             echoName=SimpleNamespace(x=2, y=2, w=2, h=2),
+            equipped=SimpleNamespace(x=4, y=2, w=2, h=2),
             level=SimpleNamespace(x=4, y=0, w=2, h=2),
             sonataIcon=SimpleNamespace(
                 radius=1.0,
@@ -147,6 +148,7 @@ def test_capture_echo_passes_level_crop_to_adhoc_ocr_in_bgr(monkeypatch) -> None
             fullStatsName=SimpleNamespace(x=2, y=0, w=2, h=2),
             fullStatsValue=SimpleNamespace(x=0, y=2, w=2, h=2),
             echoName=SimpleNamespace(x=2, y=2, w=2, h=2),
+            equipped=SimpleNamespace(x=4, y=2, w=2, h=2),
             level=SimpleNamespace(x=4, y=0, w=2, h=2),
             sonataIcon=SimpleNamespace(
                 radius=1.0,
@@ -218,6 +220,7 @@ def test_capture_echo_write_debug_passes_level_crop(monkeypatch, tmp_path) -> No
             fullStatsName=SimpleNamespace(x=2, y=0, w=2, h=2),
             fullStatsValue=SimpleNamespace(x=0, y=2, w=2, h=2),
             echoName=SimpleNamespace(x=2, y=2, w=2, h=2),
+            equipped=SimpleNamespace(x=4, y=2, w=2, h=2),
             level=SimpleNamespace(x=4, y=0, w=2, h=2),
             sonataIcon=SimpleNamespace(
                 radius=1.0,
@@ -252,5 +255,6 @@ def test_capture_echo_write_debug_passes_level_crop(monkeypatch, tmp_path) -> No
 
     assert debug_call['scan_index'] == 7
     assert debug_call['full_screenshot_space'] == 'bgr'
+    np.testing.assert_array_equal(debug_call['equipped'], image[2:4, 4:6])
     np.testing.assert_array_equal(debug_call['level'], image[0:2, 4:6])
     np.testing.assert_array_equal(debug_call['stats_name'], image[0:2, 2:4])

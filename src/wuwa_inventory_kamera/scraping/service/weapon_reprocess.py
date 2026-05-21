@@ -46,6 +46,7 @@ def _write_weapon_debug_artifacts(
     name: np.ndarray,
     value: np.ndarray,
     rank: np.ndarray | None,
+    equipped: np.ndarray | None,
 ) -> None:
     from .echo_reprocess import _write_region_debug_artifacts
 
@@ -77,6 +78,14 @@ def _write_weapon_debug_artifacts(
             basename='rank',
             roi_key='weapons.rank',
             raw_bgr=rank,
+            rarity=None,
+        )
+    if equipped is not None:
+        _write_region_debug_artifacts(
+            debug_dir,
+            basename='equipped',
+            roi_key='weapons.equipped',
+            raw_bgr=equipped,
             rarity=None,
         )
 
@@ -159,6 +168,7 @@ def reprocess_weapon_scans_with_service(
                     name=name,
                     value=value,
                     rank=rank,
+                    equipped=equipped,
                 )
 
             capture = WeaponCapture(

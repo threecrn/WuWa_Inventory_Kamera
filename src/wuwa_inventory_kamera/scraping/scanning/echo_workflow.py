@@ -439,8 +439,8 @@ class EchoWorkflow:
             ]
 
         equipped = None
-        if hasattr(si, 'equipped'):
-            eq = si.equipped
+        if hasattr(ei, 'equipped'):
+            eq = ei.equipped
             equipped = full[
                 int(eq.y) : int(eq.y + eq.h),
                 int(eq.x) : int(eq.x + eq.w),
@@ -464,6 +464,7 @@ class EchoWorkflow:
                 full_screenshot_space='bgr',
                 detected_rarity=detected_rarity,
                 echo_name=echo_name,
+                equipped=equipped,
                 level=level_crop,
                 stats_name=stats_name_bgr,
                 stats_value=stats_value_bgr,

@@ -179,7 +179,7 @@ COORDINATES = {
                 "name": Coordinates(1328, 116, 525, 55),
                 "value": Coordinates(1655, 320, 190, 40),
                 "level": Coordinates(1660, 235, 180, 45),
-                "equipped": Coordinates(1364, 933, 480, 39),
+                "equipped": Coordinates(1364, 876, 480, 39),
                 #"rank": Coordinates(1300, 530, 115, 50),
                 # Sort dropdown — same button as echoes; 3 options at 72 px spacing.
                 # Options top→bottom: Sort by Rarity / Sort by Level / Sort by Amount.
@@ -220,7 +220,7 @@ COORDINATES = {
                 "mouseMovement": Coordinates(1576.5, 665.5),
                 "fullStatsName": Coordinates(1367, 455, 378, 398),
                 "fullStatsValue": Coordinates(1742, 455, 115, 398),
-                "equipped": Coordinates(1364, 933, 480, 39),
+                "equipped": Coordinates(1364, 876, 480, 39),
                 # Sort dropdown (opens upward from the button).
                 # Measured from screenshots/screenshot_inventory_echoes_sort_drop_down.png
                 # at 1920x1080.  button = trigger that opens the dropdown;

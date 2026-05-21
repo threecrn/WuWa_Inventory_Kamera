@@ -161,6 +161,9 @@ def test_reprocess_weapon_write_debug_dumps_region_images(monkeypatch, tmp_path)
     assert debug_dir.is_dir()
 
     expected_files = {
+        'equipped.png',
+        'equipped_preprocessed.png',
+        'equipped_signature.png',
         'name.png',
         'name_preprocessed.png',
         'name_signature.png',
@@ -176,3 +179,6 @@ def test_reprocess_weapon_write_debug_dumps_region_images(monkeypatch, tmp_path)
     for filename in expected_files:
         saved = cv2.imread(str(debug_dir / filename), cv2.IMREAD_UNCHANGED)
         assert saved is not None, filename
+
+    equipped_raw = cv2.imread(str(debug_dir / 'equipped.png'), cv2.IMREAD_COLOR)
+    np.testing.assert_array_equal(equipped_raw, cv2.cvtColor(image[2:4, 2:4], cv2.COLOR_RGB2BGR))

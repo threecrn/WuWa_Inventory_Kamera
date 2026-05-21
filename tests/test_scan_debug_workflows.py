@@ -72,6 +72,7 @@ def test_weapon_workflow_write_debug_dumps_region_artifacts(monkeypatch, tmp_pat
             level=SimpleNamespace(x=2, y=0, w=2, h=2),
             value=SimpleNamespace(x=4, y=0, w=2, h=2),
             rank=SimpleNamespace(x=0, y=2, w=2, h=2),
+            equipped=SimpleNamespace(x=2, y=2, w=2, h=2),
             rarityColorPick=SimpleNamespace(x=1, y=1),
         ),
     )
@@ -108,13 +109,14 @@ def test_weapon_workflow_write_debug_dumps_region_artifacts(monkeypatch, tmp_pat
     results = workflow.run()
 
     assert results == [{'id': 'weapon'}]
-    assert [call['basename'] for call in debug_calls] == ['name', 'level', 'rank']
+    assert [call['basename'] for call in debug_calls] == ['name', 'level', 'rank', 'equipped']
     assert [call['roi_key'] for call in debug_calls] == [
         'weapons.name',
         'weapons.level',
         'weapons.rank',
+        'weapons.equipped',
     ]
-    assert [call['rarity'] for call in debug_calls] == [5, None, None]
+    assert [call['rarity'] for call in debug_calls] == [5, None, None, None]
     assert all(
         call['debug_dir'] == tmp_path / 'raw' / 'weapon_0007' / 'debug'
         for call in debug_calls
@@ -122,6 +124,7 @@ def test_weapon_workflow_write_debug_dumps_region_artifacts(monkeypatch, tmp_pat
     np.testing.assert_array_equal(debug_calls[0]['raw_bgr'], image[0:2, 0:2])
     np.testing.assert_array_equal(debug_calls[1]['raw_bgr'], image[0:2, 2:4])
     np.testing.assert_array_equal(debug_calls[2]['raw_bgr'], image[2:4, 0:2])
+    np.testing.assert_array_equal(debug_calls[3]['raw_bgr'], image[2:4, 2:4])
 
 
 def test_ocr_service_uses_level_spec_for_weapons_and_value_spec_for_items() -> None:
