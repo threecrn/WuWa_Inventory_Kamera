@@ -395,10 +395,11 @@ def test_character_workflow_write_debug_dumps_section_artifacts(monkeypatch, tmp
     results = workflow.run()
 
     assert list(results) == ['alpha']
+    assert results['alpha']['_name'] == 'alpha'
     assert len(debug_calls) == 18
     assert {call['roi_key'] for call in debug_calls} == {
-        'characters.name',
-        'characters.level',
+        'characters.resonatorName',
+        'characters.resonatorLevel',
         'characters.weaponName',
         'characters.weaponLevel',
         'characters.weaponRank',
@@ -421,6 +422,119 @@ def test_character_workflow_write_debug_dumps_section_artifacts(monkeypatch, tmp
         tmp_path / 'raw' / 'char_0000' / 'section_4' / 'debug',
         tmp_path / 'raw' / 'char_0001' / 'section_0' / 'debug',
     }
+
+
+def test_character_workflow_resets_to_overview_before_next_character(monkeypatch) -> None:
+    image = np.arange(8 * 8 * 3, dtype=np.uint8).reshape(8, 8, 3)
+
+    monkeypatch.setattr(character_workflow_module, 'capture_full', lambda *args, **kwargs: image)
+    monkeypatch.setattr(
+        character_workflow_module,
+        'capture_region',
+        lambda _gw, roi: image[
+            int(roi.y): int(roi.y + roi.h),
+            int(roi.x): int(roi.x + roi.w),
+        ],
+    )
+
+    layout = SimpleNamespace(
+        width=8,
+        height=8,
+        monitor=1,
+        characters=SimpleNamespace(
+            rightSide=SimpleNamespace(x=0, y=0),
+            leftSide=SimpleNamespace(x=0, y=0),
+            offsets=SimpleNamespace(
+                rightSide=SimpleNamespace(y=1),
+                leftSide=SimpleNamespace(y=1),
+            ),
+            resonatorName=SimpleNamespace(x=0, y=0, w=2, h=2),
+            resonatorLevel=SimpleNamespace(x=2, y=0, w=2, h=2),
+            weaponName=SimpleNamespace(x=0, y=2, w=2, h=2),
+            weaponLevel=SimpleNamespace(x=2, y=2, w=2, h=2),
+            weaponRank=SimpleNamespace(x=4, y=2, w=2, h=2),
+            skillClick=SimpleNamespace(x=0, y=0),
+            skillPositions=[SimpleNamespace(x=i, y=0) for i in range(5)],
+            skillLevel=SimpleNamespace(x=0, y=4, w=2, h=2),
+            chainClick=SimpleNamespace(x=0, y=0),
+            chainPositions=[SimpleNamespace(x=i, y=0) for i in range(6)],
+            chainButton=SimpleNamespace(x=2, y=4, w=2, h=2),
+        ),
+    )
+
+    click_calls: list[tuple[int, int, float | None]] = []
+
+    class _RecordedCtrl:
+        def press_key(self, *_args, **_kwargs) -> None:
+            pass
+
+        def click(self, x: int, y: int, wait: float | None = None) -> None:
+            click_calls.append((x, y, wait))
+
+    nav = SimpleNamespace(
+        layout=layout,
+        ctrl=_RecordedCtrl(),
+        gw=None,
+        scroll_character_list=lambda *_args, **_kwargs: None,
+    )
+
+    class _FakeFuture:
+        def __init__(self, result: CharResult) -> None:
+            self._result = result
+
+        def result(self, timeout: int) -> CharResult:
+            return self._result
+
+    class _FakeOcrService:
+        def __init__(self) -> None:
+            self._overview_calls = 0
+
+        def submit(self, capture) -> _FakeFuture:
+            if capture.section == 0:
+                self._overview_calls += 1
+                fields = {
+                    'already_seen': self._overview_calls > 1,
+                    'name': 'alpha',
+                    'char_id': 'alpha',
+                    'level': 1,
+                }
+            elif capture.section == 1:
+                fields = {
+                    'weaponName': 'sword',
+                    'weaponId': 'weapon',
+                    'weaponLevel': 10,
+                    'weaponMaxLevel': 20,
+                    'weaponRank': 1,
+                }
+            elif capture.section == 3:
+                fields = {'skills': {key: 1 for key in capture.crops}}
+            else:
+                fields = {
+                    'name': 'alpha',
+                    'char_id': 'alpha',
+                    'level': 1,
+                    'weaponName': 'sword',
+                    'weaponId': 'weapon',
+                    'weaponLevel': 10,
+                    'weaponMaxLevel': 20,
+                    'weaponRank': 1,
+                    'skills': {f'skill_{idx}': 1 for idx in range(5)},
+                    'chain': {f'chain_{idx}': False for idx in range(6)},
+                }
+            return _FakeFuture(CharResult(capture.char_index, capture.section, fields))
+
+    workflow = CharacterWorkflow(
+        nav=cast(Any, nav),
+        ocr_service=cast(Any, _FakeOcrService()),
+        session=cast(Any, SimpleNamespace(session_id='session-id')),
+    )
+
+    results = workflow.run()
+
+    assert list(results) == ['alpha']
+    second_slot_click = click_calls.index((0, 1, 0.7))
+    assert click_calls[second_slot_click + 1] == (0, 0, 0.8)
+
 
 
 def test_session_orchestrator_passes_write_debug_to_weapon_and_character_workflows(

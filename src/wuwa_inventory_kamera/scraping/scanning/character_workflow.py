@@ -54,6 +54,16 @@ _SLOTS_PER_PAGE = 7
 # Sections handled (2 is skipped — echoes)
 _SECTIONS = (0, 1, 3, 4)
 
+_OVERVIEW_DEBUG_ROI_KEYS = {
+    'name': 'characters.resonatorName',
+    'level': 'characters.resonatorLevel',
+}
+_WEAPON_DEBUG_ROI_KEYS = {
+    'weaponName': 'characters.weaponName',
+    'weaponLevel': 'characters.weaponLevel',
+    'weaponRank': 'characters.weaponRank',
+}
+
 SKILL_KEYS  = ['skill_0', 'skill_1', 'skill_2', 'skill_3', 'skill_4']
 CHAIN_KEYS  = ['chain_0', 'chain_1', 'chain_2', 'chain_3', 'chain_4', 'chain_5']
 
@@ -135,6 +145,10 @@ class CharacterWorkflow:
                 rx = ch.rightSide.x
                 ry = ch.rightSide.y + ch.offsets.rightSide.y * slot
                 ctrl.click(rx, ry, wait=0.7)
+
+                # The game can reopen the next resonator on the last viewed tab.
+                # Always return to overview before capturing section 0.
+                ctrl.click(ch.leftSide.x, ch.leftSide.y, wait=0.8)
 
                 # --- Section 0: overview (name + level) ---
                 full = capture_full(layout.width, layout.height, layout.monitor, gw=self.nav.gw)
@@ -308,6 +322,7 @@ class CharacterWorkflow:
         chain_count = sum(1 for v in raw_chain.values() if v)
 
         return {
+            '_name': fields.get('name', ''),
             'level': level,
             'ascension': 0,   # ascension derived from level externally if needed
             'weapon': {
@@ -336,6 +351,10 @@ class CharacterWorkflow:
     ) -> None:
         from ..service.echo_reprocess import _write_region_debug_artifacts
 
+        roi_key_maps = {
+            0: _OVERVIEW_DEBUG_ROI_KEYS,
+            1: _WEAPON_DEBUG_ROI_KEYS,
+        }
         debug_dir = (
             self._debug_base()
             / f'char_{char_index:04d}'
@@ -343,10 +362,11 @@ class CharacterWorkflow:
             / 'debug'
         )
         for name, image in images.items():
+            roi_key = roi_key_maps.get(section, {}).get(name, f'characters.{name}')
             _write_region_debug_artifacts(
                 debug_dir,
                 basename=name,
-                roi_key=f'characters.{name}',
+                roi_key=roi_key,
                 raw_bgr=image,
                 rarity=None,
             )

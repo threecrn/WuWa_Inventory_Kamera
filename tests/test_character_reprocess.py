@@ -76,11 +76,17 @@ class _FakeOcrService:
 
 
 class _FakeCharacterScan:
-    def __init__(self, sections: dict[int, dict[str, np.ndarray]]) -> None:
+    def __init__(
+        self,
+        sections: dict[int, dict[str, np.ndarray]],
+        *,
+        base_path=None,
+    ) -> None:
         self.index = 0
         self.screen_width = 1920
         self.screen_height = 1080
         self.sections = sections
+        self.base_path = base_path
 
     def load_section_images(self, section: int) -> dict[str, np.ndarray]:
         return {name: image.copy() for name, image in self.sections[section].items()}
@@ -162,6 +168,7 @@ def test_reprocess_character_scans_reconstructs_sections_and_outputs_dict(monkey
 
     assert result == {
         'alpha': {
+            '_name': 'alpha',
             'level': 80,
             'ascension': 0,
             'weapon': {
@@ -219,3 +226,48 @@ def test_reprocess_character_scans_reconstructs_sections_and_outputs_dict(monkey
         submitted[3].crops['chain_0'],
         cv2.cvtColor(chain, cv2.COLOR_RGB2BGR),
     )
+
+
+def test_reprocess_character_write_debug_writes_overview_preprocessed_artifacts(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    screen_info_module = ModuleType('wuwa_inventory_kamera.game.screen_info')
+    screen_info_module.ScreenInfo = _FakeScreenInfo
+    monkeypatch.setitem(sys.modules, 'wuwa_inventory_kamera.game.screen_info', screen_info_module)
+
+    ocr_service_module = ModuleType('wuwa_inventory_kamera.scraping.service.ocr_service')
+    ocr_service_module.OcrService = _FakeOcrService
+    monkeypatch.setitem(sys.modules, 'wuwa_inventory_kamera.scraping.service.ocr_service', ocr_service_module)
+
+    _FakeOcrService.instances.clear()
+    overview_full = np.arange(4 * 6 * 3, dtype=np.uint8).reshape(4, 6, 3)
+    weapon_full = np.arange(4 * 6 * 3, dtype=np.uint8).reshape(4, 6, 3) + 50
+    skill = np.arange(2 * 2 * 3, dtype=np.uint8).reshape(2, 2, 3) + 100
+    chain = np.arange(2 * 2 * 3, dtype=np.uint8).reshape(2, 2, 3) + 150
+
+    char_dir = tmp_path / 'char_0000'
+    scan = _FakeCharacterScan(
+        {
+            0: {'full': overview_full},
+            1: {'full': weapon_full},
+            3: {'skill_0': skill},
+            4: {'chain_0': chain},
+        },
+        base_path=char_dir,
+    )
+
+    reprocess_character_scans_with_service(
+        scans=[scan],
+        providers=['CPUExecutionProvider'],
+        write_debug=True,
+        max_batch_size=4,
+    )
+
+    debug_dir = char_dir / 'section_0' / 'debug'
+    assert (debug_dir / 'name.png').exists()
+    assert (debug_dir / 'name_preprocessed.png').exists()
+    assert (debug_dir / 'name_signature.png').exists()
+    assert (debug_dir / 'level.png').exists()
+    assert (debug_dir / 'level_preprocessed.png').exists()
+    assert (debug_dir / 'level_signature.png').exists()

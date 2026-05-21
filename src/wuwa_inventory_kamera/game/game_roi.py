@@ -430,30 +430,30 @@ COORDINATES = {
                 },
                 "leftSide": Coordinates(77.7, 191.4),
                 "rightSide": Coordinates(1813.1, 202.9),
-                "resonatorName": Coordinates(251.4, 116.6, 320.0, 57.1),
-                "resonatorLevel": Coordinates(182.9, 205.7, 154.3, 91.4),
-                "weaponName": Coordinates(257.1, 134.9, 274.3, 38.9),
-                "weaponLevel": Coordinates(245.7, 171.4, 125.7, 40.0),
-                "weaponRank": Coordinates(163.4, 365.7, 106.3, 40.0),
-                "skillClick": Coordinates(460.6, 965.7),
-                "skillLevel": Coordinates(388.6, 108.6, 80.0, 45.7),
+                "resonatorName": Coordinates(208, 215, 320, 34),
+                "resonatorLevel": Coordinates(208, 270, 120, 30),
+                "weaponName": Coordinates(208, 215, 320, 34),
+                "weaponLevel": Coordinates(208, 270, 120, 30),
+                "weaponRank": Coordinates(208, 443, 78, 28),
+                "skillClick": Coordinates(467, 947),
+                "skillLevel": Coordinates(512, 120, 55, 25),
                 "skillButton": Coordinates(194.3, 1085.7, 137.1, 40.0),
                 "chainClick": Coordinates(1267.4, 198.9),
                 "chainButton": Coordinates(333.7, 1069.7, 125.7, 36.6),
                 "skillPositions": [
-                    Coordinates(754.3, 962.3),
-                    Coordinates(987.4, 825.1),
-                    Coordinates(1260.6, 762.3),
-                    Coordinates(1533.7, 825.1),
-                    Coordinates(1765.7, 962.3)
+                    Coordinates(762, 949),
+                    Coordinates(983, 809),
+                    Coordinates(1260, 762),
+                    Coordinates(1526, 810),
+                    Coordinates(1748, 944)
                 ],
                 "chainPositions": [
-                    Coordinates(1398.9, 201.1),
-                    Coordinates(1564.6, 364.6),
-                    Coordinates(1627.4, 593.1),
-                    Coordinates(1564.6, 827.4),
-                    Coordinates(1398.9, 987.4),
-                    Coordinates(1170.3, 1050.3)
+                    Coordinates(946, 1032),
+                    Coordinates(1148, 985),
+                    Coordinates(1307, 888),
+                    Coordinates(1438, 742),
+                    Coordinates(1519, 573),
+                    Coordinates(1547, 338)
                 ]
             }
         }

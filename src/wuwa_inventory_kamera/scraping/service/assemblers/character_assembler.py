@@ -87,7 +87,7 @@ class CharAssembler:
         fields: dict = {}
 
         if section == 0:
-            fields.update(self._parse_overview(token_map))
+            fields.update(self._parse_overview(idx, token_map))
             name = fields.get('name', '')
             if name in self._seen_names:
                 fields['already_seen'] = True
@@ -96,7 +96,7 @@ class CharAssembler:
                 fields['already_seen'] = False
 
         elif section == 1:
-            fields.update(self._parse_weapon(token_map))
+            fields.update(self._parse_weapon(idx, token_map))
 
         elif section == 3:
             fields.update(self._parse_skills(token_map))
@@ -112,15 +112,30 @@ class CharAssembler:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _parse_overview(token_map: dict[str, list[OcrResult]]) -> dict:
+    def _parse_overview(idx: int, token_map: dict[str, list[OcrResult]]) -> dict:
         """Section 0: resonator name and level."""
         result = {}
         if 'name' in token_map:
             name_text = tokens_to_string(token_map['name'], divisor='').lower().strip()
             chars, _, _ = _get_data()
             close = get_close_matches(name_text, chars, n=1, cutoff=0.75)
-            result['name']    = close[0] if close else name_text
+            result['name'] = close[0] if close else name_text
             result['char_id'] = chars.get(result['name'])
+            if close:
+                logger.debug(
+                    'Character %d — resonator name matched: %r -> %r (id=%r)',
+                    idx,
+                    name_text,
+                    result['name'],
+                    result['char_id'],
+                )
+            else:
+                logger.debug(
+                    'Character %d — resonator name unmatched: %r (id=%r)',
+                    idx,
+                    name_text,
+                    result['char_id'],
+                )
 
         if 'level' in token_map:
             level_text = tokens_to_string(token_map['level'], divisor='')
@@ -130,7 +145,7 @@ class CharAssembler:
         return result
 
     @staticmethod
-    def _parse_weapon(token_map: dict[str, list[OcrResult]]) -> dict:
+    def _parse_weapon(idx: int, token_map: dict[str, list[OcrResult]]) -> dict:
         """Section 1: equipped weapon name, level, and refinement rank."""
         result = {}
         _, weaponsID, _ = _get_data()
@@ -139,7 +154,22 @@ class CharAssembler:
             name_text = tokens_to_string(token_map['weaponName'], divisor='').lower().strip()
             close = get_close_matches(name_text, weaponsID, n=1, cutoff=0.8)
             result['weaponName'] = close[0] if close else name_text
-            result['weaponId']   = weaponsID.get(result['weaponName'])
+            result['weaponId'] = weaponsID.get(result['weaponName'])
+            if close:
+                logger.debug(
+                    'Character %d — weapon name matched: %r -> %r (id=%r)',
+                    idx,
+                    name_text,
+                    result['weaponName'],
+                    result['weaponId'],
+                )
+            else:
+                logger.debug(
+                    'Character %d — weapon name unmatched: %r (id=%r)',
+                    idx,
+                    name_text,
+                    result['weaponId'],
+                )
 
         if 'weaponLevel' in token_map:
             level_text = tokens_to_string(token_map['weaponLevel'], divisor=' ')

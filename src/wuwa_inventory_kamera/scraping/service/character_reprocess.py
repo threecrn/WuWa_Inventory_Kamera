@@ -19,8 +19,8 @@ logger = logging.getLogger('wuwa.character_reprocess')
 
 _REQUIRED_SECTIONS: tuple[int, ...] = (0, 1, 3, 4)
 _OVERVIEW_DEBUG_ROI_KEYS = {
-    'name': 'characters.name',
-    'level': 'characters.level',
+    'name': 'characters.resonatorName',
+    'level': 'characters.resonatorLevel',
 }
 _WEAPON_DEBUG_ROI_KEYS = {
     'weaponName': 'characters.weaponName',
@@ -108,6 +108,7 @@ def _build_character_output(fields: dict) -> dict:
     chain_count = sum(1 for value in raw_chain.values() if value)
 
     return {
+        '_name': fields.get('name', ''),
         'level': level,
         'ascension': 0,
         'weapon': {

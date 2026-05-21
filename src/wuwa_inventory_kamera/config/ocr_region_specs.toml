@@ -227,14 +227,11 @@ cache_mode = "persistent"
 # Character workflow
 # =====================================================================
 
-[characters.resonatorName]
-color_space = "hsv"
-threshold_mode = "floor"
-floor_value = 120
-cache_mode = "persistent"
-background_color_ranges = [
-    [[98, 40, 30], [125, 255, 255]],
-]
+[characters.resonatorName.ocr]
+text_color_ranges = [[[230, 235, 235], [255, 255, 249]]]
+
+[characters.resonatorName.signature]
+text_color_ranges = [[[230, 235, 235], [255, 255, 249]]]
 
 [characters.resonatorLevel]
 color_space = "gray"
@@ -285,11 +282,12 @@ text_color_ranges = [
     [[40, 200, 230], [60, 255, 255]],
 ]
 
-[characters.skillLevel]
-color_space = "gray"
-threshold_mode = "floor"
-floor_value = 150
+[characters.skillLevel.ocr]
+single_line = true
 allowed_chars = "0123456789"
+
+[characters.skillLevel.signature]
+single_line = true
 cache_mode = "persistent"
 
 # =====================================================================
