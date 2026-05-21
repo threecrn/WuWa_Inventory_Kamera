@@ -616,6 +616,11 @@ class GameNavigator:
 
     def scroll_character_list(self, amount: float | None = None, wait: float = 0.5) -> None:
         """Scroll the character sidebar list."""
+        self.ctrl.move(
+            self.layout.characters.rightSide.x,
+            self.layout.characters.rightSide.y,
+            wait=0.3,
+        )
         scroll_amount: float = amount if amount is not None else self.layout.scroll.characters.y
         self.ctrl.scroll(scroll_amount, wait=wait)
 

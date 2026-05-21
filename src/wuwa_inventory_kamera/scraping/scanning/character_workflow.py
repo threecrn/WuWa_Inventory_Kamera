@@ -50,6 +50,11 @@ logger = logging.getLogger(__name__)
 
 # Number of resonator slots visible in the right panel at once
 _SLOTS_PER_PAGE = 7
+_CHARACTER_SLOT_RETRY_WAIT_SECONDS = 1.1
+
+# Post-click settle before capturing the chain button state.
+_CHAIN_NODE_CAPTURE_WAIT_SECONDS = 0.2
+_FIRST_CHAIN_NODE_CAPTURE_WAIT_SECONDS = 0.35
 
 # Sections handled (2 is skipped — echoes)
 _SECTIONS = (0, 1, 3, 4)
@@ -125,14 +130,51 @@ class CharacterWorkflow:
         """
         layout = self.nav.layout
         ctrl   = self.nav.ctrl
+        ch     = layout.characters   # shorthand for character coordinate block
+
+        def _click_character_slot(slot: int, wait: float = 0.7) -> None:
+            ctrl.click(
+                ch.rightSide.x,
+                ch.rightSide.y + ch.offsets.rightSide.y * slot,
+                wait=wait,
+            )
+
+        def _capture_overview(char_index: int) -> CharResult:
+            full = capture_full(layout.width, layout.height, layout.monitor, gw=self.nav.gw)
+            name_crop = full[
+                int(ch.resonatorName.y) : int(ch.resonatorName.y + ch.resonatorName.h),
+                int(ch.resonatorName.x) : int(ch.resonatorName.x + ch.resonatorName.w),
+            ]
+            level_crop = full[
+                int(ch.resonatorLevel.y) : int(ch.resonatorLevel.y + ch.resonatorLevel.h),
+                int(ch.resonatorLevel.x) : int(ch.resonatorLevel.x + ch.resonatorLevel.w),
+            ]
+
+            overview_crops = {'name': name_crop, 'level': level_crop}
+
+            if self.save_raw:
+                self._save_raw(char_index, 0, {'full': full})
+            if self.write_debug:
+                self._write_debug_artifacts(char_index, 0, overview_crops)
+
+            sec0_cap = CharCapture(
+                char_index=char_index,
+                section=0,
+                crops=overview_crops,
+            )
+            return self.ocr.submit(sec0_cap).result(timeout=30)
 
         # Open resonator panel
         ctrl.press_key(self._resonator_key, wait=2.0)
+        _click_character_slot(0)
+
+        # 
+        ctrl.scroll(-1)
+        ctrl.scroll(0.25)
 
         results: dict = {}
         char_index = 0
 
-        ch   = layout.characters   # shorthand for character coordinate block
         done = False
 
         while not done:
@@ -141,39 +183,24 @@ class CharacterWorkflow:
                     done = True
                     break
 
-                # Click the resonator slot in the right panel
-                rx = ch.rightSide.x
-                ry = ch.rightSide.y + ch.offsets.rightSide.y * slot
-                ctrl.click(rx, ry, wait=0.7)
+                if slot != 0 or char_index != 0:
+                    _click_character_slot(slot)
 
                 # The game can reopen the next resonator on the last viewed tab.
                 # Always return to overview before capturing section 0.
                 ctrl.click(ch.leftSide.x, ch.leftSide.y, wait=0.8)
 
                 # --- Section 0: overview (name + level) ---
-                full = capture_full(layout.width, layout.height, layout.monitor, gw=self.nav.gw)
-                name_crop = full[
-                    int(ch.resonatorName.y) : int(ch.resonatorName.y + ch.resonatorName.h),
-                    int(ch.resonatorName.x) : int(ch.resonatorName.x + ch.resonatorName.w),
-                ]
-                level_crop = full[
-                    int(ch.resonatorLevel.y) : int(ch.resonatorLevel.y + ch.resonatorLevel.h),
-                    int(ch.resonatorLevel.x) : int(ch.resonatorLevel.x + ch.resonatorLevel.w),
-                ]
+                sec0_result = _capture_overview(char_index)
 
-                overview_crops = {'name': name_crop, 'level': level_crop}
-
-                if self.save_raw:
-                    self._save_raw(char_index, 0, {'full': full})
-                if self.write_debug:
-                    self._write_debug_artifacts(char_index, 0, overview_crops)
-
-                sec0_cap = CharCapture(
-                    char_index=char_index,
-                    section=0,
-                    crops=overview_crops,
-                )
-                sec0_result: CharResult = self.ocr.submit(sec0_cap).result(timeout=30)
+                if sec0_result.fields.get('already_seen') and (slot != 0 or char_index != 0):
+                    logger.warning(
+                        'Character slot %d repeated a previously scanned resonator; retrying selection once',
+                        slot,
+                    )
+                    _click_character_slot(slot, wait=_CHARACTER_SLOT_RETRY_WAIT_SECONDS)
+                    ctrl.click(ch.leftSide.x, ch.leftSide.y, wait=0.8)
+                    sec0_result = _capture_overview(char_index)
 
                 if sec0_result.fields.get('already_seen'):
                     logger.info('Character loop complete — %d characters scanned', len(results))
@@ -247,7 +274,12 @@ class CharacterWorkflow:
                 ctrl.click(ch.chainClick.x, ch.chainClick.y, wait=0.7)
                 chain_crops: dict[str, np.ndarray] = {}
                 for idx, pos in enumerate(ch.chainPositions):
-                    ctrl.click(pos.x, pos.y, wait=0.2)
+                    wait = (
+                        _FIRST_CHAIN_NODE_CAPTURE_WAIT_SECONDS
+                        if idx == 0
+                        else _CHAIN_NODE_CAPTURE_WAIT_SECONDS
+                    )
+                    ctrl.click(pos.x, pos.y, wait=wait)
                     btn_shot = capture_region(self.nav.gw, ch.chainButton)
                     chain_crops[CHAIN_KEYS[idx]] = btn_shot
                 ctrl.press_key('esc', wait=0.3)

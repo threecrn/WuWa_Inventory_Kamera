@@ -320,7 +320,7 @@ COORDINATES = {
             },
             "scroll": {
                 "page": Coordinates(y=-32.25),
-                "characters": Coordinates(y=-56),
+                "characters": Coordinates(y=-35),
                 "sonata": Coordinates(y=70)
             },
             "scrapers": {
@@ -425,7 +425,7 @@ COORDINATES = {
             "characters": {
                 "offsets": {
                     "leftSide": Coordinates(y=136.0),
-                    "rightSide": Coordinates(y=106.9),
+                    "rightSide": Coordinates(y=133),
                     "skillPosition": Coordinates(y=251.4)
                 },
                 "leftSide": Coordinates(77.7, 191.4),
@@ -439,7 +439,7 @@ COORDINATES = {
                 "skillLevel": Coordinates(512, 120, 55, 25),
                 "skillButton": Coordinates(194.3, 1085.7, 137.1, 40.0),
                 "chainClick": Coordinates(1267.4, 198.9),
-                "chainButton": Coordinates(333.7, 1069.7, 125.7, 36.6),
+                "chainButton": Coordinates(332, 957, 125.7, 36.6),
                 "skillPositions": [
                     Coordinates(762, 949),
                     Coordinates(983, 809),
@@ -449,11 +449,11 @@ COORDINATES = {
                 ],
                 "chainPositions": [
                     Coordinates(946, 1032),
-                    Coordinates(1148, 985),
-                    Coordinates(1307, 888),
-                    Coordinates(1438, 742),
-                    Coordinates(1519, 573),
-                    Coordinates(1547, 338)
+                    Coordinates(1280, 985),
+                    Coordinates(1442, 888),
+                    Coordinates(1570, 742),
+                    Coordinates(1649, 573),
+                    Coordinates(1676, 338)
                 ]
             }
         }
