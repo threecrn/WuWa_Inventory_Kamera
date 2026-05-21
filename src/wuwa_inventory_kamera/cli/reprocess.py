@@ -2,7 +2,7 @@
 wuwa_inventory_kamera.cli.reprocess
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Offline re-processing of raw WuWa echo scan sessions — shipped as the
+Offline re-processing of raw WuWa inventory scan sessions — shipped as the
 ``wuwa-reprocess`` console script entry point.
 
 Usage
@@ -26,10 +26,15 @@ Quality filters and output location::
 
     wuwa-reprocess --raw-dir ./raw --min-rarity 4 --min-level 10
     wuwa-reprocess --session-id 2026-02-28_14-30-00 --output-dir ./out
+    wuwa-reprocess --raw-dir ./raw --scan-ids 0111,0231
+
+Weapon sessions::
+
+    wuwa-reprocess --raw-dir captures/weapons-session/raw
 
 Output
 ------
-``echoes_wuwainventorykamera.json`` is written into *output-dir*, which
+The matching inventory export file is written into *output-dir*, which
 defaults to the session folder (the parent of the ``raw/`` directory).
 """
 from __future__ import annotations
@@ -40,6 +45,20 @@ import logging
 import os
 import sys
 from pathlib import Path
+
+
+_RAW_SESSION_TYPES: dict[str, dict[str, str]] = {
+    'echoes': {
+        'directory_prefix': 'echo_',
+        'item_label': 'echo',
+        'output_filename': 'echoes_wuwainventorykamera.json',
+    },
+    'weapons': {
+        'directory_prefix': 'weapon_',
+        'item_label': 'weapon',
+        'output_filename': 'weapons_wuwainventorykamera.json',
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Project root on sys.path so the legacy `scraping` package is importable.
@@ -118,11 +137,47 @@ def _find_sessions(export_dir: Path) -> list[Path]:
     )
 
 
-def _write_output(echoes: list[dict], output_dir: Path) -> Path:
+def _raw_session_counts(raw_dir: Path) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for session_type, config in _RAW_SESSION_TYPES.items():
+        prefix = config['directory_prefix']
+        counts[session_type] = len(
+            [path for path in raw_dir.glob(f'{prefix}*/') if path.is_dir()]
+        )
+    return counts
+
+
+def _detect_raw_session_kind(raw_dir: Path) -> str | None:
+    counts = _raw_session_counts(raw_dir)
+    present = [session_type for session_type, count in counts.items() if count > 0]
+    if len(present) == 1:
+        return present[0]
+    return None
+
+
+def _describe_raw_session(raw_dir: Path) -> str:
+    counts = _raw_session_counts(raw_dir)
+    present = [
+        (session_type, count)
+        for session_type, count in counts.items()
+        if count > 0
+    ]
+    if not present:
+        return 'no supported raw scans'
+    if len(present) == 1:
+        session_type, count = present[0]
+        label = _RAW_SESSION_TYPES[session_type]['item_label']
+        return f'{count} raw {label} scan{"s" if count != 1 else ""}'
+    return 'mixed raw scans (' + ', '.join(
+        f'{count} {session_type}' for session_type, count in present
+    ) + ')'
+
+
+def _write_output(records: list[dict], output_dir: Path, filename: str) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
-    out_path = output_dir / 'echoes_wuwainventorykamera.json'
+    out_path = output_dir / filename
     with open(out_path, 'w', encoding='utf-8') as f:
-        json.dump(echoes, f, indent=2, ensure_ascii=False)
+        json.dump(records, f, indent=2, ensure_ascii=False)
     return out_path
 
 
@@ -151,14 +206,87 @@ def _resolve_raw_dir(args, export_folder: str) -> Path:
     sys.exit(1)
 
 
+def _load_session_scans(raw_dir: Path, session_kind: str) -> list:
+    from ..scraping.utils.common import loadRawScans, loadWeaponRawScans
+
+    if session_kind == 'echoes':
+        return loadRawScans(raw_dir)
+    if session_kind == 'weapons':
+        return loadWeaponRawScans(raw_dir)
+    raise ValueError(f'Unsupported raw session kind: {session_kind!r}')
+
+
+def _filter_scans(
+    scans: list,
+    *,
+    scan_ids: str | None,
+    scan_id_range: str | None,
+    scan_label: str,
+) -> list:
+    if scan_ids:
+        requested: set[int] = set()
+        for token in scan_ids.split(','):
+            token = token.strip()
+            if not token:
+                continue
+            try:
+                requested.add(int(token))
+            except ValueError:
+                logger.error('Invalid scan ID %r — must be a number (e.g. 0111).', token)
+                sys.exit(1)
+        scans = [scan for scan in scans if scan.index in requested]
+        missing = requested - {scan.index for scan in scans}
+        if missing:
+            logger.warning(
+                '%s scan IDs not found in session: %s',
+                scan_label.capitalize(),
+                ', '.join(f'{index:04d}' for index in sorted(missing)),
+            )
+        if not scans:
+            logger.error('No scans remain after applying --scan-ids filter.')
+            sys.exit(1)
+        logger.info(
+            'Filtered to %d %s scan(s): %s',
+            len(scans),
+            scan_label,
+            ', '.join(f'{scan.index:04d}' for scan in scans),
+        )
+
+    if scan_id_range:
+        try:
+            start_str, end_str = scan_id_range.split(',')
+            start_id, end_id = int(start_str.strip()), int(end_str.strip())
+        except ValueError:
+            logger.error(
+                'Invalid --scan-id-range format: %r. Expected START,END (e.g. 0,100).',
+                scan_id_range,
+            )
+            sys.exit(1)
+        if start_id > end_id:
+            logger.error('Invalid --scan-id-range: START must be <= END.')
+            sys.exit(1)
+        scans = [scan for scan in scans if start_id <= scan.index < end_id]
+        if not scans:
+            logger.error('No scans remain after applying --scan-id-range filter.')
+            sys.exit(1)
+        logger.info(
+            'Filtered to %d %s scan(s) in range %d–%d.',
+            len(scans),
+            scan_label,
+            start_id,
+            end_id - 1,
+        )
+
+    return scans
+
+
 # ---------------------------------------------------------------------------
 # v2 path: OcrService + assemblers
 # ---------------------------------------------------------------------------
 
-def _run_service(
+def _run_echo_service(
     scans,
     raw_dir: Path,
-    session_id: str,
     providers: list[str],
     min_rarity: int,
     min_level: int,
@@ -189,6 +317,30 @@ def _run_service(
     )
 
 
+def _run_weapon_service(
+    scans,
+    raw_dir: Path,
+    providers: list[str],
+    min_rarity: int,
+    min_level: int,
+    write_debug: bool,
+    max_batch_size: int,
+    ocr_cache_path: Path | None,
+) -> list[dict]:
+    from ..scraping.service.weapon_reprocess import reprocess_weapon_scans_with_service
+
+    return reprocess_weapon_scans_with_service(
+        scans,
+        providers=providers,
+        min_rarity=min_rarity,
+        min_level=min_level,
+        write_debug=write_debug,
+        max_batch_size=max_batch_size,
+        ocr_cache_path=ocr_cache_path,
+        raw_base=raw_dir,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -199,7 +351,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         prog='wuwa-reprocess',
         description=(
-            'Re-run OCR processing on a previously captured WuWa echo scan session.\n'
+            'Re-run OCR processing on a previously captured WuWa inventory scan session.\n'
             'Does not require the game, the GUI, or any Win32 APIs.'
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -226,17 +378,17 @@ def main() -> None:
     parser.add_argument(
         '--output-dir', metavar='PATH',
         help=(
-            'Directory for echoes_wuwainventorykamera.json. '
+            'Directory for the generated *_wuwainventorykamera.json export. '
             'Defaults to the session folder (parent of raw/).'
         ),
     )
     parser.add_argument(
         '--min-rarity', type=int, choices=range(1, 6), metavar='1-5', default=None,
-        help='Minimum echo rarity to include (overrides config; default: 1).',
+        help='Minimum rarity to include (overrides the session-type config default).',
     )
     parser.add_argument(
-        '--min-level', type=int, choices=range(0, 26), metavar='0-25', default=None,
-        help='Minimum echo level to include (overrides config; default: 0).',
+        '--min-level', type=int, metavar='LEVEL', default=None,
+        help='Minimum level to include (echo sessions: 0-25; weapon sessions: 0-90).',
     )
     parser.add_argument(
         '--provider', choices=['cpu', 'dml'], default=None,
@@ -252,7 +404,7 @@ def main() -> None:
     )
     parser.add_argument(
         '--write-debug', action='store_true', default=False,
-        help='Write debug crop images and OCR trace files for every echo.',
+        help='Write debug crop images and OCR trace files for every scan.',
     )
     parser.add_argument(
         '--ocr-cache', metavar='PATH', default=None,
@@ -270,16 +422,16 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        '--echo-id-range', metavar='START,END',
+        '--scan-id-range', '--echo-id-range', dest='scan_id_range', metavar='START,END',
         help=(
-            'Range of echo scan IDs to reprocess (e.g. 0,100). '
+            'Range of scan IDs to reprocess (e.g. 0,100). '
             'IDs are zero-padded four-digit numbers (e.g. 0001). '
         ),
     )
     parser.add_argument(
-        '--echo-ids', metavar='ID[,ID,...]',
+        '--scan-ids', '--echo-ids', dest='scan_ids', metavar='ID[,ID,...]',
         help=(
-            'Comma-separated echo scan IDs to reprocess (e.g. 0111,0231). '
+            'Comma-separated scan IDs to reprocess (e.g. 0111,0231). '
             'All other scans are skipped.'
         ),
     )
@@ -303,14 +455,6 @@ def main() -> None:
         export_folder = 'export'
         default_ocr_cache = None
 
-    if app_config is not None:
-        if args.min_rarity is not None:
-            app_config.echoMinRarity = args.min_rarity
-        if args.min_level is not None:
-            app_config.echoMinLevel = args.min_level
-
-    min_rarity: int = (app_config.echoMinRarity if app_config else 1) if args.min_rarity is None else args.min_rarity
-    min_level:  int = (app_config.echoMinLevel  if app_config else 0) if args.min_level  is None else args.min_level
     ocr_cache_path = Path(args.ocr_cache) if args.ocr_cache else default_ocr_cache
 
     export_dir = Path(args.export_dir) if args.export_dir else Path(export_folder)
@@ -323,77 +467,75 @@ def main() -> None:
         else:
             print(f'Sessions in {export_dir} (newest first):')
             for s in sessions:
-                echo_count = len(list((s / 'raw').glob('echo_*/')))
-                print(f'  {s.name}  ({echo_count} raw scan{"s" if echo_count != 1 else ""})')
+                print(f'  {s.name}  ({_describe_raw_session(s / "raw")})')
         sys.exit(0)
 
     # ── Resolve paths ──────────────────────────────────────────────────────
     raw_dir    = _resolve_raw_dir(args, export_folder)
     session_id = raw_dir.parent.name
     output_dir = Path(args.output_dir) if args.output_dir else raw_dir.parent
+    session_kind = _detect_raw_session_kind(raw_dir)
+    session_counts = _raw_session_counts(raw_dir)
+
+    if session_kind is None:
+        present = [
+            f'{count} {kind}'
+            for kind, count in session_counts.items()
+            if count > 0
+        ]
+        if present:
+            logger.error(
+                'Ambiguous raw session type in %s: found %s. Expected a single supported session type.',
+                raw_dir,
+                ', '.join(present),
+            )
+        else:
+            logger.error(
+                'No supported raw scans found in %s. Expected echo_XXXX/ or weapon_XXXX/ directories.',
+                raw_dir,
+            )
+        sys.exit(1)
+
+    if session_kind == 'weapons':
+        config_min_rarity = app_config.weaponsMinRarity if app_config else 1
+        config_min_level = app_config.weaponsMinLevel if app_config else 0
+    else:
+        config_min_rarity = app_config.echoMinRarity if app_config else 1
+        config_min_level = app_config.echoMinLevel if app_config else 0
+
+    min_rarity: int = config_min_rarity if args.min_rarity is None else args.min_rarity
+    min_level: int = config_min_level if args.min_level is None else args.min_level
+    scan_label = _RAW_SESSION_TYPES[session_kind]['item_label']
+    max_level = 90 if session_kind == 'weapons' else 25
+
+    if min_level < 0 or min_level > max_level:
+        logger.error(
+            '--min-level must be between 0 and %d for %s sessions.',
+            max_level,
+            session_kind,
+        )
+        sys.exit(1)
 
     logger.info('Session   : %s', session_id)
+    logger.info('Type      : %s', session_kind)
     logger.info('Raw dir   : %s', raw_dir)
     logger.info('Output dir: %s', output_dir)
     logger.info('Min rarity: %d', min_rarity)
     logger.info('Min level : %d', min_level)
 
     # ── Load raw scans ─────────────────────────────────────────────────────
-    from ..scraping.utils.common import loadRawScans
-    from ..scraping.models.raw_scan import RawEchoScan
-
-    scans: list[RawEchoScan] = loadRawScans(raw_dir)
+    scans = _load_session_scans(raw_dir, session_kind)
     if not scans:
         logger.error('No raw scans found in %s', raw_dir)
         sys.exit(1)
     logger.info('Loaded %d raw scan(s)', len(scans))
 
-    # ── Filter by --echo-ids ───────────────────────────────────────────────
-    if args.echo_ids:
-        requested: set[int] = set()
-        for token in args.echo_ids.split(','):
-            token = token.strip()
-            if not token:
-                continue
-            try:
-                requested.add(int(token))
-            except ValueError:
-                logger.error('Invalid echo ID %r — must be a number (e.g. 0111).', token)
-                sys.exit(1)
-        scans = [s for s in scans if s.index in requested]
-        missing = requested - {s.index for s in scans}
-        if missing:
-            logger.warning(
-                'Echo IDs not found in session: %s',
-                ', '.join(f'{i:04d}' for i in sorted(missing)),
-            )
-        if not scans:
-            logger.error('No scans remain after applying --echo-ids filter.')
-            sys.exit(1)
-        logger.info(
-            'Filtered to %d scan(s): %s',
-            len(scans), ', '.join(f'{s.index:04d}' for s in scans),
-        )
-
-    # ── Filter by --echo-id-range ───────────────────────────────────────────
-    if args.echo_id_range:
-        try:
-            start_str, end_str = args.echo_id_range.split(',')
-            start_id, end_id = int(start_str.strip()), int(end_str.strip())
-        except ValueError:
-            logger.error('Invalid --echo-id-range format: %r. Expected START,END (e.g. 0,100).', args.echo_id_range)
-            sys.exit(1)
-        if start_id > end_id:
-            logger.error('Invalid --echo-id-range: START must be <= END.')
-            sys.exit(1)
-        scans = [s for s in scans if start_id <= s.index < end_id]
-        if not scans:
-            logger.error('No scans remain after applying --echo-id-range filter.')
-            sys.exit(1)
-        logger.info(
-            'Filtered to %d scan(s) in range %d–%d.',
-            len(scans), start_id, end_id - 1,
-        )
+    scans = _filter_scans(
+        scans,
+        scan_ids=args.scan_ids,
+        scan_id_range=args.scan_id_range,
+        scan_label=scan_label,
+    )
 
     # ── Process ────────────────────────────────────────────────────────────
     providers = _PROVIDER_MAP[args.provider] if args.provider else _auto_providers()
@@ -402,22 +544,39 @@ def main() -> None:
         providers,
         args.max_batch_size,
     )
-    echoes = _run_service(
-        scans, raw_dir, session_id,
-        providers=providers,
-        min_rarity=min_rarity,
-        min_level=min_level,
-        write_debug=args.write_debug,
-        max_batch_size=args.max_batch_size,
-        ocr_cache_path=ocr_cache_path,
-    )
+    if session_kind == 'weapons':
+        records = _run_weapon_service(
+            scans,
+            raw_dir,
+            providers=providers,
+            min_rarity=min_rarity,
+            min_level=min_level,
+            write_debug=args.write_debug,
+            max_batch_size=args.max_batch_size,
+            ocr_cache_path=ocr_cache_path,
+        )
+    else:
+        records = _run_echo_service(
+            scans,
+            raw_dir,
+            providers=providers,
+            min_rarity=min_rarity,
+            min_level=min_level,
+            write_debug=args.write_debug,
+            max_batch_size=args.max_batch_size,
+            ocr_cache_path=ocr_cache_path,
+        )
 
-    logger.info('Accepted %d / %d echo(es)', len(echoes), len(scans))
+    logger.info('Accepted %d / %d %s scan(s)', len(records), len(scans), scan_label)
 
     # ── Write output ───────────────────────────────────────────────────────
-    out_path = _write_output(echoes, output_dir)
+    out_path = _write_output(
+        records,
+        output_dir,
+        _RAW_SESSION_TYPES[session_kind]['output_filename'],
+    )
     logger.info('Saved → %s', out_path)
-    print(f'Done. {len(echoes)} echo(es) written to {out_path}')
+    print(f'Done. {len(records)} {scan_label}(s) written to {out_path}')
 
 
 if __name__ == '__main__':

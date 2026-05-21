@@ -175,6 +175,64 @@ def saveRawScan(scan, base_path: Path) -> Path:
     return echo_dir
 
 
+def _load_raw_scans(base_path: Path, *, directory_glob: str) -> list:
+    """
+    Reconstruct raw scan records from directories matching *directory_glob*.
+
+    The on-disk contract is shared by echo and weapon raw sessions: each scan
+    directory contains ``full.png`` plus ``meta.json``, while extra images such
+    as ``sonata.png`` remain optional.
+    """
+    from ..models.raw_scan import RawEchoScan  # local import — avoids circular deps
+
+    base_path = Path(base_path)
+    scans: list = []
+
+    _manifest_file = base_path.parent / 'manifest.json'
+    _session_manifest: dict = {}
+    if _manifest_file.exists():
+        with open(_manifest_file, 'r', encoding='utf-8') as _mf:
+            _session_manifest = json.load(_mf)
+
+    for scan_dir in sorted(base_path.glob(directory_glob)):
+        meta_path   = scan_dir / "meta.json"
+        full_path   = scan_dir / "full.png"
+        sonata_path = scan_dir / "sonata.png"
+
+        if not (meta_path.exists() and full_path.exists()):
+            _raw_logger.warning(
+                "Skipping incomplete raw scan directory: %s "
+                "(missing: %s)",
+                scan_dir,
+                ", ".join(
+                    p.name for p in [meta_path, full_path]
+                    if not p.exists()
+                ),
+            )
+            continue
+
+        optional_sonata_path = sonata_path if sonata_path.exists() else None
+
+        with open(meta_path, 'r', encoding='utf-8') as f:
+            meta = json.load(f)
+
+        scans.append(RawEchoScan(
+            session_id=meta['session_id'],
+            index=meta['index'],
+            page=meta['page'],
+            row=meta['row'],
+            col=meta['col'],
+            full_path=full_path,
+            sonata_path=optional_sonata_path,
+            screen_width=meta.get('screen_width', _session_manifest.get('screen_width', 1920)),
+            screen_height=meta.get('screen_height', _session_manifest.get('screen_height', 1080)),
+            monitor=meta.get('monitor', _session_manifest.get('monitor', 1)),
+        ))
+
+    _raw_logger.debug("Loaded %d raw scan(s) from %s via %s", len(scans), base_path, directory_glob)
+    return scans
+
+
 def loadRawScans(base_path: Path) -> list:
     """
     Reconstruct all ``RawEchoScan`` objects previously saved by
@@ -197,63 +255,10 @@ def loadRawScans(base_path: Path) -> list:
     list[RawEchoScan]
         Scans in ascending index order.
     """
-    from ..models.raw_scan import RawEchoScan  # local import — avoids circular deps
+    return _load_raw_scans(Path(base_path), directory_glob='echo_*/')
 
-    base_path = Path(base_path)
-    scans: list = []
 
-    # Load session manifest once for fallback screen dimensions (may be absent).
-    _manifest_file = base_path.parent / 'manifest.json'
-    _session_manifest: dict = {}
-    if _manifest_file.exists():
-        with open(_manifest_file, 'r', encoding='utf-8') as _mf:
-            _session_manifest = json.load(_mf)
+def loadWeaponRawScans(base_path: Path) -> list:
+    """Reconstruct raw scan records from ``weapon_XXXX/`` directories."""
 
-    for echo_dir in sorted(base_path.glob("echo_*/")):
-        meta_path   = echo_dir / "meta.json"
-        full_path   = echo_dir / "full.png"
-        sonata_path = echo_dir / "sonata.png"
-
-        # full.png and meta.json are required; sonata.png is optional
-        # (v2-workflow sessions do not save it — sonata is derived from
-        # full.png via icon matching during reprocessing).
-        if not (meta_path.exists() and full_path.exists()):
-            _raw_logger.warning(
-                "Skipping incomplete raw scan directory: %s "
-                "(missing: %s)",
-                echo_dir,
-                ", ".join(
-                    p.name for p in [meta_path, full_path]
-                    if not p.exists()
-                ),
-            )
-            continue
-
-        optional_sonata_path = sonata_path if sonata_path.exists() else None
-        #if optional_sonata_path is None:
-        #    _raw_logger.debug(
-        #        "Raw scan %s has no sonata.png — sonata will be derived "
-        #        "from full.png via icon matching during processing.",
-        #        echo_dir.name,
-        #    )
-
-        with open(meta_path, 'r', encoding='utf-8') as f:
-            meta = json.load(f)
-
-        # Images are loaded lazily — store only the paths here.
-        # RawEchoScan.load_images() will cv2.imread each file just before OCR.
-        scans.append(RawEchoScan(
-            session_id    = meta['session_id'],
-            index         = meta['index'],
-            page          = meta['page'],
-            row           = meta['row'],
-            col           = meta['col'],
-            full_path     = full_path,
-            sonata_path   = optional_sonata_path,
-            screen_width  = meta.get('screen_width', _session_manifest.get('screen_width', 1920)),
-            screen_height = meta.get('screen_height', _session_manifest.get('screen_height', 1080)),
-            monitor       = meta.get('monitor', _session_manifest.get('monitor', 1)),
-        ))
-
-    _raw_logger.debug("Loaded %d raw scan(s) from %s", len(scans), base_path)
-    return scans
+    return _load_raw_scans(Path(base_path), directory_glob='weapon_*/')
