@@ -19,16 +19,18 @@ not a grid — it is a sidebar list of resonators.  The scanner:
    * **Section 4** — resonance chain (button activation per node)
 
 4. After section 0 the ``already_seen`` flag from the assembler is
-   checked.  When ``True`` the scraper has wrapped around the list
-   (all characters have been processed) and stops.
+    checked. Leading repeated names on a newly scrolled page are treated
+    as overlap on the final page, so those slots are skipped and the scan
+    stops only after that visible page is exhausted.
 
 Navigation note
 ---------------
 The right-side panel shows 7 resonator slots at a time
 (``rightSide`` + ``offsets.rightSide.y * index``).  After cycling
 through 7 slots the list is scrolled by one page (``scroll.characters``).
-The same character can appear in multiple slots after a scroll, hence
-the ``already_seen`` sentinel in the assembler.
+On the final scroll, already scanned characters can still occupy the
+upper slots, so the workflow skips repeated entries until it either
+finds new characters or exhausts the page.
 """
 from __future__ import annotations
 
@@ -178,6 +180,9 @@ class CharacterWorkflow:
         done = False
 
         while not done:
+            page_started_with_seen_characters = False
+            page_has_new_character = False
+
             for slot in range(_SLOTS_PER_PAGE):
                 if self._stop_event and self._stop_event.is_set():
                     done = True
@@ -203,9 +208,24 @@ class CharacterWorkflow:
                     sec0_result = _capture_overview(char_index)
 
                 if sec0_result.fields.get('already_seen'):
-                    logger.info('Character loop complete — %d characters scanned', len(results))
-                    done = True
-                    break
+                    if not page_has_new_character:
+                        if not page_started_with_seen_characters:
+                            logger.info(
+                                'Character page begins with already scanned entries at slot %d; '
+                                'treating current view as the final page',
+                                slot,
+                            )
+                        page_started_with_seen_characters = True
+                        continue
+
+                    logger.warning(
+                        'Character slot %d repeated a previously scanned resonator after '
+                        'new characters on the same page; skipping slot',
+                        slot,
+                    )
+                    continue
+
+                page_has_new_character = True
 
                 # Navigate to weapon tab (left sidebar section 1)
                 lx = ch.leftSide.x
@@ -312,8 +332,12 @@ class CharacterWorkflow:
                 char_index += 1
 
             if not done:
-                # Scroll the character list to reveal next batch
-                self.nav.scroll_character_list(wait=0.5)
+                if page_started_with_seen_characters:
+                    logger.info('Character final page complete — %d characters scanned', len(results))
+                    done = True
+                else:
+                    # Scroll the character list to reveal next batch
+                    self.nav.scroll_character_list(wait=0.5)
 
         ctrl.press_key('esc', wait=0.3)
         return results
