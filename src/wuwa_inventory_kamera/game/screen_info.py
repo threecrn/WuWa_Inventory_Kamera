@@ -21,6 +21,9 @@ from __future__ import annotations
 from .game_roi import Coordinates, COORDINATES
 
 
+_UNSCALED_LAYOUT_KEYS = {'scroll', 'visibleSlots'}
+
+
 class ScreenInfoObject:
     def __init__(self, data):
         for key, value in data.items():
@@ -97,7 +100,7 @@ class ScreenInfo:
                 )
             if isinstance(data, dict):
                 return {
-                    key: _scale(value, skip_scale=(skip_scale or key == 'scroll'))
+                    key: _scale(value, skip_scale=(skip_scale or key in _UNSCALED_LAYOUT_KEYS))
                     for key, value in data.items()
                 }
             if isinstance(data, list):

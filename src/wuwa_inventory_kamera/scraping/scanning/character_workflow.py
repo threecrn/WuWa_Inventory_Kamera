@@ -9,7 +9,8 @@ not a grid — it is a sidebar list of resonators.  The scanner:
 
 1. Opens the resonator menu via the configured keybind.
 2. Iterates through all characters in the right-side panel row-by-row,
-   scrolling when 7 slots are exhausted.
+   scrolling when the visible slot count for the current layout is
+   exhausted.
 3. For each resonator, captures and submits five sections:
 
    * **Section 0** — resonator overview (name + level)
@@ -25,12 +26,13 @@ not a grid — it is a sidebar list of resonators.  The scanner:
 
 Navigation note
 ---------------
-The right-side panel shows 7 resonator slots at a time
-(``rightSide`` + ``offsets.rightSide.y * index``).  After cycling
-through 7 slots the list is scrolled by one page (``scroll.characters``).
-On the final scroll, already scanned characters can still occupy the
-upper slots, so the workflow skips repeated entries until it either
-finds new characters or exhausts the page.
+The right-side panel shows a layout-specific number of resonator slots at
+a time (``visibleSlots`` using ``rightSide`` +
+``offsets.rightSide.y * index``). After cycling through the visible slots
+the list is scrolled by one page (``scroll.characters``). On the final
+scroll, already scanned characters can still occupy the upper slots, so
+the workflow skips repeated entries until it either finds new characters
+or exhausts the page.
 """
 from __future__ import annotations
 
@@ -50,8 +52,9 @@ from .scan_state import ScanSession
 
 logger = logging.getLogger(__name__)
 
-# Number of resonator slots visible in the right panel at once
-_SLOTS_PER_PAGE = 7
+# Default number of resonator slots visible in the right panel at once.
+# Resolution-specific layouts can override this via characters.visibleSlots.
+_DEFAULT_SLOTS_PER_PAGE = 7
 _CHARACTER_SLOT_RETRY_WAIT_SECONDS = 1.1
 
 # Post-click settle before capturing the chain button state.
@@ -174,6 +177,8 @@ class CharacterWorkflow:
         ctrl.scroll(-1)
         ctrl.scroll(0.25)
 
+        slots_per_page = int(getattr(ch, 'visibleSlots', _DEFAULT_SLOTS_PER_PAGE))
+
         results: dict = {}
         char_index = 0
 
@@ -183,7 +188,7 @@ class CharacterWorkflow:
             page_started_with_seen_characters = False
             page_has_new_character = False
 
-            for slot in range(_SLOTS_PER_PAGE):
+            for slot in range(slots_per_page):
                 if self._stop_event and self._stop_event.is_set():
                     done = True
                     break

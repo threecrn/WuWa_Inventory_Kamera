@@ -131,6 +131,8 @@ class Coordinates:
 #     rightSide     off   — Vertical spacing between entries on the right
 #                           info panel.
 #     skillPosition off   — Vertical spacing between skill slots.
+#   visibleSlots    meta  — Number of resonator entries visible on the
+#                           right-side list before paging.
 #   leftSide        click — First character entry in the left sidebar.
 #   rightSide       click — First entry on the right-side info panel.
 #   resonatorName   ROI   — Character name text.
@@ -275,6 +277,7 @@ COORDINATES = {
                 "achievementsTab": Coordinates(835, 570),
             },
             "characters": {
+                "visibleSlots": 6,
                 "offsets": {
                     "leftSide": Coordinates(y=136),
                     "rightSide": Coordinates(y=106),
@@ -423,6 +426,7 @@ COORDINATES = {
                 "achievementsTab": Coordinates(840.0, 651.4),
             },
             "characters": {
+                "visibleSlots": 7,
                 "offsets": {
                     "leftSide": Coordinates(y=136.0),
                     "rightSide": Coordinates(y=133),
