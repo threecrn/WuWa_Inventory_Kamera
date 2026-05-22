@@ -281,7 +281,7 @@ COORDINATES = {
                 "offsets": {
                     "leftSide": Coordinates(y=136),
                     "rightSide": Coordinates(y=106),
-                    "skillPosition": Coordinates(y=255)
+                    "skillPosition": Coordinates(y=240),
                 },
                 "leftSide": Coordinates(77, 191),
                 "rightSide": Coordinates(1813.1, 202.9),
@@ -290,17 +290,17 @@ COORDINATES = {
                 "weaponName": Coordinates(257, 126, 273, 34),
                 "weaponLevel": Coordinates(255, 160, 110, 35),
                 "weaponRank": Coordinates(175, 355, 95, 35),
-                "skillClick": Coordinates(460.5, 903),
+                "skillClick": Coordinates(468, 886),
                 "skillLevel": Coordinates(390, 100, 70, 40),
                 "skillButton": Coordinates(200, 980, 120, 35),
                 "chainClick": Coordinates(1265, 135),
                 "chainButton": Coordinates(332, 847, 125.7, 36.6),
                 "skillPositions": [
-                    Coordinates(755, 905),
-                    Coordinates(985, 765),
+                    Coordinates(760, 885),
+                    Coordinates(985, 751),
                     Coordinates(1260, 705),
-                    Coordinates(1535, 765),
-                    Coordinates(1760, 905)
+                    Coordinates(1525, 751),
+                    Coordinates(1749, 885)
                 ],
                 "chainPositions": [
                     Coordinates(946, 972),
