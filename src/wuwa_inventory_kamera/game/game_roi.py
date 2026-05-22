@@ -159,7 +159,7 @@ COORDINATES = {
             },
             "scroll": {
                 "page": Coordinates(y=-32.25),
-                "characters": Coordinates(y=-56),
+                "characters": Coordinates(y=-30),
                 "sonata": Coordinates(y=70)
             },
             "scrapers": {
@@ -283,10 +283,10 @@ COORDINATES = {
                     "rightSide": Coordinates(y=106),
                     "skillPosition": Coordinates(y=255)
                 },
-                "leftSide": Coordinates(82, 191),
-                "rightSide": Coordinates(1814, 203.50),
-                "resonatorName": Coordinates(250, 110, 280, 50),
-                "resonatorLevel": Coordinates(180, 200, 135, 80),
+                "leftSide": Coordinates(77, 191),
+                "rightSide": Coordinates(1813.1, 202.9),
+                "resonatorName": Coordinates(208, 203, 320, 34),
+                "resonatorLevel": Coordinates(208, 259, 120, 30),
                 "weaponName": Coordinates(257, 126, 273, 34),
                 "weaponLevel": Coordinates(255, 160, 110, 35),
                 "weaponRank": Coordinates(175, 355, 95, 35),
@@ -294,7 +294,7 @@ COORDINATES = {
                 "skillLevel": Coordinates(390, 100, 70, 40),
                 "skillButton": Coordinates(200, 980, 120, 35),
                 "chainClick": Coordinates(1265, 135),
-                "chainButton": Coordinates(342, 964, 110, 32),
+                "chainButton": Coordinates(332, 847, 125.7, 36.6),
                 "skillPositions": [
                     Coordinates(755, 905),
                     Coordinates(985, 765),
@@ -303,13 +303,13 @@ COORDINATES = {
                     Coordinates(1760, 905)
                 ],
                 "chainPositions": [
-                    Coordinates(1395, 140),
-                    Coordinates(1565, 305),
-                    Coordinates(1640, 535),
-                    Coordinates(1565, 765),
-                    Coordinates(1400, 935),
-                    Coordinates(1170, 995)
-                ]
+                    Coordinates(946, 972),
+                    Coordinates(1280, 927),
+                    Coordinates(1442, 827),
+                    Coordinates(1570, 682),
+                    Coordinates(1649, 511),
+                    Coordinates(1676, 283)
+                ],
             }
         },
     },
