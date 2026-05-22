@@ -7,11 +7,14 @@ from typing import Any, cast
 
 import numpy as np
 
+import wuwa_inventory_kamera.game.stop_signal as stop_signal_module
 import wuwa_inventory_kamera.scraping.scanning.character_workflow as character_workflow_module
 import wuwa_inventory_kamera.scraping.scanning.session_orchestrator as session_orchestrator_module
 import wuwa_inventory_kamera.scraping.scanning.weapon_workflow as weapon_workflow_module
 import wuwa_inventory_kamera.scraping.service.ocr_service as ocr_service_module
+import wuwa_inventory_kamera.ui.home as home_module
 from wuwa_inventory_kamera.game.navigation import GameNavigator, InventoryTab
+from wuwa_inventory_kamera.game.stop_signal import StopSignal
 from wuwa_inventory_kamera.scraping.scanning.character_workflow import CharacterWorkflow
 from wuwa_inventory_kamera.scraping.scanning.session_orchestrator import SessionOrchestrator
 from wuwa_inventory_kamera.scraping.scanning.weapon_workflow import WeaponWorkflow
@@ -1194,3 +1197,90 @@ def test_session_orchestrator_forwards_weapon_thresholds_to_ocr_service(monkeypa
     assert ocr_init['min_level'] == 5
     assert ocr_init['weapon_min_rarity'] == 4
     assert ocr_init['weapon_min_level'] == 0
+
+
+def test_stop_signal_stop_does_not_mark_cancellation(monkeypatch) -> None:
+    monkeypatch.setattr(stop_signal_module.threading.Thread, 'start', lambda self: None)
+    monkeypatch.setattr(stop_signal_module.threading.Thread, 'join', lambda self, timeout=None: None)
+
+    signal = StopSignal()
+
+    signal.stop()
+
+    assert signal.is_set() is False
+    assert signal.event.is_set() is False
+
+
+def test_home_scan_finished_saves_character_results(monkeypatch) -> None:
+    saved_calls: list[tuple[dict[str, tuple[object, type]], str]] = []
+    notifications: list[tuple[str, str, str]] = []
+
+    monkeypatch.setattr(
+        home_module,
+        'savingScraped',
+        lambda scan_data, START_DATE='': saved_calls.append((scan_data, START_DATE)),
+    )
+
+    class _FakeButton:
+        def __init__(self) -> None:
+            self.enabled: bool | None = None
+
+        def setEnabled(self, enabled: bool) -> None:
+            self.enabled = enabled
+
+    class _FakeLabel:
+        def __init__(self) -> None:
+            self.text: str | None = None
+
+        def setText(self, text: str) -> None:
+            self.text = text
+
+    class _FakeBar:
+        def __init__(self) -> None:
+            self.value: int | None = None
+
+        def setValue(self, value: int) -> None:
+            self.value = value
+
+    class _FakeNotifier:
+        def emit(self, level: str, title: str, message: str) -> None:
+            notifications.append((level, title, message))
+
+    home = SimpleNamespace(
+        startScanning=_FakeButton(),
+        _scan_thread=object(),
+        scanProgressLabel=_FakeLabel(),
+        scanProgressBar=_FakeBar(),
+        processProgressLabel=_FakeLabel(),
+        processProgressBar=_FakeBar(),
+        signalNotifier=_FakeNotifier(),
+    )
+
+    home_module.LControlPanel._onScanFinished(
+        cast(Any, home),
+        {
+            'date': 'session-id',
+            'characters': {
+                'alpha': {'_name': 'alpha'},
+                'beta': {'_name': 'beta'},
+            },
+        },
+    )
+
+    assert saved_calls == [
+        (
+            {
+                'characters_wuwainventorykamera.json': (
+                    {
+                        'alpha': {'_name': 'alpha'},
+                        'beta': {'_name': 'beta'},
+                    },
+                    dict,
+                ),
+            },
+            'session-id',
+        ),
+    ]
+    assert notifications == [
+        ('success', 'Scan Complete', 'characters: 2'),
+    ]

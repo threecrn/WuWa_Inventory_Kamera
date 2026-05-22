@@ -503,6 +503,10 @@ class LControlPanel(QFrame):
                 filename = f'{key}_wuwainventorykamera.json'
                 scan_data[filename] = (data, list)
 
+        characters = result.get('characters')
+        if isinstance(characters, dict) and characters and 'error' not in characters:
+            scan_data['characters_wuwainventorykamera.json'] = (characters, dict)
+
         if scan_data:
             savingScraped(scan_data, START_DATE=session_id)
 
@@ -512,6 +516,10 @@ class LControlPanel(QFrame):
             data = result.get(key)
             if isinstance(data, list):
                 summary_parts.append(f"{key}: {len(data)}")
+
+        if isinstance(characters, dict) and 'error' not in characters:
+            summary_parts.append(f'characters: {len(characters)}')
+
         summary = ', '.join(summary_parts) if summary_parts else 'No items scanned'
 
         if cancelled:

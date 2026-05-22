@@ -57,6 +57,7 @@ class StopSignal:
         self._vk = vk
         self._poll = poll_interval
         self._event = threading.Event()
+        self._shutdown = threading.Event()
         self._thread = threading.Thread(
             target=self._poll_loop,
             name='StopSignal-poller',
@@ -82,12 +83,14 @@ class StopSignal:
         Call this when the scan finishes normally so the thread exits
         cleanly instead of being reaped by process exit.
         """
-        self._event.set()  # causes _poll_loop to exit
+        self._shutdown.set()
+        if self._thread.is_alive():
+            self._thread.join(timeout=self._poll * 2)
 
     # ── Background polling ───────────────────────────────────────────────
 
     def _poll_loop(self) -> None:
-        while not self._event.is_set():
+        while not self._event.is_set() and not self._shutdown.is_set():
             try:
                 state = _user32.GetAsyncKeyState(self._vk)
                 if state & 0x8000:
