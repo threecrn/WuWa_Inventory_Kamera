@@ -58,6 +58,11 @@ class _FakeOcrService:
                         'skill_2': 8,
                         'skill_3': 9,
                         'skill_4': 10,
+                        'stats0': 2,
+                        'stats1': 1,
+                        'inherent': 2,
+                        'stats3': 0,
+                        'stats4': 1,
                     },
                     'chain': {
                         'chain_0': True,
@@ -150,12 +155,16 @@ def test_reprocess_character_scans_reconstructs_sections_and_outputs_dict(monkey
     overview_full = np.arange(4 * 6 * 3, dtype=np.uint8).reshape(4, 6, 3)
     weapon_full = np.arange(4 * 6 * 3, dtype=np.uint8).reshape(4, 6, 3) + 50
     skill = np.arange(2 * 2 * 3, dtype=np.uint8).reshape(2, 2, 3) + 100
+    passive_skill = np.arange(2 * 2 * 3, dtype=np.uint8).reshape(2, 2, 3) + 120
     chain = np.arange(2 * 2 * 3, dtype=np.uint8).reshape(2, 2, 3) + 150
 
     scan = _FakeCharacterScan({
         0: {'full': overview_full},
         1: {'full': weapon_full},
-        3: {'skill_0': skill},
+        3: {
+            'skill_0': skill,
+            'passive_stats0_1': passive_skill,
+        },
         4: {'chain_0': chain},
     })
 
@@ -184,11 +193,11 @@ def test_reprocess_character_scans_reconstructs_sections_and_outputs_dict(monkey
                 'forte': 8,
                 'liberation': 9,
                 'intro': 10,
-                'stats0': 0,
-                'stats1': 0,
-                'inherent': 0,
+                'stats0': 2,
+                'stats1': 1,
+                'inherent': 2,
                 'stats3': 0,
-                'stats4': 0,
+                'stats4': 1,
             },
             'chain': 2,
         }
@@ -221,6 +230,10 @@ def test_reprocess_character_scans_reconstructs_sections_and_outputs_dict(monkey
     np.testing.assert_array_equal(
         submitted[2].crops['skill_0'],
         cv2.cvtColor(skill, cv2.COLOR_RGB2BGR),
+    )
+    np.testing.assert_array_equal(
+        submitted[2].crops['passive_stats0_1'],
+        cv2.cvtColor(passive_skill, cv2.COLOR_RGB2BGR),
     )
     np.testing.assert_array_equal(
         submitted[3].crops['chain_0'],

@@ -292,7 +292,7 @@ COORDINATES = {
                 "weaponRank": Coordinates(175, 355, 95, 35),
                 "skillClick": Coordinates(468, 886),
                 "skillLevel": Coordinates(390, 100, 70, 40),
-                "skillButton": Coordinates(200, 980, 120, 35),
+                "skillButton": Coordinates(270, 980, 120, 35),
                 "chainClick": Coordinates(1265, 135),
                 "chainButton": Coordinates(332, 847, 125.7, 36.6),
                 "skillPositions": [
@@ -441,7 +441,7 @@ COORDINATES = {
                 "weaponRank": Coordinates(208, 443, 78, 28),
                 "skillClick": Coordinates(467, 947),
                 "skillLevel": Coordinates(512, 120, 55, 25),
-                "skillButton": Coordinates(194.3, 1085.7, 137.1, 40.0),
+                "skillButton": Coordinates(270, 1093, 137.1, 34.0),
                 "chainClick": Coordinates(1267.4, 198.9),
                 "chainButton": Coordinates(332, 957, 125.7, 36.6),
                 "skillPositions": [

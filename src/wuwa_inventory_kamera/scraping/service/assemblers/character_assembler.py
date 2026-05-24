@@ -10,7 +10,7 @@ Section mapping
 0 — resonator overview  (name, level, ascension)
 1 — weapon panel        (weapon name, level, rank)
 2 — echoes panel        (skipped; handled by the echo scraper)
-3 — skills panel        (active skill levels per node)
+3 — skills panel        (active skill levels + passive unlock buttons)
 4 — resonance chain     (Activated / not activated per chain node)
 
 The scanner submits one :class:`~...captures.CharCapture` per section.
@@ -186,13 +186,31 @@ class CharAssembler:
 
     @staticmethod
     def _parse_skills(token_map: dict[str, list[OcrResult]]) -> dict:
-        """Section 3: skill levels for all active nodes."""
+        """Section 3: skill levels and passive unlock counts."""
         result: dict = {'skills': {}}
+        activated_text: str | None = None
         for key, tokens in token_map.items():
             if key.startswith('skill_'):
                 text = tokens_to_string(tokens, divisor='')
                 m = _LEVEL_RE.search(text)
                 result['skills'][key] = int(m.group(1)) if m else 0
+                continue
+
+            if not key.startswith('passive_'):
+                continue
+
+            if activated_text is None:
+                _, _, definedText = _get_data()
+                activated_text = definedText.get('PrefabTextItem_3963945691_Text', 'activated').lower()
+
+            parts = key.split('_', 2)
+            if len(parts) != 3:
+                continue
+
+            passive_skill_key = parts[1]
+            text = tokens_to_string(tokens, divisor='').lower()
+            if activated_text in text:
+                result['skills'][passive_skill_key] = result['skills'].get(passive_skill_key, 0) + 1
         return result
 
     @staticmethod

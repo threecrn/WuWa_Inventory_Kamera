@@ -78,3 +78,39 @@ def test_character_assembler_logs_weapon_name_matching(caplog, monkeypatch) -> N
         "Character 7 — weapon name matched: 'emeraldofgenesis' -> 'emeraldofgenesis' "
         "(id='21020064')"
     ) in caplog.text
+
+
+def test_character_assembler_parses_passive_skill_unlock_counts(monkeypatch) -> None:
+    monkeypatch.setattr(
+        character_assembler_module,
+        '_get_data',
+        lambda: ({}, {}, {'PrefabTextItem_3963945691_Text': 'Activated'}),
+    )
+
+    assembler = CharAssembler()
+    capture = CharCapture(
+        char_index=3,
+        section=3,
+        crops={
+            'skill_0': np.zeros((1, 1, 3), dtype=np.uint8),
+            'passive_stats0_1': np.zeros((1, 1, 3), dtype=np.uint8),
+            'passive_stats0_2': np.zeros((1, 1, 3), dtype=np.uint8),
+            'passive_inherent_1': np.zeros((1, 1, 3), dtype=np.uint8),
+            'passive_inherent_2': np.zeros((1, 1, 3), dtype=np.uint8),
+        },
+    )
+
+    result = assembler.assemble(
+        capture,
+        [_token(0, 0, '6')],
+        [_token(0, 0, 'Activated')],
+        [_token(0, 0, 'Activated')],
+        [_token(0, 0, 'Activated')],
+        [_token(0, 0, 'Locked')],
+    )
+
+    assert result.fields['skills'] == {
+        'skill_0': 6,
+        'stats0': 2,
+        'inherent': 1,
+    }

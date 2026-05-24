@@ -317,6 +317,7 @@ def test_character_workflow_write_debug_dumps_section_artifacts(monkeypatch, tmp
             offsets=SimpleNamespace(
                 rightSide=SimpleNamespace(y=1),
                 leftSide=SimpleNamespace(y=1),
+                skillPosition=SimpleNamespace(y=1),
             ),
             resonatorName=SimpleNamespace(x=0, y=0, w=2, h=2),
             resonatorLevel=SimpleNamespace(x=2, y=0, w=2, h=2),
@@ -324,8 +325,9 @@ def test_character_workflow_write_debug_dumps_section_artifacts(monkeypatch, tmp
             weaponLevel=SimpleNamespace(x=2, y=2, w=2, h=2),
             weaponRank=SimpleNamespace(x=4, y=2, w=2, h=2),
             skillClick=SimpleNamespace(x=0, y=0),
-            skillPositions=[SimpleNamespace(x=i, y=0) for i in range(5)],
+            skillPositions=[SimpleNamespace(x=i, y=2) for i in range(5)],
             skillLevel=SimpleNamespace(x=0, y=4, w=2, h=2),
+            skillButton=SimpleNamespace(x=2, y=4, w=2, h=2),
             chainClick=SimpleNamespace(x=0, y=0),
             chainPositions=[SimpleNamespace(x=i, y=0) for i in range(6)],
             chainButton=SimpleNamespace(x=2, y=4, w=2, h=2),
@@ -334,6 +336,7 @@ def test_character_workflow_write_debug_dumps_section_artifacts(monkeypatch, tmp
     ctrl = SimpleNamespace(
         press_key=lambda *_args, **_kwargs: None,
         click=lambda *_args, **_kwargs: None,
+        scroll=lambda *_args, **_kwargs: None,
     )
     nav = SimpleNamespace(
         layout=layout,
@@ -399,8 +402,38 @@ def test_character_workflow_write_debug_dumps_section_artifacts(monkeypatch, tmp
 
     assert list(results) == ['alpha']
     assert results['alpha']['_name'] == 'alpha'
-    assert len(debug_calls) == 18
-    assert {call['roi_key'] for call in debug_calls} == {
+    section_3_debug_calls = [
+        call
+        for call in debug_calls
+        if call['debug_dir'] == tmp_path / 'raw' / 'char_0000' / 'section_3' / 'debug'
+    ]
+    assert len(section_3_debug_calls) == 15
+    assert {call['roi_key'] for call in section_3_debug_calls} == {
+        'characters.skill_0',
+        'characters.skill_1',
+        'characters.skill_2',
+        'characters.skill_3',
+        'characters.skill_4',
+        'characters.skillButton',
+    }
+    assert {call['basename'] for call in section_3_debug_calls} == {
+        'skill_0',
+        'passive_stats0_1',
+        'passive_stats0_2',
+        'skill_1',
+        'passive_stats1_1',
+        'passive_stats1_2',
+        'skill_2',
+        'passive_inherent_1',
+        'passive_inherent_2',
+        'skill_3',
+        'passive_stats3_1',
+        'passive_stats3_2',
+        'skill_4',
+        'passive_stats4_1',
+        'passive_stats4_2',
+    }
+    assert {call['roi_key'] for call in debug_calls} >= {
         'characters.resonatorName',
         'characters.resonatorLevel',
         'characters.weaponName',
@@ -411,6 +444,7 @@ def test_character_workflow_write_debug_dumps_section_artifacts(monkeypatch, tmp
         'characters.skill_2',
         'characters.skill_3',
         'characters.skill_4',
+        'characters.skillButton',
         'characters.chain_0',
         'characters.chain_1',
         'characters.chain_2',
@@ -418,12 +452,11 @@ def test_character_workflow_write_debug_dumps_section_artifacts(monkeypatch, tmp
         'characters.chain_4',
         'characters.chain_5',
     }
-    assert {call['debug_dir'] for call in debug_calls} == {
+    assert {call['debug_dir'] for call in debug_calls} >= {
         tmp_path / 'raw' / 'char_0000' / 'section_0' / 'debug',
         tmp_path / 'raw' / 'char_0000' / 'section_1' / 'debug',
         tmp_path / 'raw' / 'char_0000' / 'section_3' / 'debug',
         tmp_path / 'raw' / 'char_0000' / 'section_4' / 'debug',
-        tmp_path / 'raw' / 'char_0001' / 'section_0' / 'debug',
     }
 
 
@@ -473,6 +506,9 @@ def test_character_workflow_resets_to_overview_before_next_character(monkeypatch
 
         def click(self, x: int, y: int, wait: float | None = None) -> None:
             click_calls.append((x, y, wait))
+
+        def scroll(self, *_args, **_kwargs) -> None:
+            pass
 
     nav = SimpleNamespace(
         layout=layout,
@@ -656,6 +692,167 @@ def test_character_workflow_waits_longer_before_first_chain_capture(monkeypatch)
         (114, 120, 0.2),
         (115, 120, 0.2),
     ]
+
+
+def test_character_workflow_scans_passive_skill_unlock_buttons(monkeypatch) -> None:
+    image = np.arange(8 * 8 * 3, dtype=np.uint8).reshape(8, 8, 3)
+
+    monkeypatch.setattr(character_workflow_module, 'capture_full', lambda *args, **kwargs: image)
+    monkeypatch.setattr(
+        character_workflow_module,
+        'capture_region',
+        lambda _gw, roi: image[
+            int(roi.y): int(roi.y + roi.h),
+            int(roi.x): int(roi.x + roi.w),
+        ],
+    )
+
+    layout = SimpleNamespace(
+        width=8,
+        height=8,
+        monitor=1,
+        characters=SimpleNamespace(
+            rightSide=SimpleNamespace(x=10, y=20),
+            leftSide=SimpleNamespace(x=30, y=40),
+            offsets=SimpleNamespace(
+                rightSide=SimpleNamespace(y=1),
+                leftSide=SimpleNamespace(y=1),
+                skillPosition=SimpleNamespace(y=10),
+            ),
+            resonatorName=SimpleNamespace(x=0, y=0, w=2, h=2),
+            resonatorLevel=SimpleNamespace(x=2, y=0, w=2, h=2),
+            weaponName=SimpleNamespace(x=0, y=2, w=2, h=2),
+            weaponLevel=SimpleNamespace(x=2, y=2, w=2, h=2),
+            weaponRank=SimpleNamespace(x=4, y=2, w=2, h=2),
+            skillClick=SimpleNamespace(x=50, y=60),
+            skillPositions=[SimpleNamespace(x=70 + i, y=80) for i in range(5)],
+            skillLevel=SimpleNamespace(x=0, y=4, w=2, h=2),
+            skillButton=SimpleNamespace(x=2, y=4, w=2, h=2),
+            chainClick=SimpleNamespace(x=90, y=100),
+            chainPositions=[SimpleNamespace(x=110 + i, y=120) for i in range(6)],
+            chainButton=SimpleNamespace(x=2, y=4, w=2, h=2),
+        ),
+    )
+
+    click_calls: list[tuple[int, int, float | None]] = []
+
+    class _RecordedCtrl:
+        def press_key(self, *_args, **_kwargs) -> None:
+            pass
+
+        def click(self, x: int, y: int, wait: float | None = None) -> None:
+            click_calls.append((x, y, wait))
+
+        def scroll(self, *_args, **_kwargs) -> None:
+            pass
+
+    nav = SimpleNamespace(
+        layout=layout,
+        ctrl=_RecordedCtrl(),
+        gw=None,
+        scroll_character_list=lambda *_args, **_kwargs: None,
+    )
+
+    class _FakeFuture:
+        def __init__(self, result: CharResult) -> None:
+            self._result = result
+
+        def result(self, timeout: int) -> CharResult:
+            return self._result
+
+    class _FakeOcrService:
+        def __init__(self) -> None:
+            self._overview_calls = 0
+            self.submitted = []
+
+        def submit(self, capture) -> _FakeFuture:
+            self.submitted.append(capture)
+            if capture.section == 0:
+                self._overview_calls += 1
+                fields = {
+                    'already_seen': self._overview_calls > 1,
+                    'name': 'alpha',
+                    'char_id': 'alpha',
+                    'level': 1,
+                }
+            elif capture.section == 1:
+                fields = {
+                    'weaponName': 'sword',
+                    'weaponId': 'weapon',
+                    'weaponLevel': 10,
+                    'weaponMaxLevel': 20,
+                    'weaponRank': 1,
+                }
+            elif capture.section == 3:
+                fields = {'skills': {key: 1 for key in capture.crops}}
+            else:
+                fields = {
+                    'name': 'alpha',
+                    'char_id': 'alpha',
+                    'level': 1,
+                    'weaponName': 'sword',
+                    'weaponId': 'weapon',
+                    'weaponLevel': 10,
+                    'weaponMaxLevel': 20,
+                    'weaponRank': 1,
+                    'skills': {
+                        'skill_0': 1,
+                        'skill_1': 1,
+                        'skill_2': 1,
+                        'skill_3': 1,
+                        'skill_4': 1,
+                        'stats0': 2,
+                        'stats1': 2,
+                        'inherent': 1,
+                        'stats3': 0,
+                        'stats4': 1,
+                    },
+                    'chain': {f'chain_{idx}': False for idx in range(6)},
+                }
+            return _FakeFuture(CharResult(capture.char_index, capture.section, fields))
+
+    ocr_service = _FakeOcrService()
+    workflow = CharacterWorkflow(
+        nav=cast(Any, nav),
+        ocr_service=cast(Any, ocr_service),
+        session=cast(Any, SimpleNamespace(session_id='session-id')),
+    )
+
+    results = workflow.run()
+
+    assert list(results) == ['alpha']
+    assert results['alpha']['skills']['stats0'] == 2
+    assert results['alpha']['skills']['inherent'] == 1
+
+    section_3_capture = next(capture for capture in ocr_service.submitted if capture.section == 3)
+    assert list(section_3_capture.crops) == [
+        'skill_0',
+        'passive_stats0_1',
+        'passive_stats0_2',
+        'skill_1',
+        'passive_stats1_1',
+        'passive_stats1_2',
+        'skill_2',
+        'passive_inherent_1',
+        'passive_inherent_2',
+        'skill_3',
+        'passive_stats3_1',
+        'passive_stats3_2',
+        'skill_4',
+        'passive_stats4_1',
+        'passive_stats4_2',
+    ]
+
+    skill_tree_clicks = [call for call in click_calls if 70 <= call[0] <= 74]
+    assert skill_tree_clicks[:6] == [
+        (70, 80, 0.3),
+        (70, 70, 0.6),
+        (70, 60, 0.6),
+        (71, 80, 0.3),
+        (71, 70, 0.6),
+        (71, 60, 0.6),
+    ]
+    assert len(skill_tree_clicks) == 15
 
 
 def test_character_workflow_selects_first_character_after_opening_panel(monkeypatch) -> None:

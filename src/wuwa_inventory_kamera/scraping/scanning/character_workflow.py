@@ -16,7 +16,7 @@ not a grid — it is a sidebar list of resonators.  The scanner:
    * **Section 0** — resonator overview (name + level)
    * **Section 1** — weapon panel (weapon name, level, rank)
    * **Section 2** — echoes (skipped; handled by echo scraper)
-   * **Section 3** — skills panel (active skill levels)
+    * **Section 3** — skills panel (active skill levels + passive unlock states)
    * **Section 4** — resonance chain (button activation per node)
 
 4. After section 0 the ``already_seen`` flag from the assembler is
@@ -60,6 +60,7 @@ _CHARACTER_SLOT_RETRY_WAIT_SECONDS = 1.1
 # Post-click settle before capturing the chain button state.
 _CHAIN_NODE_CAPTURE_WAIT_SECONDS = 0.2
 _FIRST_CHAIN_NODE_CAPTURE_WAIT_SECONDS = 0.35
+_PASSIVE_SKILL_CAPTURE_WAIT_SECONDS = 0.6
 
 # Sections handled (2 is skipped — echoes)
 _SECTIONS = (0, 1, 3, 4)
@@ -75,7 +76,12 @@ _WEAPON_DEBUG_ROI_KEYS = {
 }
 
 SKILL_KEYS  = ['skill_0', 'skill_1', 'skill_2', 'skill_3', 'skill_4']
+PASSIVE_SKILL_KEYS = ['stats0', 'stats1', 'inherent', 'stats3', 'stats4']
 CHAIN_KEYS  = ['chain_0', 'chain_1', 'chain_2', 'chain_3', 'chain_4', 'chain_5']
+
+
+def _passive_skill_crop_key(skill_key: str, tier: int) -> str:
+    return f'passive_{skill_key}_{tier}'
 
 
 class CharacterWorkflow:
@@ -271,14 +277,31 @@ class CharacterWorkflow:
                 self.ocr.submit(sec1_cap).result(timeout=30)
 
                 # --- Section 3: skills ---
-                # Navigate to the skills tab in the left sidebar, then open the skill tree
+                # Navigate to the skills tab in the left sidebar, then open the skill tree.
+                # Each primary skill node also has up to two passive unlock buttons above it.
                 ctrl.click(ch.leftSide.x, ch.leftSide.y + ch.offsets.leftSide.y * 3, wait=0.8)
                 ctrl.click(ch.skillClick.x, ch.skillClick.y, wait=0.5)
                 skill_crops: dict[str, np.ndarray] = {}
+                skill_step = getattr(getattr(ch.offsets, 'skillPosition', None), 'y', 0)
+                skill_button = getattr(ch, 'skillButton', None)
                 for idx, pos in enumerate(ch.skillPositions):
                     ctrl.click(pos.x, pos.y, wait=0.3)
                     level_shot = capture_region(self.nav.gw, ch.skillLevel)
                     skill_crops[SKILL_KEYS[idx]] = level_shot
+                    if not skill_step or skill_button is None:
+                        continue
+
+                    passive_skill_key = PASSIVE_SKILL_KEYS[idx]
+                    for tier in (1, 2):
+                        ctrl.click(
+                            pos.x,
+                            pos.y - (skill_step * tier),
+                            wait=_PASSIVE_SKILL_CAPTURE_WAIT_SECONDS,
+                        )
+                        skill_crops[_passive_skill_crop_key(passive_skill_key, tier)] = capture_region(
+                            self.nav.gw,
+                            skill_button,
+                        )
                 ctrl.press_key('esc', wait=0.3)
 
                 if self.save_raw:
@@ -375,7 +398,11 @@ class CharacterWorkflow:
             'forte':       raw_skills.get('skill_2', 1),
             'liberation':  raw_skills.get('skill_3', 1),
             'intro':       raw_skills.get('skill_4', 1),
-            'stats0': 0, 'stats1': 0, 'inherent': 0, 'stats3': 0, 'stats4': 0,
+            'stats0':      raw_skills.get('stats0', 0),
+            'stats1':      raw_skills.get('stats1', 0),
+            'inherent':    raw_skills.get('inherent', 0),
+            'stats3':      raw_skills.get('stats3', 0),
+            'stats4':      raw_skills.get('stats4', 0),
         })
 
         # Chain count from section 4
@@ -415,6 +442,11 @@ class CharacterWorkflow:
         roi_key_maps = {
             0: _OVERVIEW_DEBUG_ROI_KEYS,
             1: _WEAPON_DEBUG_ROI_KEYS,
+            3: {
+                _passive_skill_crop_key(skill_key, tier): 'characters.skillButton'
+                for skill_key in PASSIVE_SKILL_KEYS
+                for tier in (1, 2)
+            },
         }
         debug_dir = (
             self._debug_base()

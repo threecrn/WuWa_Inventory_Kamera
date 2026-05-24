@@ -27,6 +27,11 @@ _WEAPON_DEBUG_ROI_KEYS = {
     'weaponLevel': 'characters.weaponLevel',
     'weaponRank': 'characters.weaponRank',
 }
+_PASSIVE_SKILL_KEYS = ('stats0', 'stats1', 'inherent', 'stats3', 'stats4')
+
+
+def _passive_skill_crop_key(skill_key: str, tier: int) -> str:
+    return f'passive_{skill_key}_{tier}'
 
 
 def _crop_roi(image: np.ndarray, roi) -> np.ndarray:
@@ -56,6 +61,11 @@ def _write_character_debug_artifacts(
     roi_key_maps = {
         0: _OVERVIEW_DEBUG_ROI_KEYS,
         1: _WEAPON_DEBUG_ROI_KEYS,
+        3: {
+            _passive_skill_crop_key(skill_key, tier): 'characters.skillButton'
+            for skill_key in _PASSIVE_SKILL_KEYS
+            for tier in (1, 2)
+        },
     }
 
     for section, crops in crops_by_section.items():
@@ -97,11 +107,11 @@ def _build_character_output(fields: dict) -> dict:
         'forte': raw_skills.get('skill_2', 1),
         'liberation': raw_skills.get('skill_3', 1),
         'intro': raw_skills.get('skill_4', 1),
-        'stats0': 0,
-        'stats1': 0,
-        'inherent': 0,
-        'stats3': 0,
-        'stats4': 0,
+        'stats0': raw_skills.get('stats0', 0),
+        'stats1': raw_skills.get('stats1', 0),
+        'inherent': raw_skills.get('inherent', 0),
+        'stats3': raw_skills.get('stats3', 0),
+        'stats4': raw_skills.get('stats4', 0),
     })
 
     raw_chain = fields.get('chain', {})
