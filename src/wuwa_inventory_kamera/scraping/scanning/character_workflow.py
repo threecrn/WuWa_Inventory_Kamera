@@ -60,7 +60,8 @@ _CHARACTER_SLOT_RETRY_WAIT_SECONDS = 1.1
 # Post-click settle before capturing the chain button state.
 _CHAIN_NODE_CAPTURE_WAIT_SECONDS = 0.2
 _FIRST_CHAIN_NODE_CAPTURE_WAIT_SECONDS = 0.35
-_PASSIVE_SKILL_CAPTURE_WAIT_SECONDS = 0.6
+_SKILL_NODE_CAPTURE_WAIT_SECONDS = 0.15
+_PASSIVE_SKILL_CAPTURE_WAIT_SECONDS = 0.15
 
 # Sections handled (2 is skipped — echoes)
 _SECTIONS = (0, 1, 3, 4)
@@ -285,7 +286,7 @@ class CharacterWorkflow:
                 skill_step = getattr(getattr(ch.offsets, 'skillPosition', None), 'y', 0)
                 skill_button = getattr(ch, 'skillButton', None)
                 for idx, pos in enumerate(ch.skillPositions):
-                    ctrl.click(pos.x, pos.y, wait=0.3)
+                    ctrl.click(pos.x, pos.y, wait=_SKILL_NODE_CAPTURE_WAIT_SECONDS)
                     level_shot = capture_region(self.nav.gw, ch.skillLevel)
                     skill_crops[SKILL_KEYS[idx]] = level_shot
                     if not skill_step or skill_button is None:

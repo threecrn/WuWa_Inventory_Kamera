@@ -845,12 +845,12 @@ def test_character_workflow_scans_passive_skill_unlock_buttons(monkeypatch) -> N
 
     skill_tree_clicks = [call for call in click_calls if 70 <= call[0] <= 74]
     assert skill_tree_clicks[:6] == [
-        (70, 80, 0.3),
-        (70, 70, 0.6),
-        (70, 60, 0.6),
-        (71, 80, 0.3),
-        (71, 70, 0.6),
-        (71, 60, 0.6),
+        (70, 80, character_workflow_module._SKILL_NODE_CAPTURE_WAIT_SECONDS),
+        (70, 70, character_workflow_module._PASSIVE_SKILL_CAPTURE_WAIT_SECONDS),
+        (70, 60, character_workflow_module._PASSIVE_SKILL_CAPTURE_WAIT_SECONDS),
+        (71, 80, character_workflow_module._SKILL_NODE_CAPTURE_WAIT_SECONDS),
+        (71, 70, character_workflow_module._PASSIVE_SKILL_CAPTURE_WAIT_SECONDS),
+        (71, 60, character_workflow_module._PASSIVE_SKILL_CAPTURE_WAIT_SECONDS),
     ]
     assert len(skill_tree_clicks) == 15
 
