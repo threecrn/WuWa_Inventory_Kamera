@@ -233,54 +233,85 @@ text_color_ranges = [[[230, 235, 235], [255, 255, 249]]]
 [characters.resonatorName.signature]
 text_color_ranges = [[[230, 235, 235], [255, 255, 249]]]
 
-[characters.resonatorLevel]
-color_space = "gray"
-threshold_mode = "floor"
-floor_value = 150
-allowed_chars = "0123456789"
-cache_mode = "persistent"
+[characters.resonatorLevel.ocr]
+single_line = true
+allowed_chars = "0123456789/"
+color_space = "rgb"
+text_color_ranges=[
+    [[230, 230, 230], [255, 255, 255]],
+    [[90, 105, 120], [110, 125, 140]],
+]
+background_color_ranges=[
+    [[20, 30, 50], [40, 60, 80]],
+]
 
-[characters.weaponName]
+[characters.resonatorLevel.signature]
+single_line = true
+cache_mode = "persistent"
+color_space = "rgb"
+text_color_ranges=[
+    [[230, 230, 230], [255, 255, 255]],
+    [[90, 105, 120], [110, 125, 140]],
+]
+background_color_ranges=[
+    [[20, 30, 50], [40, 60, 80]],
+]
+
+[characters.weaponName.ocr]
+single_line = true
+color_space = "bgr"
+text_color_ranges = [
+    [[160, 230, 240], [167, 236, 248]],
+    [[240,  80, 180], [255,  92, 200]],
+    [[240, 137,  66], [255, 153,  82]],
+    [[110, 192, 110], [127, 209, 125]],
+    [[240, 240, 234], [255, 255, 249]],
+]
+
+[characters.weaponName.signature]
+single_line = true
 color_space = "bgr"
 cache_mode = "persistent"
-# TODO: If character weapon-name signatures should hash preprocessed text masks,
-# define explicit preprocess overrides in [characters.weaponName.signature].
-
-[characters.weaponName.rarity_overrides."5"]
 text_color_ranges = [
     [[166, 235, 247], [166, 235, 247]],
+    [[255,  92, 200], [255,  92, 200]],
+    [[255, 152,  81], [255, 152,  81]],
+    [[125, 207, 123], [125, 207, 123]],
+    [[255, 255, 249], [255, 255, 249]],
 ]
 
-[characters.weaponName.rarity_overrides."4"]
-text_color_ranges = [
-    [[185, 135, 200], [185, 135, 200]],
+[characters.weaponLevel.ocr]
+single_line = true
+allowed_chars = "0123456789/"
+color_space = "rgb"
+text_color_ranges=[
+    [[230, 230, 230], [255, 255, 255]],
+    [[90, 105, 120], [110, 125, 140]],
 ]
-
-[characters.weaponName.rarity_overrides."3"]
-text_color_ranges = [
-    [[220, 180, 120], [220, 180, 120]],
+background_color_ranges=[
+    [[20, 30, 50], [40, 60, 80]],
 ]
+#cache_mode = "persistent"
 
-[characters.weaponName.rarity_overrides."2"]
-text_color_ranges = [
-    [[130, 210, 140], [130, 210, 140]],
-]
+[characters.weaponLevel.signature]
+single_line = true
+cache_mode = "persistent"
 
-[characters.weaponLevel]
-color_space = "gray"
-threshold_mode = "floor"
-floor_value = 150
+[characters.weaponRank.ocr]
+single_line = true
 allowed_chars = "0123456789"
-cache_mode = "persistent"
+color_space = "rgb"
+text_color_ranges=[[[220, 210, 130], [255, 245, 170]]]
 
-[characters.weaponRank]
-color_space = "bgr"
-cache_mode = "persistent"
+#color_space = "bgr"
 # TODO: If weapon-rank signatures should hash preprocessed text masks,
 # define explicit preprocess overrides in [characters.weaponRank.signature].
-text_color_ranges = [
-    [[40, 200, 230], [60, 255, 255]],
-]
+#text_color_ranges = [[[40, 200, 230], [60, 255, 255]]]
+
+[characters.weaponRank.signature]
+single_line = true
+cache_mode = "persistent"
+
 
 [characters.skillLevel.ocr]
 single_line = true

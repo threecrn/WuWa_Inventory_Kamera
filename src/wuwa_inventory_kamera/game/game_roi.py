@@ -287,11 +287,13 @@ COORDINATES = {
                 "rightSide": Coordinates(1813.1, 202.9),
                 "resonatorName": Coordinates(208, 203, 320, 34),
                 "resonatorLevel": Coordinates(208, 259, 120, 30),
-                "weaponName": Coordinates(257, 126, 273, 34),
-                "weaponLevel": Coordinates(255, 160, 110, 35),
-                "weaponRank": Coordinates(175, 355, 95, 35),
+
+                "weaponName": Coordinates(208, 204, 320, 34),
+                "weaponLevel": Coordinates(208, 262, 120, 30),
+                "weaponRank": Coordinates(208, 432, 78, 28),
+
                 "skillClick": Coordinates(468, 886),
-                "skillLevel": Coordinates(390, 100, 70, 40),
+                "skillLevel": Coordinates(512, 111, 55, 25),
                 "skillButton": Coordinates(270, 980, 120, 35),
                 "chainClick": Coordinates(1265, 135),
                 "chainButton": Coordinates(332, 847, 125.7, 36.6),

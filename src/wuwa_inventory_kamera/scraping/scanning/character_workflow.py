@@ -413,7 +413,7 @@ class CharacterWorkflow:
         return {
             '_name': fields.get('name', ''),
             'level': level,
-            'ascension': 0,   # ascension derived from level externally if needed
+            'ascension': fields.get('ascension', 0),
             'weapon': {
                 'id':        fields.get('weaponId', fields.get('weaponName', '')),
                 'level':     fields.get('weaponLevel', 1),

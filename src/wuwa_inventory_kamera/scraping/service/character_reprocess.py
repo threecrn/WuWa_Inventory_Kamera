@@ -120,7 +120,7 @@ def _build_character_output(fields: dict) -> dict:
     return {
         '_name': fields.get('name', ''),
         'level': level,
-        'ascension': 0,
+        'ascension': fields.get('ascension', 0),
         'weapon': {
             'id': fields.get('weaponId', fields.get('weaponName', '')),
             'level': fields.get('weaponLevel', 1),

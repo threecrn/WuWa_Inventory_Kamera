@@ -48,6 +48,7 @@ class _FakeOcrService:
                     'char_id': 'alpha',
                     'name': 'alpha',
                     'level': 80,
+                    'ascension': 6,
                     'weaponId': 'sword_alpha',
                     'weaponLevel': 70,
                     'weaponMaxLevel': 80,
@@ -179,7 +180,7 @@ def test_reprocess_character_scans_reconstructs_sections_and_outputs_dict(monkey
         'alpha': {
             '_name': 'alpha',
             'level': 80,
-            'ascension': 0,
+            'ascension': 6,
             'weapon': {
                 'id': 'sword_alpha',
                 'level': 70,

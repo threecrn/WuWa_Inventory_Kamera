@@ -80,6 +80,33 @@ def test_character_assembler_logs_weapon_name_matching(caplog, monkeypatch) -> N
     ) in caplog.text
 
 
+def test_character_assembler_parses_resonator_ascension_from_level_pair(monkeypatch) -> None:
+    monkeypatch.setattr(
+        character_assembler_module,
+        '_get_data',
+        lambda: ({'jinhsi': '1205'}, {}, {}),
+    )
+
+    assembler = CharAssembler()
+    capture = CharCapture(
+        char_index=7,
+        section=0,
+        crops={
+            'name': np.zeros((1, 1, 3), dtype=np.uint8),
+            'level': np.zeros((1, 1, 3), dtype=np.uint8),
+        },
+    )
+
+    result = assembler.assemble(
+        capture,
+        [_token(0, 0, 'Jinhsi')],
+        [_token(0, 0, '80/90')],
+    )
+
+    assert result.fields['level'] == 80
+    assert result.fields['ascension'] == 6
+
+
 def test_character_assembler_parses_passive_skill_unlock_counts(monkeypatch) -> None:
     monkeypatch.setattr(
         character_assembler_module,

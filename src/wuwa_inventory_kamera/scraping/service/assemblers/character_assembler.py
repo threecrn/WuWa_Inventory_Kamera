@@ -33,6 +33,8 @@ from ..captures import CharCapture, CharResult
 logger = logging.getLogger(__name__)
 
 _LEVEL_RE = re.compile(r'(\d+)')
+_LEVEL_PAIR_RE = re.compile(r'(\d+)\s*/\s*(\d+)')
+_ASCENSION_LEVELS = (20, 40, 50, 60, 70, 80, 90)
 
 
 def _get_data():
@@ -139,8 +141,17 @@ class CharAssembler:
 
         if 'level' in token_map:
             level_text = tokens_to_string(token_map['level'], divisor='')
-            m = _LEVEL_RE.search(level_text)
-            result['level'] = int(m.group(1)) if m else 0
+            pair_match = _LEVEL_PAIR_RE.search(level_text)
+            if pair_match:
+                result['level'] = int(pair_match.group(1))
+                try:
+                    result['ascension'] = _ASCENSION_LEVELS.index(int(pair_match.group(2)))
+                except ValueError:
+                    result['ascension'] = 0
+            else:
+                m = _LEVEL_RE.search(level_text)
+                result['level'] = int(m.group(1)) if m else 0
+                result['ascension'] = 0
 
         return result
 
