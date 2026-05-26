@@ -1,35 +1,46 @@
 # To-Do List
-- [ ] WuWa 3.3 had UI overhaul, need to adjust nav and recognition for new UI elements
-  - [ ] character scan
-  - [ ] weapon scan
-  - [x] echo scan
-  - [ ] other scans (dev items, achievements, etc)
 
-- [ ] echo scraper:
-  - [x] improve validation
-    - [x] validate echo sonata name against data/sonataName.json
-    - [x] warning on less than maximum substat lines (may indicate missing lines)
-  - [x] add echo scan number/index/id to the resulting json (echo_0111 -> "_scanIndex": 111)
-  - [x] add monster id to the resulting json ("_monsterId": 310000020)
-  - [x] add echo cost to the resulting json ("_cost": (monster_id prefix 31 -> 1, 32 -> 3, 34 -> 4))
-  - [ ] mixed processing mode: start processing and cleanup up image data in the background
-  - [ ] identify echoes by their attributes
-  - [ ] finer control for scan pass
-  - [ ] finer control for recognition pass
-  - [ ] domain specific recognition interface
-    - [ ] control use of bw/rgb mode for ocr calls
-    - [ ] don't write entire screenshots to file, only necessary image fragments?
-- [ ] weapon scraper:
-  - [ ] weapon name ocr: currently needs fuzzy-resolving every time due to whitespaces
-- [ ] game screen nav:
-  - [ ] test scaffolding for nav functions / workflows
-  - [ ] "pacing" (waits between actions)
-    - [ ] strategy how to fine-tune pacing to make them as fast as possible without breaking things
-    - [ ] adjust waits, run pacing tests, fine-tune, repeat
-  - [ ] ocr support inside nav
-  - [ ] echo screen
-    - [ ] echo sort mode
-      - [x] set sort mode
-      - [ ] set sort direction (needs to distingush between two symbols for up and down)
-      - [ ] other resolutions than 1920x1080
-    - [ ] echo list filter submenu (gonna be hard)
+## Current State Snapshot
+
+- [x] The 3.3 new-UI OCR baseline is live via `spec_version = "3.3-new-ui-v2"`.
+- [x] The v2 live scan path exists for echoes, weapons, characters, achievements, and shell through `SessionOrchestrator`.
+- [x] Echo validation and export metadata improvements have landed.
+  - [x] Sonata names are validated against localized data.
+  - [x] Echo exports include `_scanIndex`, `_monsterId`, and `_cost`.
+  - [x] Incomplete substat-line reads warn instead of silently passing.
+- [x] Navigation and workflow regression coverage now exists for screenshot capture and scan workflow slices.
+- [x] `ScreenInfo` currently supports scaled same-aspect-ratio layouts for 16:9 and 8:5, in addition to the base 1920x1080 and 1920x1200 layouts.
+
+## Active Priorities
+
+### High
+
+- [ ] Align raw echo session persistence around one canonical format.
+  - [ ] Decide whether legacy raw sessions with `sonata.png` still need first-class support.
+  - [ ] Either remove `sonata.png` from the active path or quarantine it behind an explicit legacy loader/converter.
+
+### Medium
+
+- [ ] Collapse duplicated `EchoCapture` construction between live scan and reprocess into one shared builder/helper.
+- [ ] Remove legacy-only echo fallback branches after the raw-session format is settled.
+  - [ ] `ocr_service.py`: drop the no-dedicated-`echo_name` fallback if all active captures always provide that ROI.
+  - [ ] `echo_assembler.py`: drop the legacy level-text fallback if all active captures always provide `detected_level`.
+- [ ] Move shared helpers out of entry-point modules.
+  - [ ] Relocate rarity helpers and shared debug-artifact helpers into a neutral module.
+- [ ] Clarify ownership of validator logic still imported by `EchoAssembler` from legacy processing modules.
+- [ ] Remove mutable global scan-result state from `app_config.py` / `scraping.utils.common`.
+- [ ] Decide whether direct-script CLI bootstrap via `sys.path` patching is still a supported workflow.
+
+### Low
+
+- [ ] Re-evaluate the extra RapidOCR fallback pass (`fallback_text_score`) and remove it if it has no measurable value.
+- [ ] Finish OCR region-spec cleanup.
+  - [ ] Remove the `sig_downscale` compatibility alias if older TOML files no longer need it.
+  - [ ] Replace remaining `legacy path` comments in `region_specs.py` with plain descriptions of the current behavior.
+
+## Docs And Consistency
+
+- [ ] Reconcile resolution-support documentation with code and tests.
+  - [ ] Docs still say only exact 1920x1080 / 1920x1200 are supported.
+  - [ ] Code and tests currently support scaled same-aspect-ratio 16:9 and 8:5 layouts.
+- [ ] Refresh docs that still describe compatibility-only or pre-v2 behavior as if it were the active path.
