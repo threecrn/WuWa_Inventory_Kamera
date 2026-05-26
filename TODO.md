@@ -38,6 +38,21 @@
   - [ ] Remove the `sig_downscale` compatibility alias if older TOML files no longer need it.
   - [ ] Replace remaining `legacy path` comments in `region_specs.py` with plain descriptions of the current behavior.
 
+## Backlog
+
+- [ ] Localization: multi-language support for sonata names, achievement names, character names, etc.
+  - [ ] separate canonical names for echoes, characters, etc from English localized strings
+  - [ ] directory layout and strategy for managing multi-language data
+  - [ ] validation of OCR results against localized data (e.g. sonata names)
+    - [ ] geometry validation: are RoI sizes and positions compatible with the expected text lengths of localized strings?
+    - [ ] signature validation: do the OCR cache signature setups work for localized strings with different character sets, draw widths, etc?
+- [ ] minor issues on edge cases:
+  - [ ] at 2560x1440, the echo level signature configuration doesn't work properly because the key text color is slightly off
+  - [ ] on slow systems, wait delays might be too short for UI animations to complete, causing OCR failures
+- [ ] RapidOCR CPU backend: multi-threaded batch processing for faster CPU inference?
+- [ ] end-user installation: where to put config and cache files?
+- [ ] fork repo: how to deal with references to the original (e.g. feedback link), README.md, etc?
+
 ## Docs And Consistency
 
 - [ ] Reconcile resolution-support documentation with code and tests.
