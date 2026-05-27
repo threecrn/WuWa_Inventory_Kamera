@@ -13,9 +13,9 @@ import cv2
 import numpy as np
 
 from .echo_capture_utils import (
+    build_echo_capture,
     decide_echo_level,
     ensure_bgr_image,
-    select_level_dependent_sonata_slot,
 )
 
 logger = logging.getLogger('wuwa.echo_reprocess')
@@ -174,43 +174,14 @@ def reprocess_echo_scans_with_service(
 
             si = ScreenInfo(scan.screen_width, scan.screen_height).echoes
 
-            card_rgb = _crop_roi(scan.full_screenshot, si.echoCard)
-            card = ensure_bgr_image(card_rgb, source_space='rgb')
             stats_name = _crop_roi(scan.full_screenshot, si.fullStatsName)
             stats_value = _crop_roi(scan.full_screenshot, si.fullStatsValue)
 
-            si_raw = si.sonataIcon
-            sonata_icon_cx: float | None = None
-            sonata_icon_cy: float | None = None
-            sonata_icon_r: float | None = None
-            detected_level: int | None = None
             level_crop = _crop_roi(scan.full_screenshot, si.level)
             level_crop_bgr = ensure_bgr_image(level_crop, source_space='rgb')
             level_decision = decide_echo_level(
                 level_text=svc.ocr_adhoc_text(level_crop_bgr, 'echoes.level')
             )
-            si_slot = select_level_dependent_sonata_slot(
-                si_raw,
-                two_digits=level_decision.two_digits,
-            )
-            icon_roi = si_slot.icon
-            sonata_icon_cx = si_slot.circle.x
-            sonata_icon_cy = si_slot.circle.y
-            sonata_icon_r = si_raw.radius
-            detected_level = level_decision.detected_level
-
-            sonata_icon_rgb = _crop_roi(scan.full_screenshot, icon_roi)
-            sonata_icon = ensure_bgr_image(sonata_icon_rgb, source_space='rgb')
-
-            en = si.echoName
-            echo_name_rgb = _crop_roi(scan.full_screenshot, en)
-            echo_name = ensure_bgr_image(echo_name_rgb, source_space='rgb')
-
-            equipped = None
-            if hasattr(si, 'equipped'):
-                eq = si.equipped
-                equipped_rgb = _crop_roi(scan.full_screenshot, eq)
-                equipped = ensure_bgr_image(equipped_rgb, source_space='rgb')
 
             detected_rarity: int | None = None
             if hasattr(si, 'rarityColorPick'):
@@ -221,35 +192,28 @@ def reprocess_echo_scans_with_service(
                     scan.full_screenshot[int(rcp.y), int(rcp.x)]
                 )
 
+            capture = build_echo_capture(
+                echo_index=scan.index,
+                full_frame=scan.full_screenshot,
+                echoes_layout=si,
+                source_space='rgb',
+                level_decision=level_decision,
+                detected_rarity=detected_rarity,
+                full_screenshot=scan.full_screenshot if write_debug else None,
+            )
+
             if write_debug:
                 _write_echo_debug_artifacts(
                     scan,
                     raw_base=raw_base,
                     full_screenshot_space='rgb',
                     detected_rarity=detected_rarity,
-                    echo_name=echo_name,
-                    equipped=equipped,
+                    echo_name=capture.echo_name,
+                    equipped=capture.equipped,
                     level=level_crop,
                     stats_name=stats_name,
                     stats_value=stats_value,
                 )
-
-            capture = EchoCapture(
-                echo_index=scan.index,
-                card=card,
-                echo_name=echo_name,
-                level=level_crop_bgr,
-                equipped=equipped,
-                sonata_icon=sonata_icon,
-                sonata_icon_cx=sonata_icon_cx,
-                sonata_icon_cy=sonata_icon_cy,
-                sonata_icon_r=sonata_icon_r,
-                detected_level=detected_level,
-                detected_rarity=detected_rarity,
-                stats_name=stats_name,
-                stats_value=stats_value,
-                full_screenshot=scan.full_screenshot if write_debug else None,
-            )
             futures.append((scan.index, svc.submit(capture)))
 
         for scan_index, future in futures:

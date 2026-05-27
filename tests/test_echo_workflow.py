@@ -14,8 +14,11 @@ from wuwa_inventory_kamera.scraping.scanning.echo_workflow import (
     _rarity_from_bgr_pixel,
     _rarity_from_rgb_pixel,
 )
-from wuwa_inventory_kamera.scraping.service.echo_capture_utils import decide_echo_level
-from wuwa_inventory_kamera.scraping.service.echo_capture_utils import ensure_bgr_image
+from wuwa_inventory_kamera.scraping.service.echo_capture_utils import (
+    build_echo_capture,
+    decide_echo_level,
+    ensure_bgr_image,
+)
 
 
 def test_rarity_helpers_match_reference_palette() -> None:
@@ -62,6 +65,70 @@ def test_level_crop_normalizer_matches_live_and_reprocess_sources() -> None:
         ensure_bgr_image(rgb, source_space='rgb'),
         ensure_bgr_image(bgr, source_space='bgr'),
     )
+
+
+def test_build_echo_capture_normalizes_live_and_reprocess_frames() -> None:
+    frame_bgr = np.arange(6 * 6 * 3, dtype=np.uint8).reshape(6, 6, 3)
+    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+    echoes_layout = SimpleNamespace(
+        echoCard=SimpleNamespace(x=0, y=0, w=2, h=2),
+        fullStatsName=SimpleNamespace(x=2, y=0, w=2, h=2),
+        fullStatsValue=SimpleNamespace(x=0, y=2, w=2, h=2),
+        echoName=SimpleNamespace(x=2, y=2, w=2, h=2),
+        equipped=SimpleNamespace(x=4, y=2, w=2, h=2),
+        level=SimpleNamespace(x=4, y=0, w=2, h=2),
+        sonataIcon=SimpleNamespace(
+            radius=1.0,
+            level_X=SimpleNamespace(
+                circle=SimpleNamespace(x=1.0, y=1.0),
+                icon=SimpleNamespace(x=0, y=4, w=2, h=2),
+            ),
+            level_XX=SimpleNamespace(
+                circle=SimpleNamespace(x=1.0, y=1.0),
+                icon=SimpleNamespace(x=2, y=4, w=2, h=2),
+            ),
+        ),
+    )
+    level_decision = decide_echo_level(detected_level=25)
+
+    live_capture = build_echo_capture(
+        echo_index=7,
+        full_frame=frame_bgr,
+        echoes_layout=echoes_layout,
+        source_space='bgr',
+        level_decision=level_decision,
+        detected_rarity=5,
+    )
+    reprocess_capture = build_echo_capture(
+        echo_index=7,
+        full_frame=frame_rgb,
+        echoes_layout=echoes_layout,
+        source_space='rgb',
+        level_decision=level_decision,
+        detected_rarity=5,
+    )
+
+    for field_name in (
+        'card',
+        'echo_name',
+        'level',
+        'stats_name',
+        'stats_value',
+        'equipped',
+        'sonata_icon',
+    ):
+        np.testing.assert_array_equal(
+            getattr(live_capture, field_name),
+            getattr(reprocess_capture, field_name),
+        )
+
+    assert live_capture.detected_level == 25
+    assert reprocess_capture.detected_level == 25
+    assert live_capture.detected_rarity == 5
+    assert reprocess_capture.detected_rarity == 5
+    assert live_capture.sonata_icon_cx == reprocess_capture.sonata_icon_cx == 1.0
+    assert live_capture.sonata_icon_cy == reprocess_capture.sonata_icon_cy == 1.0
+    assert live_capture.sonata_icon_r == reprocess_capture.sonata_icon_r == 1.0
 
 
 def test_capture_echo_reuses_prefetched_level_without_second_ocr(monkeypatch) -> None:

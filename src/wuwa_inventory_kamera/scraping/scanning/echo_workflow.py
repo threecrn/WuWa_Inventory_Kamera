@@ -55,10 +55,9 @@ from .scan_state import (
 )
 from ..service.captures import EchoCapture, EchoResult
 from ..service.echo_capture_utils import (
+    build_echo_capture,
     decide_echo_level,
     ensure_bgr_image,
-    ensure_rgb_image,
-    select_level_dependent_sonata_slot,
 )
 from ..service.ocr_service import OcrService
 
@@ -368,20 +367,14 @@ class EchoWorkflow:
                 rarity_dist,
             )
 
-        card = full[
-            int(ei.echoCard.y) : int(ei.echoCard.y + ei.echoCard.h),
-            int(ei.echoCard.x) : int(ei.echoCard.x + ei.echoCard.w),
-        ]
         stats_name_bgr = full[
             int(ei.fullStatsName.y) : int(ei.fullStatsName.y + ei.fullStatsName.h),
             int(ei.fullStatsName.x) : int(ei.fullStatsName.x + ei.fullStatsName.w),
         ]
-        stats_name = ensure_rgb_image(stats_name_bgr, source_space='bgr')
         stats_value_bgr = full[
             int(ei.fullStatsValue.y) : int(ei.fullStatsValue.y + ei.fullStatsValue.h),
             int(ei.fullStatsValue.x) : int(ei.fullStatsValue.x + ei.fullStatsValue.w),
         ]
-        stats_value = ensure_rgb_image(stats_value_bgr, source_space='bgr')
 
         # ── Sonata icon crop (level-dependent for new UI) ────────────────
         # In the new UI the sonata icon sits immediately to the right of the
@@ -389,10 +382,6 @@ class EchoWorkflow:
         # wider than a single-digit one (0-9), so the icon position differs.
         # We OCR the level directly from the already-captured full screenshot
         # to select the correct ROI variant before submitting the future.
-        si_raw = ei.sonataIcon
-        sonata_icon_cx: float | None = None
-        sonata_icon_cy: float | None = None
-        sonata_icon_r:  float | None = None
         level_crop = full[
             int(ei.level.y) : int(ei.level.y + ei.level.h),
             int(ei.level.x) : int(ei.level.x + ei.level.w),
@@ -405,11 +394,6 @@ class EchoWorkflow:
             )
         else:
             level_decision = decide_echo_level(detected_level=detected_level)
-
-        si_slot = select_level_dependent_sonata_slot(
-            si_raw,
-            two_digits=level_decision.two_digits,
-        )
         logger.debug(
             'Echo %d — level_text=%r two_digits=%s → sonataIcon=%s',
             pos.scan_index,
@@ -417,36 +401,22 @@ class EchoWorkflow:
             level_decision.two_digits,
             'level_XX' if level_decision.two_digits else 'level_X',
         )
-        si = si_slot.icon
-        sonata_icon_cx = si_slot.circle.x
-        sonata_icon_cy = si_slot.circle.y
-        sonata_icon_r  = si_raw.radius
         # Parse the level here so the assembler doesn't need to OCR card for it
         detected_level = level_decision.detected_level
-
-        sonata_icon = full[
-            int(si.y) : int(si.y + si.h),
-            int(si.x) : int(si.x + si.w),
-        ]
-
-        # ── Echo name crop (colour-filtered in the OCR service) ──────────
-        en = ei.echoName
-        echo_name = full[
-            int(en.y) : int(en.y + en.h),
-            int(en.x) : int(en.x + en.w),
-        ]
-
-        equipped = None
-        if hasattr(ei, 'equipped'):
-            eq = ei.equipped
-            equipped = full[
-                int(eq.y) : int(eq.y + eq.h),
-                int(eq.x) : int(eq.x + eq.w),
-            ]
 
         # Optionally save raw images
         if self.save_raw:
             self._save_raw(pos, full)
+
+        capture = build_echo_capture(
+            echo_index=pos.scan_index,
+            full_frame=full,
+            echoes_layout=ei,
+            source_space='bgr',
+            level_decision=level_decision,
+            detected_rarity=detected_rarity,
+            full_screenshot=full if self.save_raw else None,
+        )
 
         # Optionally write debug crop artifacts
         if self.write_debug:
@@ -461,29 +431,12 @@ class EchoWorkflow:
                 raw_base=_debug_base,
                 full_screenshot_space='bgr',
                 detected_rarity=detected_rarity,
-                echo_name=echo_name,
-                equipped=equipped,
+                echo_name=capture.echo_name,
+                equipped=capture.equipped,
                 level=level_crop,
                 stats_name=stats_name_bgr,
                 stats_value=stats_value_bgr,
             )
-
-        capture = EchoCapture(
-            echo_index=pos.scan_index,
-            card=card,
-            echo_name=echo_name,
-            level=level_crop_bgr,
-            equipped=equipped,
-            detected_level=detected_level,
-            detected_rarity=detected_rarity,
-            sonata_icon=sonata_icon,
-            sonata_icon_cx=sonata_icon_cx,
-            sonata_icon_cy=sonata_icon_cy,
-            sonata_icon_r=sonata_icon_r,
-            stats_name=stats_name,
-            stats_value=stats_value,
-            full_screenshot=full if self.save_raw else None,
-        )
 
         return self.ocr.submit(capture)
 

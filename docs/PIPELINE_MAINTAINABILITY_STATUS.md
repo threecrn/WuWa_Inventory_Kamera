@@ -178,30 +178,26 @@ smaller seams that used to drift silently.
 
 ## Remaining Issues
 
-### 1. `EchoCapture` construction is still duplicated
+### 1. Shared `frame -> EchoCapture` builder is now in place
 
-The level helpers are shared now, but live scan and reprocess still each build
-the `EchoCapture` by hand.
+Live scan and reprocess now both build their canonical `EchoCapture` through
+the shared helper in
+[src/wuwa_inventory_kamera/scraping/service/echo_capture_utils.py](src/wuwa_inventory_kamera/scraping/service/echo_capture_utils.py).
 
-Both paths still locally decide all of the following:
+The shared builder now owns:
 
-- which ROIs to slice from the full frame
-- how to package debug artifacts
-- when and how to instantiate `EchoCapture`
-- where to source rarity detection
-- how to thread capture-specific metadata into the service
+- ROI slicing for the canonical single-echo crop set
+- level-dependent sonata icon layout selection
+- sonata icon circle metadata threading
+- per-field color-space normalization
+- `EchoCapture` instantiation
 
-The duplication remains most obvious between:
+What still remains outside that builder is narrower and matches later cleanup
+items:
 
-- [src/wuwa_inventory_kamera/scraping/scanning/echo_workflow.py](src/wuwa_inventory_kamera/scraping/scanning/echo_workflow.py)
-- [src/wuwa_inventory_kamera/scraping/service/echo_reprocess.py](src/wuwa_inventory_kamera/scraping/service/echo_reprocess.py)
-
-Cleanup direction:
-
-- extract one shared `EchoCaptureBuilder` or pure builder function
-- let live scan own frame acquisition only
-- let reprocess own frame loading only
-- keep crop resolution onward identical
+- entry-point-specific rarity detection helpers
+- debug-artifact writing ownership
+- the mixed per-field color contract carried by `EchoCapture`
 
 ### 2. The `EchoCapture` color contract is still mixed
 
@@ -329,31 +325,28 @@ Cleanup direction:
 
 [tests/test_echo_workflow.py](tests/test_echo_workflow.py) and
 [tests/test_echo_reprocess.py](tests/test_echo_reprocess.py) now cover several
-important shared helper behaviors.
+important shared helper behaviors, including parity for the shared
+`frame -> EchoCapture` builder across BGR and RGB inputs.
 
 What is still missing is a test that proves, end-to-end, that:
 
-- the same frame produces the same `EchoCapture` regardless of live vs raw-session source
 - the same prepared capture produces the same `EchoResult` regardless of source path
 - unsupported resolutions fail under an explicit regression test, not only by implementation contract
 
-Without those tests, the remaining duplicated capture-builder logic can still
-drift quietly.
+Without those tests, parity can still drift above the shared builder boundary.
 
 ## Suggested Direction
 
 The most useful remaining cleanup path still looks incremental rather than a
 large rewrite:
 
-1. Extract one shared `frame -> EchoCapture` builder and put both live scan and
-  reprocess behind it.
-2. Move the remaining shared rarity/debug helpers out of the entry-point
+1. Move the remaining shared rarity/debug helpers out of the entry-point
   modules and into the same neutral capture-helper surface.
-3. Decide whether `EchoCapture` should keep a mixed per-field color contract or
+2. Decide whether `EchoCapture` should keep a mixed per-field color contract or
   normalize to a single internal image space.
-4. If echo-name OCR policy keeps growing, split it out of
+3. If echo-name OCR policy keeps growing, split it out of
   `OcrService._process_echoes` into a dedicated recognizer helper.
-5. Decide whether raw sessions should replay the exact prepared capture state or
+4. Decide whether raw sessions should replay the exact prepared capture state or
   intentionally rebuild from `full.png` using the latest logic.
 6. Quarantine or delete the remaining legacy processing and shim modules once
   downstream callers are gone.

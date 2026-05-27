@@ -19,7 +19,7 @@
 
 ### Medium
 
-- [ ] Collapse duplicated `EchoCapture` construction between live scan and reprocess into one shared builder/helper.
+- [x] Collapse duplicated `EchoCapture` construction between live scan and reprocess into one shared builder/helper.
 - [x] Remove legacy-only echo fallback branches after the raw-session format is settled.
   - [x] `ocr_service.py`: drop the no-dedicated-`echo_name` fallback if all active captures always provide that ROI.
   - [x] `echo_assembler.py`: drop the legacy level-text fallback if all active captures always provide `detected_level`.

@@ -14,6 +14,8 @@ from typing import Any
 import cv2
 import numpy as np
 
+from .captures import EchoCapture
+
 
 @dataclass(frozen=True, slots=True)
 class EchoLevelDecision:
@@ -22,6 +24,13 @@ class EchoLevelDecision:
     level_text: str
     detected_level: int | None
     two_digits: bool
+
+
+def _crop_roi(image: np.ndarray, roi: Any) -> np.ndarray:
+    return image[
+        int(roi.y) : int(roi.y + roi.h),
+        int(roi.x) : int(roi.x + roi.w),
+    ]
 
 
 def ensure_bgr_image(image: np.ndarray, *, source_space: str) -> np.ndarray:
@@ -92,3 +101,69 @@ def select_level_dependent_sonata_slot(
     """Return the supported sonata icon ROI variant for the level width."""
 
     return sonata_icon_layout.level_XX if two_digits else sonata_icon_layout.level_X
+
+
+def build_echo_capture(
+    *,
+    echo_index: int,
+    full_frame: np.ndarray,
+    echoes_layout: Any,
+    source_space: str,
+    level_decision: EchoLevelDecision,
+    detected_rarity: int | None,
+    full_screenshot: np.ndarray | None = None,
+) -> EchoCapture:
+    """Build the canonical ``EchoCapture`` crop bundle from one full frame.
+
+    Per-region crops are normalized to the ``EchoCapture`` color-space
+    contract. ``full_screenshot`` remains caller-owned debug payload and is
+    forwarded unchanged.
+    """
+
+    sonata_icon_layout = echoes_layout.sonataIcon
+    sonata_slot = select_level_dependent_sonata_slot(
+        sonata_icon_layout,
+        two_digits=level_decision.two_digits,
+    )
+
+    equipped = None
+    if hasattr(echoes_layout, 'equipped'):
+        equipped = ensure_bgr_image(
+            _crop_roi(full_frame, echoes_layout.equipped),
+            source_space=source_space,
+        )
+
+    return EchoCapture(
+        echo_index=echo_index,
+        card=ensure_bgr_image(
+            _crop_roi(full_frame, echoes_layout.echoCard),
+            source_space=source_space,
+        ),
+        echo_name=ensure_bgr_image(
+            _crop_roi(full_frame, echoes_layout.echoName),
+            source_space=source_space,
+        ),
+        level=ensure_bgr_image(
+            _crop_roi(full_frame, echoes_layout.level),
+            source_space=source_space,
+        ),
+        stats_name=ensure_rgb_image(
+            _crop_roi(full_frame, echoes_layout.fullStatsName),
+            source_space=source_space,
+        ),
+        stats_value=ensure_rgb_image(
+            _crop_roi(full_frame, echoes_layout.fullStatsValue),
+            source_space=source_space,
+        ),
+        equipped=equipped,
+        sonata_icon=ensure_bgr_image(
+            _crop_roi(full_frame, sonata_slot.icon),
+            source_space=source_space,
+        ),
+        full_screenshot=full_screenshot,
+        sonata_icon_cx=sonata_slot.circle.x,
+        sonata_icon_cy=sonata_slot.circle.y,
+        sonata_icon_r=sonata_icon_layout.radius,
+        detected_level=level_decision.detected_level,
+        detected_rarity=detected_rarity,
+    )

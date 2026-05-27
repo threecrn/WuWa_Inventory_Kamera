@@ -94,7 +94,8 @@ The codebase has already been simplified in several important ways:
 - Live scan now reuses the min-level pre-read when that OCR already succeeded,
   instead of issuing a second `echoes.level` OCR/cache lookup for the same echo.
 - Live scan and reprocess now share one neutral helper module for level parsing,
-  level-dependent sonata icon selection, and source-space normalization.
+  level-dependent sonata icon selection, source-space normalization, and
+  `frame -> EchoCapture` construction.
 - Root-level import shims are gone.
 - The active live echo raw path no longer depends on any separately persisted
   sonata-only artifact.
@@ -104,33 +105,25 @@ several dead surfaces that were obscuring it.
 
 ## Issues Found
 
-### 1. `EchoCapture` construction is still duplicated across live scan and reprocess
+### 1. `EchoCapture` construction now shares one builder
 
-The live path and the reprocess path still rebuild the same single-echo data
-bundle by hand.
+Live scan and offline reprocess now route their single-echo crop assembly
+through the same builder helper in
+[src/wuwa_inventory_kamera/scraping/service/echo_capture_utils.py](src/wuwa_inventory_kamera/scraping/service/echo_capture_utils.py).
 
-Both paths currently do all of the following themselves:
+That helper now owns:
 
-- slice `echoCard`, `fullStatsName`, `fullStatsValue`, `echoName`, and sonata
-  icon ROIs
-- resolve the level-dependent sonata icon ROI variant
-- resolve level-dependent icon circle metadata
-- detect rarity from a single sampled pixel
-- optionally write the same debug crop artifacts
-- instantiate `EchoCapture`
+- slicing the canonical `echoCard`, `fullStatsName`, `fullStatsValue`,
+  `echoName`, `equipped`, and sonata-icon crops
+- resolving the level-dependent sonata icon ROI variant and circle metadata
+- normalizing the per-field image spaces to the `EchoCapture` contract
+- instantiating the final `EchoCapture`
 
-The duplication is still most obvious between
-[src/wuwa_inventory_kamera/scraping/scanning/echo_workflow.py](src/wuwa_inventory_kamera/scraping/scanning/echo_workflow.py)
-and
-[src/wuwa_inventory_kamera/scraping/service/echo_reprocess.py](src/wuwa_inventory_kamera/scraping/service/echo_reprocess.py).
+The remaining entry-point-specific work is now narrower:
 
-Cleanup direction:
-
-- extract one pure capture-builder function or class that takes a full frame,
-  screen layout, and source metadata and returns the canonical `EchoCapture`
-- let live scan own frame acquisition only
-- let reprocess own frame loading only
-- keep everything from crop selection onward shared
+- live scan still owns frame acquisition and its capture-order-aware rarity helper
+- reprocess still owns raw-session loading and its RGB rarity helper
+- both entry points still opt into debug-artifact writing locally
 
 ### 2. The raw-session contract is split between the active v2 format and the legacy helper/model format
 
@@ -262,18 +255,18 @@ Cleanup direction:
 ### 9. Test coverage still does not enforce live/reprocess parity strongly enough
 
 [tests/test_echo_reprocess.py](tests/test_echo_reprocess.py) and
-[tests/test_echo_workflow.py](tests/test_echo_workflow.py) cover useful helper
-and reprocess-specific behavior.
+[tests/test_echo_workflow.py](tests/test_echo_workflow.py) now cover useful
+helper behavior, reprocess-specific behavior, and the shared
+`frame -> EchoCapture` builder parity across BGR and RGB sources.
 
 What is still missing is a test that asserts:
 
-- the same underlying frame produces the same `EchoCapture` in live scan and in
-  offline reprocess
 - the same prepared single-echo input produces the same `EchoResult` regardless
   of whether it came from a live scan or a raw session reload
 - unsupported resolutions fail loudly and intentionally
 
-Without those checks, the duplicated builder logic can keep diverging quietly.
+Without those checks, live-vs-reprocess parity can still drift above the shared
+builder boundary.
 
 ## Suggested Direction
 
@@ -283,8 +276,9 @@ The most useful cleanup target still looks like this:
    live app capture and raw-session replay both produce a full frame plus an
    explicit source color space and layout context.
 2. `EchoCaptureBuilder` layer
-   one pure module resolves ROIs, detects rarity, resolves level-dependent icon
-   layout, and builds the canonical `EchoCapture`.
+  one pure module now resolves ROIs, level-dependent icon layout, and the
+  canonical `EchoCapture`; remaining rarity/debug ownership can move here if
+  that surface stays stable.
 3. `RawSessionFormat` layer
    one explicit raw-session contract describes what the live path persists and
    what offline reprocess consumes.
@@ -300,14 +294,12 @@ format.
 
 ## Suggested Refactor Sequence
 
-1. Extract a shared single-echo capture builder and make live scan + reprocess
-   call it without changing behavior.
-2. Keep the canonical raw-session format aligned across `_save_raw()`,
-  `RawEchoScan`, and `loadRawScans()`.
-3. Normalize the image color-space contract at the `EchoCapture` boundary and
-   add parity tests.
-4. Move shared helpers out of entry-point modules.
-5. Replace mutable globals and legacy persistence helpers with explicit session
+1. Add an end-to-end parity test that feeds the same prepared capture through
+  both live-scan and raw-session assembly paths.
+2. Normalize the image color-space contract at the `EchoCapture` boundary and
+  extend parity coverage beyond crop construction.
+3. Move shared helpers out of entry-point modules.
+4. Replace mutable globals and legacy persistence helpers with explicit session
    results.
 6. Quarantine or delete the remaining legacy processing modules and CLI
    bootstrap code.
