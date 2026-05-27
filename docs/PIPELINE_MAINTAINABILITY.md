@@ -48,8 +48,7 @@ These are no longer open questions for the active pipeline:
    old v1 result path, even though some UI compatibility state still exists for
    manual item correction.
 6. New live echo raw sessions are built around `full.png` plus `meta.json`.
-   Separate `sonata.png` capture is now a compatibility concern, not part of
-   the primary live path.
+  The repository no longer preserves a separate sonata-only artifact.
 
 These decisions matter because they let future cleanup work target the real
 product surface instead of preserving branches we have already decided not to
@@ -97,8 +96,8 @@ The codebase has already been simplified in several important ways:
 - Live scan and reprocess now share one neutral helper module for level parsing,
   level-dependent sonata icon selection, and source-space normalization.
 - Root-level import shims are gone.
-- The active live echo raw path no longer depends on separate `sonata.png`
-  persistence.
+- The active live echo raw path no longer depends on any separately persisted
+  sonata-only artifact.
 
 That cleanup does not solve the deeper architecture problem yet, but it removes
 several dead surfaces that were obscuring it.
@@ -135,25 +134,22 @@ Cleanup direction:
 
 ### 2. The raw-session contract is split between the active v2 format and the legacy helper/model format
 
-The active live raw path and the older helper/model layer no longer describe the
-same thing.
+The active live raw path and the shared helper/model layer are now aligned.
 
 Current state:
 
 - `EchoWorkflow._save_raw()` writes `full.png` plus `meta.json`
-- `saveRawScan()` still writes `full.png` plus `sonata.png` plus `meta.json`
-- `RawEchoScan` still exposes `sonata_screenshot` and `sonata_path`
-- `loadRawScans()` supports optional `sonata.png`
-- `echoes_processor.py` still carries the old separate-sonata branch
+- `RawEchoScan` and `loadRawScans()` use that same format
+- `echoes_processor.py` derives sonata from icon matching on the full screenshot
 
-That means the repository is currently supporting both a new raw-session shape
-and an older one.
+That leaves one canonical raw-session shape in the codebase.
 
 Cleanup direction:
 
-- choose one canonical raw-session format for the active pipeline
-- keep old-format support behind a converter or explicit legacy loader if it is
-  still needed
+- keep `_save_raw()`, `RawEchoScan`, and `loadRawScans()` aligned around the
+  same format
+- if very old sessions still matter, recover them outside the main path with a
+  converter or one-off script
 
 ### 3. The image color-space contract is still implicit and inconsistent
 
@@ -306,8 +302,8 @@ format.
 
 1. Extract a shared single-echo capture builder and make live scan + reprocess
    call it without changing behavior.
-2. Choose one canonical raw-session format and align `_save_raw()`,
-   `saveRawScan()`, `RawEchoScan`, and `loadRawScans()` around it.
+2. Keep the canonical raw-session format aligned across `_save_raw()`,
+  `RawEchoScan`, and `loadRawScans()`.
 3. Normalize the image color-space contract at the `EchoCapture` boundary and
    add parity tests.
 4. Move shared helpers out of entry-point modules.
@@ -320,8 +316,8 @@ format.
 
 - Should offline reprocess reproduce the exact original capture state, or should
   it intentionally pick up future ROI and preprocessing improvements?
-- Do we still need first-class support for old raw sessions that contain
-  `sonata.png`, or should those be converted once and kept out of the main path?
+- If very old raw sessions still matter, should they be handled by an external
+  converter instead of the main path?
 - Do we want `OcrService` to remain echo-aware for name-recognition strategy, or
   should that policy move into a dedicated echo-name recognizer component?
 - Do the CLI modules still need direct-script execution support, or can the

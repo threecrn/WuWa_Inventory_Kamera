@@ -104,9 +104,11 @@ class Coordinates:
 # echoes
 #   page            ROI   — Item-count text region.
 #   start           ROI   — First grid cell.
-#   echoCard        ROI   — Echo card header (name + cost + element icon).#   echoName        ROI   — Echo name text line in the card header (turquoise text,
-#                           colour-filtered before OCR).#   sonata          ROI   — Sonata effect region (captured after scrolling).
-#   sonataIcon      ROI   — Sonata icon on the Echo portrait in the sonata region.
+#   echoCard        ROI   — Echo card header (name + cost + element icon).
+#   echoName        ROI   — Echo name text line in the card header (turquoise text,
+#                           colour-filtered before OCR).
+#   sonata          ROI   — Legacy full-panel sonata region kept for non-scan tooling.
+#   sonataIcon      ROI   — Sonata icon in the echo card header.
 #   mouseMovement   click — Position to hover the cursor before scrolling
 #                           the echo detail panel (ensures scroll targets
 #                           the correct pane).

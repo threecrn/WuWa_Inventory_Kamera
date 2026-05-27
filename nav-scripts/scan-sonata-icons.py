@@ -1,11 +1,11 @@
-# Navigates the entire echo list and captures only the sonata icon region of
-# each echo — no full screenshots, no OCR.  The output directory is ready for
-# the update_sonata_templates tool to consume directly.
+# Navigates the entire echo list and captures only the header sonata icon of
+# each echo. The output directory is ready for the update_sonata_templates
+# tool to consume directly.
 #
 # Output layout:
 #   <OUTPUT_DIR>/<session-id>/
-#     echo_0000/sonata.png
-#     echo_0001/sonata.png
+#     echo_0000/sonata_icon.png
+#     echo_0001/sonata_icon.png
 #     ...
 #
 # Usage:
@@ -23,13 +23,49 @@ TOTAL       = 24          # TODO: replace with read_count() once available
 
 # ── Script body — no changes needed below this line ──────────────────────────
 
+import sys
 from datetime import datetime
 from pathlib import Path
 
+import cv2
+
 _CELLS_PER_PAGE = 24
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'src'))
+
+from wuwa_inventory_kamera.game.screen_info import ScreenInfo
+from wuwa_inventory_kamera.scraping.ocr import get_backend, imageToString
+from wuwa_inventory_kamera.scraping.service.echo_capture_utils import (
+    decide_echo_level,
+    select_level_dependent_sonata_slot,
+)
+
+
+def _capture_sonata_icon(full_bgr, echoes_info, backend):
+    level_roi = echoes_info.level
+    level_crop = full_bgr[
+        int(level_roi.y) : int(level_roi.y + level_roi.h),
+        int(level_roi.x) : int(level_roi.x + level_roi.w),
+    ]
+    level_text = imageToString(
+        cv2.cvtColor(level_crop, cv2.COLOR_BGR2RGB),
+        allowedChars='0123456789',
+        backend=backend,
+    ).strip()
+    level_decision = decide_echo_level(level_text=level_text)
+    sonata_slot = select_level_dependent_sonata_slot(
+        echoes_info.sonataIcon,
+        two_digits=level_decision.two_digits,
+    )
+    icon_roi = sonata_slot.icon
+    return full_bgr[
+        int(icon_roi.y) : int(icon_roi.y + icon_roi.h),
+        int(icon_roi.x) : int(icon_roi.x + icon_roi.w),
+    ]
 
 session_id = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 out_dir    = Path(OUTPUT_DIR) / session_id
+backend = get_backend('rapidocr')
 
 print(f'scan-sonata-icons  session={session_id}')
 print(f'  sort   : {SORT_ORDER or "(unchanged)"}')
@@ -45,16 +81,12 @@ if SORT_ORDER:
 
 out_dir.mkdir(parents=True, exist_ok=True)
 
-# ── Sonata-icon pass ──────────────────────────────────────────────────────────
-# Mirror the scroll-reset pattern from scan-echoes.py: position to the first
-# item and toggle the sonata scroll twice in each direction so the UI is in a
-# known state before the loop begins.
+snap = snapshot()
+layout = ScreenInfo(snap.window.width, snap.window.height, snap.window.monitor)
+echoes_info = layout.echoes
+print(f'  screen : {snap.window.width}x{snap.window.height}')
 
-goto_index(0, scroll_wait=1.0)
-sonata_down()
-sonata_down()
-sonata_up()
-sonata_up()
+# ── Sonata-icon pass ──────────────────────────────────────────────────────────
 
 for idx in range(TOTAL):
     goto_index(idx, click_wait=0.1)
@@ -62,14 +94,13 @@ for idx in range(TOTAL):
     item_dir = out_dir / f'echo_{idx:04d}'
     item_dir.mkdir(parents=True, exist_ok=True)
 
-    # Scroll the detail panel so the sonata section is inside the ROI, then
-    # capture.  The goto_index at the end resets the panel scroll for the next
-    # item (avoids cumulative drift across a long list).
-    move(1600, 500)
-    scroll(-500.0, wait=1.0)
-    scroll(5.0, wait=0.5)
-    screenshot(roi='sonata', out=item_dir / 'sonata.png')
-    goto_index(idx, click_wait=0.0)
+    full = screenshot(roi='full', as_image=True)
+    if full is None:
+        print(f'\r  {idx + 1}/{TOTAL} (dry-run)', end='', flush=True)
+        continue
+
+    sonata_icon = _capture_sonata_icon(full, echoes_info, backend)
+    cv2.imwrite(str(item_dir / 'sonata_icon.png'), sonata_icon)
 
     pct = (idx + 1) / TOTAL * 100
     print(f'\r  {idx + 1}/{TOTAL} ({pct:.0f}%)', end='', flush=True)

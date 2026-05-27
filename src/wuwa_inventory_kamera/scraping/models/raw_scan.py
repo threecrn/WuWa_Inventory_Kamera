@@ -14,16 +14,15 @@ class RawEchoScan:
     No OCR has been performed at this point. This is the contract between the
     Scanner (Phase 1, game navigation) and the Processor (Phase 2, OCR + parsing).
 
-    Instances are persisted to disk by ``saveRawScan`` and reconstructed by
-    ``loadRawScans`` (both in ``scraping.utils.common``), so the Processor can be
-    run offline without the game.
+    Instances are reconstructed by ``loadRawScans`` in
+    ``scraping.utils.common`` from the persisted ``full.png`` + ``meta.json``
+    session format, so the Processor can be run offline without the game.
 
     Session folder layout
     ---------------------
     export/{session_id}/raw/
         echo_0000/
             full.png        <- full_screenshot (RGB)
-            sonata.png      <- sonata_screenshot (RGB)
             meta.json       <- all non-image fields (see meta())
         echo_0001/
             ...
@@ -52,15 +51,9 @@ class RawEchoScan:
     full_screenshot: np.ndarray | None = field(default=None, repr=False, compare=False)
     """Full game screenshot; None until load_images() is called."""
 
-    sonata_screenshot: np.ndarray | None = field(default=None, repr=False, compare=False)
-    """Sonata region crop; None until load_images() is called."""
-
     # --- disk paths (set by loadRawScans; None when images are held in-memory) ---
     full_path: Path | None = field(default=None, repr=False, compare=False)
-    """Absolute path to full.png written by saveRawScan()."""
-
-    sonata_path: Path | None = field(default=None, repr=False, compare=False)
-    """Absolute path to sonata.png written by saveRawScan()."""
+    """Absolute path to full.png written by the raw capture workflow."""
 
     # --- screen context (needed to reconstruct ScreenInfo in Phase 2) ---
     screen_width: int = 1920
@@ -74,7 +67,7 @@ class RawEchoScan:
 
     def load_images(self) -> None:
         """
-        Load ``full_screenshot`` and ``sonata_screenshot`` from disk.
+        Load ``full_screenshot`` from disk.
 
         Called by :func:`~scraping.processing.echoesProcessor._processRawScan`
         immediately before OCR is run.  Safe to call repeatedly — images that
@@ -93,24 +86,14 @@ class RawEchoScan:
                 raise FileNotFoundError(f"Scan {self.index}: could not read {self.full_path}")
             self.full_screenshot = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
 
-        if self.sonata_screenshot is None and self.sonata_path is not None:
-            bgr = cv2.imread(str(self.sonata_path))
-            if bgr is None:
-                raise FileNotFoundError(f"Scan {self.index}: could not read {self.sonata_path}")
-            self.sonata_screenshot = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-        # If sonata_path is None, sonata_screenshot stays None.
-        # The caller (_processRawScan / _run_service) will derive the sonata
-        # set from the full screenshot via icon matching.
-
     def release_images(self) -> None:
         """
         Drop in-memory image arrays to free RAM.
 
-        ``full_path`` and ``sonata_path`` remain set, so :meth:`load_images`
-        can reload them if needed.
+        ``full_path`` remains set, so :meth:`load_images` can reload it if
+        needed.
         """
         self.full_screenshot = None
-        self.sonata_screenshot = None
 
     def meta(self) -> dict:
         """Return all non-image fields as a JSON-serialisable dict."""

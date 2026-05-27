@@ -26,7 +26,6 @@ _setupRarityDetection — builds colour-tolerance bounds dict
 _RARITY_BOUNDS        — module-level constant produced by the above
 _getRarity            — colour-based rarity detection from an echo card image
 _extractStats         — OCR + parse stat names/values from the full screenshot
-_extractSonata        — OCR the pre-captured sonata image to a known set name
 _buildEcho            — fuzzy name match + final dict assembly
 _writeDebugCrops      — write intermediate crops to debug/ when DEBUG logging is on
 _processRawScan       — orchestrate helpers for one RawEchoScan
@@ -109,9 +108,6 @@ def _extractSonataFromIcon(
     """
     Identify the sonata set by matching the circular icon visible on the
     un-scrolled echo detail panel.
-
-    Used when ``RawEchoScan.sonata_screenshot`` is ``None`` (v2-workflow
-    sessions that only save ``full.png`` + ``meta.json``).
 
     Parameters
     ----------
@@ -216,51 +212,6 @@ def _extractStats(
     return extractor.execute(name_crop, value_crop, _cache, scan_index)
 
 
-def _extractSonata(
-    sonata_image: np.ndarray,
-    _cache: dict,
-    scan_index: int = 0,
-) -> tuple[str, str]:
-    """
-    Identify the sonata set name from the pre-captured sonata region image.
-
-    Unlike the original ``getSonata``, this function performs **no game
-    interaction** — the image was captured and scrolled during Phase 1.
-
-    Parameters
-    ----------
-    sonata_image:
-        The cropped sonata region stored in ``RawEchoScan.sonata_screenshot``.
-    _cache:
-        Shared OCR result cache keyed by image hash.
-    scan_index:
-        Echo scan index included in log messages.
-
-    Returns
-    -------
-    tuple[str, str]
-        ``(matched_name, raw_ocr_text)`` — the matched set name (or raw OCR text
-        when no known name matched) and the unfiltered OCR output for the debug
-        trace.
-    """
-    sonata_hash = hash(sonata_image.tobytes())
-    if sonata_hash in _cache:
-        return _cache[sonata_hash]
-
-    raw_text = imageToString(sonata_image, '', bannedChars=' ').lower()
-    for name in sonataName:
-        if name in raw_text:
-            result: tuple[str, str] = (name, raw_text)
-            _cache[sonata_hash] = result
-            logger.debug("Scan %d — sonata matched: %r → %r", scan_index, raw_text, name)
-            return result
-
-    logger.debug("Scan %d — sonata unmatched — raw OCR: %r", scan_index, raw_text)
-    result = (raw_text, raw_text)
-    _cache[sonata_hash] = result
-    return result
-
-
 def _buildEcho(
     name: str,
     level: int,
@@ -336,7 +287,6 @@ def _writeDebugCrops(
     stats_name_bw.png    — the stat names panel crop (B&W, as seen by OCR)
     stats_value.png      — the stat values panel crop (colour)
     stats_value_bw.png   — the stat values panel crop (B&W, as seen by OCR)
-    sonata.png           — the pre-captured sonata region (colour)
     """
     debug_dir.mkdir(parents=True, exist_ok=True)
 
@@ -372,8 +322,6 @@ def _writeDebugCrops(
     cv2.imwrite(str(debug_dir / "stats_name_bw.png"),   convertToBlackWhite(name_crop))
     cv2.imwrite(str(debug_dir / "stats_value.png"),     cv2.cvtColor(value_crop,             cv2.COLOR_RGB2BGR))
     cv2.imwrite(str(debug_dir / "stats_value_bw.png"),  convertToBlackWhite(value_crop))
-    if scan.sonata_screenshot is not None:
-        cv2.imwrite(str(debug_dir / "sonata.png"),      cv2.cvtColor(scan.sonata_screenshot, cv2.COLOR_RGB2BGR))
 
     if ocr_data is not None:
         with open(debug_dir / "ocr.json", 'w', encoding='utf-8') as fh:
@@ -401,7 +349,7 @@ def _processRawScan(
     Mirrors the logic of the original ``processGridEcho`` but:
 
     * Accepts a ``RawEchoScan`` instead of a raw ``np.ndarray`` + controller.
-    * Uses ``scan.sonata_screenshot`` directly — no game scrolling needed.
+    * Resolves sonata from the header icon inside ``scan.full_screenshot``.
     * Never signals early-stop (the processor always iterates all scans).
     * Writes debug crops on any rejection path when DEBUG logging is active.
 
@@ -543,20 +491,14 @@ def _processRawScan(
         # --- Stats + sonata ---
         tune_lv, stats, stats_trace = _extractStats(image, screenInfo, _cache, scan.index, extractor=extractor)
 
-        if scan.sonata_screenshot is not None:
-            # Legacy path: sonata.png was captured separately (old scanner
-            # with scroll-down).
-            sonata, sonata_raw = _extractSonata(scan.sonata_screenshot, _cache, scan.index)
-        else:
-            # v2-workflow path: only full.png is available; use icon matching.
-            sonata = _extractSonataFromIcon(image, screenInfo.echoes, scan.index, level)
-            sonata_raw = sonata or ''
+        sonata = _extractSonataFromIcon(image, screenInfo.echoes, scan.index, level)
+        sonata_raw = sonata or ''
 
         if sonata not in sonataName:
             logger.warning(
-                "Scan %d — sonata OCR failed: no known set name found in %r | image: %s",
+                "Scan %d — sonata icon matching failed: no known set name found in %r | image: %s",
                 scan.index, sonata_raw[:120],
-                raw_base / f"echo_{scan.index:04d}" / "sonata.png",
+                raw_base / f"echo_{scan.index:04d}" / "full.png",
             )
             if write_debug:
                 ocr_trace['sonata'] = {'raw_ocr': sonata_raw, 'matched': None}

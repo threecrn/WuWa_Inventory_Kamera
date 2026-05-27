@@ -46,8 +46,8 @@ scraping/
     echoesScraper.py            ← becomes thin orchestrator (scanner → processor)
     scraperManager.py           ← unchanged
     utils/
-        __init__.py             ← export saveRawScan / loadRawScans
-        common.py               ← add saveRawScan / loadRawScans helpers
+        __init__.py             ← export loadRawScans
+        common.py               ← add loadRawScans helper
         mouse_keyboard.py       ← unchanged
 ```
 
@@ -58,7 +58,6 @@ Under `export/{session_id}/raw/`:
 ```
 echo_0000/
     full.png        ← full screenshot at the moment this echo was selected
-    sonata.png      ← cropped sonata region (captured after scroll-to-sonata)
     meta.json       ← { session_id, index, page, row, col,
                          screen_width, screen_height, monitor }
 echo_0001/
@@ -89,34 +88,25 @@ A `@dataclass` holding all data captured per echo *before* any OCR. This is the
 | `row` | `int` | Grid row (0-based) |
 | `col` | `int` | Grid column (0-based) |
 | `full_screenshot` | `np.ndarray` | Full screen when echo is selected |
-| `sonata_screenshot` | `np.ndarray` | Sonata region crop (after scroll) |
 | `screen_width` | `int` | Game window width (for `ScreenInfo` reconstruction) |
 | `screen_height` | `int` | Game window height |
 | `monitor` | `int` | Monitor index |
 
 ---
 
-### ✅ Step 2 — Add session save / load helpers
+### ✅ Step 2 — Add session load helper
 
 **File:** `scraping/utils/common.py`
 
-Two new public helpers:
-
-#### `saveRawScan(scan: RawEchoScan, base_path: Path) -> Path`
-
-Writes to `{base_path}/echo_{index:04d}/`:
-- `full.png` — lossless PNG of the full screenshot (RGB → BGR for `cv2.imwrite`)
-- `sonata.png` — lossless PNG of the sonata crop
-- `meta.json` — all non-image fields from `scan.meta()`
-
-Returns the echo directory path for logging purposes.
+Raw echo persistence is handled by the live workflow's local `_save_raw()`
+helper. The shared helper surface here is the loader.
 
 #### `loadRawScans(base_path: Path) -> list[RawEchoScan]`
 
 Reads all `echo_XXXX/` directories under `base_path` in sorted order.
-For each directory: loads `meta.json`, reads both PNGs (`cv2.imread` BGR → RGB),
-and reconstructs a `RawEchoScan`. Directories with missing files are skipped with
-a warning log.
+For each directory: loads `meta.json`, records the `full.png` path, and
+reconstructs a `RawEchoScan`. Directories with missing files are skipped with a
+warning log.
 
 ---
 
@@ -139,10 +129,9 @@ def echoScanner(
 Loop body (per echo cell):
 1. `controller.leftClick(center_x, center_y)`
 2. `full = screenshot(width=..., height=..., monitor=...)` — full screen
-3. `controller.moveMouse(...); controller.mouseScroll(-scroll_y)` — scroll to sonata
-4. `sonata_img = screenshot(sonata_roi)` — sonata crop
-5. `controller.mouseScroll(+scroll_y)` — scroll back
-6. Build `RawEchoScan`, call `saveRawScan(scan, raw_base)`, append to list
+3. Build `RawEchoScan` metadata
+4. Persist `full.png` plus `meta.json` into the raw session directory
+5. Append to the scan list
 
 **No `imageToString`, no `convertToBlackWhite`, no `echoesID` lookups here.**
 

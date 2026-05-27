@@ -15,9 +15,7 @@
 
 ### High
 
-- [ ] Align raw echo session persistence around one canonical format.
-  - [ ] Decide whether legacy raw sessions with `sonata.png` still need first-class support.
-  - [ ] Either remove `sonata.png` from the active path or quarantine it behind an explicit legacy loader/converter.
+- [x] Align raw echo session persistence around one canonical format.
 
 ### Medium
 

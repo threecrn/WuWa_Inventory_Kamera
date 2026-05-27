@@ -57,25 +57,20 @@ itself.
 
 ## H-1: Align raw echo session persistence around one canonical format
 
-The active live echo workflow and the older helper/model layer now describe two
-different raw-session shapes.
+The active live echo workflow, the shared raw-scan model, and the offline
+load/reprocess path now all describe the same raw-session shape.
 
 ### Current state
 - `EchoWorkflow._save_raw()` writes `full.png` plus `meta.json`.
-- `saveRawScan()` in `scraping/utils/common.py` still writes `full.png` plus
-  `sonata.png` plus `meta.json`.
-- `RawEchoScan` still carries `sonata_screenshot` and `sonata_path`.
-- `loadRawScans()` accepts optional `sonata.png`.
-- `scraping/processing/echoes_processor.py` still contains the old separate
-  `sonata.png` branch.
-- `saveRawScan()` currently has no active call sites in the live v2 path.
+- `loadRawScans()` reconstructs that same format.
+- `RawEchoScan` carries only the full-frame persistence state needed for
+  replay.
+- `scraping/processing/echoes_processor.py` now derives sonata from icon
+  matching on the full screenshot.
 
-### Plan
-1. Decide whether old raw sessions containing `sonata.png` still need first-class support.
-2. If not, remove `saveRawScan()`, `sonata_screenshot`, `sonata_path`, and the
-   old separate-sonata branch.
-3. If yes, keep that support behind an explicit legacy loader or one-time
-   converter so the active pipeline contract remains `full.png` plus `meta.json`.
+### Follow-up
+If very old raw sessions still matter, handle them with a one-off converter or
+external recovery script instead of reintroducing main-path compatibility.
 
 ---
 
@@ -83,20 +78,9 @@ different raw-session shapes.
 
 **File:** `src/.../scraping/processing/echoes_processor.py`
 
-```python
-if scan.sonata_screenshot is not None:
-    sonata, sonata_raw = _extractSonata(scan.sonata_screenshot, ...)
-else:
-    sonata = _extractSonataFromIcon(image, ...)
-```
-
-The `else` branch is the v2 icon-matching path. The `if` branch only exists for
-old raw-scan directories that contain `sonata.png`.
-
-### Plan
-Resolve H-1 first. If old `sonata.png` sessions are no longer supported in the
-main path, remove this branch, `_extractSonata`, and the related compatibility
-fields from `RawEchoScan`.
+The processor now resolves sonata exclusively from the header icon in the full
+capture. The old compatibility branch and its raw-session fields have been
+removed.
 
 ---
 

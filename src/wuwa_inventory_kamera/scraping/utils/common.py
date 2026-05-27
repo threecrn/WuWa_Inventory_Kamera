@@ -132,56 +132,12 @@ def copyToClipboard(text):
 _raw_logger = _logger  # alias — same module logger used by imageToString
 
 
-def saveRawScan(scan, base_path: Path) -> Path:
-    """
-    Persist a ``RawEchoScan`` to disk.
-
-    Creates the following structure under *base_path*::
-
-        echo_{index:04d}/
-            full.png        <- lossless PNG of scan.full_screenshot (RGB→BGR)
-            sonata.png      <- lossless PNG of scan.sonata_screenshot (RGB→BGR)
-            meta.json       <- scan.meta() as JSON
-
-    Parameters
-    ----------
-    scan:
-        A ``RawEchoScan`` instance (type-hinted as ``Any`` to avoid a
-        top-level circular import; the actual type is
-        ``scraping.models.rawScan.RawEchoScan``).
-    base_path:
-        Root directory for the session's raw scans, e.g.
-        ``export/{session_id}/raw``.
-
-    Returns
-    -------
-    Path
-        The echo-specific sub-directory that was created, e.g.
-        ``export/{session_id}/raw/echo_0042``.
-    """
-    echo_dir: Path = Path(base_path) / f"echo_{scan.index:04d}"
-    echo_dir.mkdir(parents=True, exist_ok=True)
-
-    # Screenshots are stored as RGB in-memory; cv2.imwrite expects BGR.
-    cv2.imwrite(str(echo_dir / "full.png"),
-                cv2.cvtColor(scan.full_screenshot, cv2.COLOR_RGB2BGR))
-    cv2.imwrite(str(echo_dir / "sonata.png"),
-                cv2.cvtColor(scan.sonata_screenshot, cv2.COLOR_RGB2BGR))
-
-    with open(echo_dir / "meta.json", 'w', encoding='utf-8') as f:
-        json.dump(scan.meta(), f, indent=2)
-
-    _raw_logger.debug("Saved raw scan %d → %s", scan.index, echo_dir)
-    return echo_dir
-
-
 def _load_raw_scans(base_path: Path, *, directory_glob: str) -> list:
     """
     Reconstruct raw scan records from directories matching *directory_glob*.
 
     The on-disk contract is shared by echo and weapon raw sessions: each scan
-    directory contains ``full.png`` plus ``meta.json``, while extra images such
-    as ``sonata.png`` remain optional.
+    directory contains ``full.png`` plus ``meta.json``.
     """
     from ..models.raw_scan import RawEchoScan  # local import — avoids circular deps
 
@@ -197,7 +153,6 @@ def _load_raw_scans(base_path: Path, *, directory_glob: str) -> list:
     for scan_dir in sorted(base_path.glob(directory_glob)):
         meta_path   = scan_dir / "meta.json"
         full_path   = scan_dir / "full.png"
-        sonata_path = scan_dir / "sonata.png"
 
         if not (meta_path.exists() and full_path.exists()):
             _raw_logger.warning(
@@ -211,8 +166,6 @@ def _load_raw_scans(base_path: Path, *, directory_glob: str) -> list:
             )
             continue
 
-        optional_sonata_path = sonata_path if sonata_path.exists() else None
-
         with open(meta_path, 'r', encoding='utf-8') as f:
             meta = json.load(f)
 
@@ -223,7 +176,6 @@ def _load_raw_scans(base_path: Path, *, directory_glob: str) -> list:
             row=meta['row'],
             col=meta['col'],
             full_path=full_path,
-            sonata_path=optional_sonata_path,
             screen_width=meta.get('screen_width', _session_manifest.get('screen_width', 1920)),
             screen_height=meta.get('screen_height', _session_manifest.get('screen_height', 1080)),
             monitor=meta.get('monitor', _session_manifest.get('monitor', 1)),
@@ -236,13 +188,11 @@ def _load_raw_scans(base_path: Path, *, directory_glob: str) -> list:
 def loadRawScans(base_path: Path) -> list:
     """
     Reconstruct all ``RawEchoScan`` objects previously saved by
-    :func:`saveRawScan`.
+    the raw echo capture workflow.
 
     Scans directories named ``echo_XXXX/`` under *base_path* in sorted order.
     Directories that are missing ``full.png`` or ``meta.json`` are skipped
-    with a warning.  ``sonata.png`` is optional — new-format sessions
-    captured by the v2 workflow (``echo_workflow.py``) omit it and rely on
-    icon matching during reprocessing.
+    with a warning.
 
     Parameters
     ----------

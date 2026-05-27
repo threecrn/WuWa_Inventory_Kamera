@@ -360,7 +360,7 @@ def rebuild_templates_from_crops(
     Build median templates from pre-cropped sonata icon images.
 
     Expects directories named ``echo_NNNN/`` inside *crops_dir*, each
-    containing a ``sonata.png`` that is already cropped to the icon region
+    containing a ``sonata_icon.png`` that is already cropped to the icon region
     (as produced by the ``scan-sonata-icons`` nav-script).
 
     Labels are resolved in this order:
@@ -389,7 +389,7 @@ def rebuild_templates_from_crops(
     for echo_dir in sorted(crops_dir.iterdir()):
         if not echo_dir.is_dir() or not echo_dir.name.startswith("echo_"):
             continue
-        crop_path = echo_dir / "sonata.png"
+        crop_path = echo_dir / "sonata_icon.png"
         if not crop_path.exists():
             continue
 
@@ -431,7 +431,7 @@ def rebuild_templates_from_crops(
         log.warning("%d crop(s) skipped: %s", len(skipped), ", ".join(skipped))
 
     if not crops_by_sonata:
-        log.error("No usable sonata.png files found in %s", crops_dir)
+        log.error("No usable sonata_icon.png files found in %s", crops_dir)
         return [], 0
 
     return write_templates(crops_by_sonata)
@@ -566,7 +566,7 @@ def main() -> None:
     update_p.add_argument(
         "--crop-dir",
         metavar="PATH",
-        help="Directory with echo_NNNN/sonata.png pre-cropped icon images "
+        help="Directory with echo_NNNN/sonata_icon.png pre-cropped icon images "
         "(as produced by the scan-sonata-icons nav-script). "
         "Labels come from debug/ocr.json when present, otherwise "
         "auto-matched against wiki icons.",

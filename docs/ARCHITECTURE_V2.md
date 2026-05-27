@@ -952,7 +952,9 @@ key = matcher.match_to_sonata_key(icon_bgr, sonata_names, cx=cx, cy=cy, r=r)
 
 Accuracy on a 964-echo reference session: 963/964 (99.9%).
 
-The one failure was actually a mislabelled ground truth. The labelling had been done via scroll + OCR text match, but the sonata area had still shown the previous echo. The matcher identified the correct sonata by the icon, but the ground truth was wrong due to the scroll step's fragility.
+The one failure was actually a mislabelled ground truth. An older manual
+labelling workflow had associated the wrong sonata with that echo, while the
+matcher correctly identified the icon that was present on the card.
 
 ### ROI coordinates
 

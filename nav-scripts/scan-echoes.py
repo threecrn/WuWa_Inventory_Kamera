@@ -6,7 +6,6 @@
 #
 #   <output-dir>/<session-id>/raw/
 #     echo_0000/full.png      ← full screenshot (stats panel, before scroll)
-#     echo_0000/sonata.png    ← sonata ROI crop (captured while scrolled down)
 #     echo_0000/meta.json     ← grid position metadata
 #     echo_0001/ ...
 #
@@ -93,16 +92,11 @@ saved: list[dict] = []
 batch=0
 batch_size=24
 
-# per batch:
-# 1. run with full screenshot for echo data / stats (fast because no scrolling inside the echo section)
-# 2. run with sonata screenshot for sonata data (slower because we scroll each echo to get the sonata section into the ROI)
 while batch*batch_size < total:
-
     goto_index(batch*batch_size)  # ensure we're at the start of the list before beginning
-    sonata_down()  # ensure sonata section is scrolled into view for the first item
-    sonata_down()  # echoes tab needs an extra scroll to get the first item fully into the sonata ROI
 
-    for idx in range(batch*batch_size, (batch+1)*batch_size): # range(total):
+    batch_end = min(total, (batch + 1) * batch_size)
+    for idx in range(batch*batch_size, batch_end):
         goto_index(idx, scroll_wait=0.5, click_wait=0.1)  # add waits to ensure UI has time to update before screenshots
 
         page, row, col = _grid_pos(idx)
@@ -112,11 +106,6 @@ while batch*batch_size < total:
 
         # Full screenshot with the stats panel visible (before any scroll).
         screenshot(roi='full', out=item_dir / 'full.png')
-
-        # Sonata section: scroll into view, capture the ROI crop, scroll back.
-        #sonata_down()
-        #screenshot(roi='sonata', out=item_dir / 'sonata.png')
-        #sonata_up()
 
         # Metadata consumed by wuwa-reprocess
         meta = {
@@ -135,7 +124,6 @@ while batch*batch_size < total:
 
         files = [
             str(item_dir / 'full.png'),
-            #str(item_dir / 'sonata.png'),
         ]
 
         saved.append({
@@ -150,25 +138,6 @@ while batch*batch_size < total:
         print(f'\r  {idx + 1}/{total} ({pct:.0f}%)', end='', flush=True)
 
     print()  # newline after progress line
-
-    goto_index(batch*batch_size, scroll_wait=1.0)  # ensure we're at the start of the list before beginning
-    sonata_down()  # ensure sonata section is scrolled into view for the first item
-    sonata_down()  # echoes tab needs an extra scroll to get the first item fully into the sonata ROI
-    sonata_up()
-    sonata_up()
-
-    for idx in range(batch*batch_size, (batch+1)*batch_size): # range(total):
-        goto_index(idx, click_wait=0.1)  # add waits to ensure UI has time to update before screenshots
-
-        page, row, col = _grid_pos(idx)
-
-        item_dir = out_dir / f'echo_{idx:04d}'
-        item_dir.mkdir(parents=True, exist_ok=True)
-
-        move(1600, 500); scroll(-500.0, wait=1.0); scroll(5.0, wait=0.5)
-        #sonata_up()
-        screenshot(roi='sonata', out=item_dir / 'sonata.png')
-        goto_index(idx, click_wait=0.0)
 
     batch += 1
 

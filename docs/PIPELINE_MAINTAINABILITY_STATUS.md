@@ -64,9 +64,8 @@ The important current facts are:
    mostly under `scraping/processing/`, `scraping/utils/common.py`,
    `scraping/models/raw_scan.py`, and a few UI/CLI compatibility hooks.
 7. New live echo raw sessions use the simpler v2 format.
-   `EchoWorkflow._save_raw()` writes `full.png` and `meta.json`; `sonata.png`
-   is still supported only as a compatibility artifact for older raw sessions
-   and the legacy processor.
+  `EchoWorkflow._save_raw()` and `loadRawScans()` both use `full.png` plus
+  `meta.json`, with sonata resolved from icon matching on the full frame.
 
 ## Current Echo Pipeline Shape
 
@@ -87,8 +86,7 @@ There are still two active ways to create an `EchoCapture`:
    loads `RawEchoScan` sessions through `loadRawScans()`, and
    [src/wuwa_inventory_kamera/scraping/service/echo_reprocess.py](src/wuwa_inventory_kamera/scraping/service/echo_reprocess.py)
    rebuilds the crops from `full.png` before submitting the same
-   `EchoCapture` type. `loadRawScans()` still accepts optional `sonata.png`
-   for older sessions.
+  `EchoCapture` type.
 
 ### 2. OCR service
 
@@ -157,11 +155,12 @@ packages. Active callers now import `wuwa_inventory_kamera.*` directly.
 `ScreenInfo` and the ROI table only keep the exact supported layouts.
 Nearest-resolution fallback is gone.
 
-### New raw echo sessions no longer depend on `sonata.png`
+### Raw echo sessions now use one canonical format
 
-The live echo workflow writes `full.png` and `meta.json` only.
-`sonata.png` remains a compatibility concern for older sessions and the legacy
-processing path, not the active scan path.
+The live echo workflow writes `full.png` and `meta.json` only, and
+`loadRawScans()` reconstructs that same format. Sonata is derived from the
+header icon on the saved full frame rather than from a separately persisted
+crop.
 
 ### Focused regression tests now exist for the most drift-prone helper seams
 
@@ -254,22 +253,20 @@ Cleanup direction:
 - move shared rarity and debug-artifact helpers into a neutral module alongside
   the existing capture helpers
 
-### 5. Raw-session compatibility still has two competing shapes
+### 5. Raw-session contract is now unified
 
-The active live echo workflow writes one raw-session format, but the legacy
-helper/model layer still describes another.
+The active live echo workflow, `RawEchoScan`, `loadRawScans()`, and the legacy
+processor now all describe the same raw-session contract.
 
 Current state:
 
 - `EchoWorkflow._save_raw()` writes `full.png` plus `meta.json`
-- `saveRawScan()` still writes `full.png` plus `sonata.png` plus `meta.json`
-- `RawEchoScan` still has `sonata_screenshot` and `sonata_path`
-- `loadRawScans()` accepts optional `sonata.png`
-- `scraping/processing/echoes_processor.py` still contains the old separate
-  `sonata.png` branch
+- `RawEchoScan` persists and reloads only the full-frame capture plus metadata
+- `loadRawScans()` reconstructs that format directly
+- `scraping/processing/echoes_processor.py` derives sonata from the header icon
+  inside the full screenshot
 
-That is more precise than the older "full.png replay" concern: the codebase is
-currently supporting both a new raw-session contract and an older one.
+That removes the older competing raw-session shape from the main codebase.
 
 Cleanup direction:
 

@@ -1,6 +1,6 @@
-# Navigates the entire echo list, captures each sonata icon into a temporary
-# directory, auto-matches it against known wiki icons, and writes the resulting
-# median detection templates directly — no permanent icon files are kept.
+# Navigates the entire echo list, captures each header sonata icon,
+# auto-matches it against known wiki icons, and writes the resulting median
+# detection templates directly — no temporary on-disk icon crops are kept.
 #
 # Requires wiki icons to already be present in assets/IconS/.  If any are
 # missing, run first:
@@ -18,7 +18,6 @@ MIN_MATCH_SCORE = 0.50      # discard crops whose auto-match confidence is below
 # ── Script body — no changes needed below this line ──────────────────────────
 
 import sys
-import tempfile
 from collections import defaultdict
 from pathlib import Path
 
@@ -26,8 +25,39 @@ import cv2
 
 # Bootstrap: load template-building helpers from the tool directory.
 _REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_REPO_ROOT / 'src'))
 sys.path.insert(0, str(_REPO_ROOT / 'tools' / 'update_sonata_templates'))
 import main as _ust  # noqa: E402 (late import after path manipulation)
+
+from wuwa_inventory_kamera.game.screen_info import ScreenInfo
+from wuwa_inventory_kamera.scraping.ocr import get_backend, imageToString
+from wuwa_inventory_kamera.scraping.service.echo_capture_utils import (
+    decide_echo_level,
+    select_level_dependent_sonata_slot,
+)
+
+
+def _capture_sonata_icon(full_bgr, echoes_info, backend):
+    level_roi = echoes_info.level
+    level_crop = full_bgr[
+        int(level_roi.y) : int(level_roi.y + level_roi.h),
+        int(level_roi.x) : int(level_roi.x + level_roi.w),
+    ]
+    level_text = imageToString(
+        cv2.cvtColor(level_crop, cv2.COLOR_BGR2RGB),
+        allowedChars='0123456789',
+        backend=backend,
+    ).strip()
+    level_decision = decide_echo_level(level_text=level_text)
+    sonata_slot = select_level_dependent_sonata_slot(
+        echoes_info.sonataIcon,
+        two_digits=level_decision.two_digits,
+    )
+    icon_roi = sonata_slot.icon
+    return full_bgr[
+        int(icon_roi.y) : int(icon_roi.y + icon_roi.h),
+        int(icon_roi.x) : int(icon_roi.x + icon_roi.w),
+    ]
 
 # ── Pre-flight: ensure wiki icons are available ───────────────────────────────
 
@@ -52,37 +82,27 @@ switch_tab('echoes')
 if SORT_ORDER:
     set_sort(SORT_ORDER)
 
+snap = snapshot()
+layout = ScreenInfo(snap.window.width, snap.window.height, snap.window.monitor)
+echoes_info = layout.echoes
+backend = get_backend('rapidocr')
+print(f'  screen            : {snap.window.width}x{snap.window.height}')
+
 # ── Capture and match loop ────────────────────────────────────────────────────
 
 _crops_by_sonata: dict[str, list] = defaultdict(list)
 _skipped = 0
 
-# Use a single temp directory for intermediate screenshots (cleaned up at end).
-_tmp_dir = Path(tempfile.mkdtemp(prefix='wuwa_sonata_'))
-_tmp_png  = _tmp_dir / 'sonata_tmp.png'
-
-# Reset UI scroll state before the loop (matches scan-echoes.py pattern).
-goto_index(0, scroll_wait=1.0)
-sonata_down()
-sonata_down()
-sonata_up()
-sonata_up()
-
 for idx in range(TOTAL):
     goto_index(idx, click_wait=0.1)
 
-    # Scroll detail panel to sonata section, capture, then reset.
-    move(1600, 500)
-    scroll(-500.0, wait=1.0)
-    scroll(5.0, wait=0.5)
-    screenshot(roi='sonata', out=_tmp_png)
-    goto_index(idx, click_wait=0.0)
-
-    crop = cv2.imread(str(_tmp_png), cv2.IMREAD_COLOR)
-    if crop is None:
-        print(f'  echo_{idx:04d}: could not read screenshot — skipping')
+    full = screenshot(roi='full', as_image=True)
+    if full is None:
+        print(f'  echo_{idx:04d}: dry-run capture — skipping')
         _skipped += 1
         continue
+
+    crop = _capture_sonata_icon(full, echoes_info, backend)
 
     key, score = _ust.match_sonata_crop(crop, _wiki_icons)
     if score < MIN_MATCH_SCORE:
@@ -96,10 +116,6 @@ for idx in range(TOTAL):
     print(f'\r  {idx + 1}/{TOTAL} ({pct:.0f}%)  last: {key} ({score:.2f})', end='', flush=True)
 
 print()  # newline after progress
-
-# Clean up temp files.
-_tmp_png.unlink(missing_ok=True)
-_tmp_dir.rmdir()
 
 close_inventory()
 
