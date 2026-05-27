@@ -120,7 +120,7 @@ class OcrCache:
 
         # 2. Persistent tier
         if spec.cache_mode == "persistent" and self._conn is not None:
-            row = self._sqlite_lookup(spec.roi_key, key)
+            row = self._sqlite_lookup(spec.roi_key, key, spec.spec_version)
             if row is not None:
                 result = self._deserialize(row)
                 # Promote to transient for same-session re-hits
@@ -306,7 +306,7 @@ class OcrCache:
 
         # Persistent
         if spec.cache_mode == "persistent" and self._conn is not None:
-            row = self._sqlite_lookup(spec.roi_key, key)
+            row = self._sqlite_lookup(spec.roi_key, key, spec.spec_version)
             if row is not None:
                 result = self._deserialize(row)
                 self._transient_store(spec.roi_key, key, result)
@@ -322,13 +322,16 @@ class OcrCache:
             bucket = self._transient.setdefault(roi_key, {})
             bucket[key] = result
 
-    def _sqlite_lookup(self, roi_key: str, key: str) -> str | None:
+    def _sqlite_lookup(self, roi_key: str, key: str, spec_version: str) -> str | None:
         with self._db_lock:
             row = self._conn.execute(  # type: ignore[union-attr]
-                "SELECT payload FROM ocr_cache WHERE roi_key = ? AND cache_key = ?",
+                "SELECT payload, spec_version FROM ocr_cache WHERE roi_key = ? AND cache_key = ?",
                 (roi_key, key),
             ).fetchone()
             if row is not None:
+                payload, cached_spec_version = row
+                if (cached_spec_version or "") != spec_version:
+                    return None
                 now = int(time.time())
                 self._conn.execute(  # type: ignore[union-attr]
                     """
@@ -339,7 +342,7 @@ class OcrCache:
                     (now, roi_key, key),
                 )
                 self._conn.commit()  # type: ignore[union-attr]
-                return row[0]
+                return payload
         return None
 
     def _sqlite_store(

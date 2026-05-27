@@ -465,3 +465,39 @@ def test_ocr_cache_round_trip_with_region_spec(tmp_path: Path) -> None:
     assert cached[0][0] == "ATK"
     assert cached[0][1] == 0.95
     np.testing.assert_array_equal(cached[0][2], expected[0][2])
+
+
+def test_ocr_cache_misses_when_spec_version_changes(tmp_path: Path) -> None:
+    old_spec = OcrRegionSpec(
+        roi_key="echoes.fullStatsValue",
+        threshold_mode="floor",
+        floor_value=100,
+        cache_mode="persistent",
+        spec_version="cache-test-v1",
+    )
+    new_spec = OcrRegionSpec(
+        roi_key="echoes.fullStatsValue",
+        threshold_mode="floor",
+        floor_value=100,
+        cache_mode="persistent",
+        spec_version="cache-test-v2",
+    )
+    image = np.zeros((16, 16, 3), dtype=np.uint8)
+    image[4:12, 4:12] = 255
+    old_result = [("ATK", 0.95, _bbox())]
+    new_result = [("HP", 0.91, _bbox())]
+
+    cache = OcrCache(tmp_path / "ocr-cache.sqlite3")
+    try:
+        cache.store(old_spec, image, old_result)
+        assert cache.lookup(new_spec, image) is None
+
+        cache.store(new_spec, image, new_result)
+        cached = cache.lookup(new_spec, image)
+    finally:
+        cache.close()
+
+    assert cached is not None
+    assert cached[0][0] == "HP"
+    assert cached[0][1] == 0.91
+    np.testing.assert_array_equal(cached[0][2], new_result[0][2])
