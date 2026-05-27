@@ -17,7 +17,7 @@ The inspection for this pass focused on:
 - [src/wuwa_inventory_kamera/scraping/models/raw_scan.py](src/wuwa_inventory_kamera/scraping/models/raw_scan.py)
 - [src/wuwa_inventory_kamera/scraping/utils/common.py](src/wuwa_inventory_kamera/scraping/utils/common.py)
 - [src/wuwa_inventory_kamera/scraping/processing/echoes_processor.py](src/wuwa_inventory_kamera/scraping/processing/echoes_processor.py)
-- [src/wuwa_inventory_kamera/scraping/processing/echoesValidator.py](src/wuwa_inventory_kamera/scraping/processing/echoesValidator.py)
+- [src/wuwa_inventory_kamera/scraping/service/echo_validation.py](src/wuwa_inventory_kamera/scraping/service/echo_validation.py)
 - [src/wuwa_inventory_kamera/scraping/ocr/region_specs.py](src/wuwa_inventory_kamera/scraping/ocr/region_specs.py)
 - [src/wuwa_inventory_kamera/config/app_config.py](src/wuwa_inventory_kamera/config/app_config.py)
 - [src/wuwa_inventory_kamera/ui/home.py](src/wuwa_inventory_kamera/ui/home.py)
@@ -196,7 +196,7 @@ That module now owns:
 - pixel-rarity helpers used by echo/weapon live scan and raw-session reprocess
 - shared crop-debug writers for region-level and echo-level OCR artifacts
 
-### 6. The boundary between capture preparation, OCR orchestration, and assembly is still soft
+### 6. Echo validation now has a clear service-layer owner
 
 `EchoCapture` currently carries a mix of:
 
@@ -208,7 +208,8 @@ That module now owns:
 Meanwhile:
 
 - `OcrService` contains echo-specific recognition policy for the name crop
-- `EchoAssembler` still reaches back into older modules for validators
+- `EchoAssembler` now uses the service-owned `echo_validation.py` module
+- `scraping/processing/echoesValidator.py` remains only as a compatibility wrapper for older imports
 
 Cleanup direction:
 
@@ -216,6 +217,7 @@ Cleanup direction:
   1. capture preparation: full frame -> canonical prepared echo capture
   2. OCR execution: prepared capture -> OCR tokens by region
   3. assembly and validation: OCR tokens + derived metadata -> `EchoResult`
+- delete the compatibility wrapper once the remaining legacy imports disappear
 
 ### 7. Legacy state and compatibility hooks still remain active in the package
 
@@ -241,7 +243,7 @@ some legacy code remains in the tree:
 
 - [src/wuwa_inventory_kamera/scraping/processing/echoes_processor.py](src/wuwa_inventory_kamera/scraping/processing/echoes_processor.py)
 - [src/wuwa_inventory_kamera/scraping/processing/stats_extractor.py](src/wuwa_inventory_kamera/scraping/processing/stats_extractor.py)
-- [src/wuwa_inventory_kamera/scraping/processing/echoesValidator.py](src/wuwa_inventory_kamera/scraping/processing/echoesValidator.py)
+- [src/wuwa_inventory_kamera/scraping/processing/echoesValidator.py](src/wuwa_inventory_kamera/scraping/processing/echoesValidator.py) compatibility wrapper
 - older raw-scan helper code in [src/wuwa_inventory_kamera/scraping/utils/common.py](src/wuwa_inventory_kamera/scraping/utils/common.py)
 
 Cleanup direction:
@@ -295,8 +297,9 @@ format.
   both live-scan and raw-session assembly paths.
 2. Normalize the image color-space contract at the `EchoCapture` boundary and
   extend parity coverage beyond crop construction.
-3. Clarify ownership of validator logic still imported by `EchoAssembler` from
-  legacy processing modules.
+3. Done: validator logic now lives under `scraping/service/echo_validation.py`;
+  keep `scraping/processing/echoesValidator.py` only as a compatibility wrapper
+  until the remaining legacy imports are gone.
 4. Replace mutable globals and legacy persistence helpers with explicit session
    results.
 5. Quarantine or delete the remaining legacy processing modules and CLI

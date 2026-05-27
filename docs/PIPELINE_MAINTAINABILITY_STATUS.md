@@ -266,18 +266,19 @@ Cleanup direction:
 - either convert older sessions at the boundary or quarantine that support as a
   legacy-only path
 
-### 6. The assembly layer still reaches back into older processing modules
+### 6. Echo validation now sits under the service layer
 
-`EchoAssembler` still imports validators from
-`scraping/processing/echoesValidator.py`.
+`EchoAssembler` now imports validators from
+`scraping/service/echo_validation.py`.
 
-That means the v2 assembler boundary is not fully self-contained yet.
+The older `scraping/processing/echoesValidator.py` module is now only a
+compatibility wrapper for legacy imports, so the active assembler boundary no
+longer depends on processing-owned validator logic.
 
 Cleanup direction:
 
-- either move the validator logic under the service/assembler surface
-- or explicitly quarantine it as a stable legacy dependency instead of leaving
-  ownership ambiguous
+- keep deleting direct imports of the compatibility wrapper as legacy callers move
+- remove the wrapper entirely once the remaining legacy processing imports are gone
 
 ### 7. Mutable globals and compatibility helpers still add ownership noise
 

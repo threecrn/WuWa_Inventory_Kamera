@@ -2,7 +2,8 @@
 tests.test_echoesValidator
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Test suite for scraping.processing.echoesValidator.
+Test suite for the canonical echo validation module and its compatibility
+wrapper.
 
 Run with:
     pytest tests/test_echoesValidator.py -v
@@ -12,7 +13,9 @@ from __future__ import annotations
 
 import pytest
 
-from wuwa_inventory_kamera.scraping.processing.echoesValidator import infer_cost, validate_echo_stats
+import wuwa_inventory_kamera.scraping.processing.echoesValidator as legacy_echo_validation_module
+import wuwa_inventory_kamera.scraping.service.echo_validation as echo_validation_module
+from wuwa_inventory_kamera.scraping.service.echo_validation import infer_cost, validate_echo_stats
 
 
 # ---------------------------------------------------------------------------
@@ -294,7 +297,7 @@ class TestSubstatCount:
         sub = {'cr%': 9.9, 'cd%': 21.0}
         r = validate_echo_stats(4, 25, 5, _stats({'cr%': 22.0, 'atk': 150}, sub))
         assert r.valid   # still a valid echo — just suspicious
-        assert any('Fewer substats' in w for w in r.warnings)
+        assert any('Suspicious substat count' in w for w in r.warnings)
 
     def test_zero_subs_at_level_zero_no_warning(self):
         """Level-0 echo with no substats should produce no count warning."""
@@ -431,9 +434,17 @@ class TestInferCost:
             assert result is None, f"Expected None for {stat}, got {result}"
 
     def test_empty_spec_returns_none(self, monkeypatch):
-        import wuwa_inventory_kamera.scraping.processing.echoesValidator as v
-        monkeypatch.setattr(v, '_SPEC', {})
+        monkeypatch.setattr(echo_validation_module, '_SPEC', {})
         assert infer_cost(_stats({'cr%': 22.0, 'atk': 150}, {})) is None
+
+
+class TestCompatibilityWrapper:
+
+    def test_processing_module_reexports_service_owner(self):
+        assert legacy_echo_validation_module.ValidationResult is echo_validation_module.ValidationResult
+        assert legacy_echo_validation_module.expected_sub_count is echo_validation_module.expected_sub_count
+        assert legacy_echo_validation_module.infer_cost is echo_validation_module.infer_cost
+        assert legacy_echo_validation_module.validate_echo_stats is echo_validation_module.validate_echo_stats
 
 
 # ---------------------------------------------------------------------------
@@ -470,8 +481,7 @@ class TestPreconditions:
 
     def test_missing_spec_gives_warning(self, monkeypatch):
         """When the YAML spec is not loaded, validate_echo_stats warns and returns."""
-        import wuwa_inventory_kamera.scraping.processing.echoesValidator as v
-        monkeypatch.setattr(v, '_SPEC', {})
+        monkeypatch.setattr(echo_validation_module, '_SPEC', {})
         r = validate_echo_stats(4, 25, 5, VALID_COST4_LV25)
         assert r.valid   # no spec → no errors, just a warning
         assert r.warnings

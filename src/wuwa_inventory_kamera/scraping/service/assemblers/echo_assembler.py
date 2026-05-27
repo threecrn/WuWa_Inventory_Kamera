@@ -16,9 +16,10 @@ Sonata detection uses icon template matching
 (:class:`~...matching.sonata_icon.SonataIconMatcher`) against the small
 circular icon on the echo card, instead of OCR text matching.
 
-The expensive data imports (``echoesID``, ``echoStats``, ``sonataName``,
-validators) are still pulled from the existing ``scraping`` package; this
-module contains only the assembly logic.
+The expensive data imports (``echoesID``, ``echoStats``, ``sonataName``)
+are still pulled from the existing ``scraping`` package. Echo validation is
+owned by ``scraping.service.echo_validation``; this module contains only the
+assembly logic.
 
 Public API
 ----------
@@ -55,7 +56,7 @@ def _get_data():
 
 
 def _get_validators():
-    from ...processing.echoesValidator import (
+    from ..echo_validation import (
         infer_cost,
         expected_sub_count,
         validate_echo_stats,

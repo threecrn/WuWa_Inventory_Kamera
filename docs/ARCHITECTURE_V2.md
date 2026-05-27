@@ -558,6 +558,7 @@ src/wuwa_inventory_kamera/
                              ShellCapture/Result, CaptureType union, _Stop sentinel)
       shared_scan_helpers.py (shared pixel-rarity + debug-artifact helpers for scan/reprocess)
       ocr_service.py        (OcrService — queue + single DML thread + context manager)
+      echo_validation.py    (validate_echo_stats, infer_cost, expected_sub_count — canonical echo validation)
       assemblers/
         __init__.py
         echo_assembler.py   (EchoAssembler — rarity detection, stat matching, sonata icon match)
@@ -578,7 +579,7 @@ src/wuwa_inventory_kamera/
       session_orchestrator.py (SessionOrchestrator — top-level multi-scraper runner)
     processing/
       __init__.py
-      echoesValidator.py    (validate_echo_stats, expected_sub_count — shared by V1 + V2)
+      echoesValidator.py    (compatibility wrapper → service/echo_validation.py)
       echo_stats_valid_values.yaml
       echoes_processor.py   (Older offline Phase-2 processing module kept for legacy internals)
       stats_extractor.py    (Older RapidOCR stat extractors kept for legacy internals)
@@ -612,7 +613,7 @@ What follows is the post-migration state.
 scraping/                   (re-export shims — canonical code is in src/)
   processing/
     echoesProcessor.py      (shim → src/.../scraping/processing/echoes_processor.py)
-    echoesValidator.py      (shim → src/.../scraping/processing/echoesValidator.py)
+    echoesValidator.py      (shim → src/.../scraping/processing/echoesValidator.py compatibility wrapper → service/echo_validation.py)
     statsExtractor.py       (shim → src/.../scraping/processing/stats_extractor.py)
     echo_stats_valid_values.yaml
   models/
@@ -883,9 +884,10 @@ scraping/ocr/
 
 ## What is reused from V1
 
-- `echoesValidator.py` — `validate_echo_stats`, `expected_sub_count` — canonical
-  copy is now `src/.../scraping/processing/echoesValidator.py`; legacy path is a
-  re-export shim.
+- `echo_validation.py` — `validate_echo_stats`, `expected_sub_count` — canonical
+  copy is now `src/.../scraping/service/echo_validation.py`; the
+  `src/.../scraping/processing/echoesValidator.py` module remains as a
+  compatibility wrapper for older imports.
 - `scraping/data.py` — `loadData`, `echoesID`, `weaponsID`, `echoStats`,
   `sonataName` — canonical copy is `src/.../scraping/data.py`; legacy path is a
   re-export shim.
@@ -1046,7 +1048,7 @@ shims that forward all public names to their canonical `src/` counterparts.
 | Module | Target location | Status |
 |---|---|---|
 | `scraping/data.py` | `src/.../scraping/data.py` | **Shim** — imports forwarded to `src/` |
-| `scraping/processing/echoesValidator.py` | `src/.../scraping/processing/echoesValidator.py` | **Shim** — imports forwarded to `src/` |
+| `scraping/processing/echoesValidator.py` | `src/.../scraping/processing/echoesValidator.py` | **Shim** — compatibility wrapper forwards canonical validator imports to `src/.../scraping/service/echo_validation.py` |
 | `scraping/processing/statsExtractor.py` | `src/.../scraping/processing/stats_extractor.py` | **Moved** — re-export shim kept |
 | `scraping/processing/echoesProcessor.py` | `src/.../scraping/processing/echoes_processor.py` | **Moved** — re-export shim kept |
 | `scraping/utils/common.py` | `src/.../scraping/utils/common.py` | **Moved** — re-export shim kept |

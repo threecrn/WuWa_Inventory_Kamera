@@ -45,7 +45,7 @@ import numpy as np
 from ...game.screen_info import ScreenInfo
 from ...config.app_config import app_config
 from ..models.raw_scan import RawEchoScan
-from .echoesValidator import infer_cost, expected_sub_count, validate_echo_stats
+from ..service.echo_validation import infer_cost, expected_sub_count, validate_echo_stats
 from .stats_extractor import (
     RapidOcrStatsExtractor,
     StatsExtractor,

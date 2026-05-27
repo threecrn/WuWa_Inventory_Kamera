@@ -151,14 +151,19 @@ module.
 
 ---
 
-## M-7: `echo_assembler.py` still depends on the legacy validator module
+## M-7: Echo validator ownership is now explicit
+
+The canonical validator helpers now live in
+`scraping/service/echo_validation.py`.
 
 `EchoAssembler` imports `infer_cost`, `expected_sub_count`, and
-`validate_echo_stats` from `scraping/processing/echoesValidator.py`.
+`validate_echo_stats` from the service layer, while
+`scraping/processing/echoesValidator.py` remains only as a compatibility
+wrapper for older imports.
 
-### Plan
-Either move those validators under the service/assembler surface or explicitly
-quarantine `echoesValidator.py` as an intentional legacy dependency.
+### Follow-up
+Delete the compatibility wrapper once the remaining legacy callers no longer
+import it.
 
 ---
 
