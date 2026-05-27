@@ -280,7 +280,7 @@ COORDINATES = {
                 "visibleSlots": 6,
                 "offsets": {
                     "leftSide": Coordinates(y=136),
-                    "rightSide": Coordinates(y=106),
+                    "rightSide": Coordinates(y=132),
                     "skillPosition": Coordinates(y=240),
                 },
                 "leftSide": Coordinates(77, 191),
