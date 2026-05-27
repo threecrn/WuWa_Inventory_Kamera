@@ -185,19 +185,16 @@ Cleanup direction:
 - move echo-name recognition policy into a dedicated helper instead of embedding
   it inline in the generic echo batch processor
 
-### 5. Shared low-level helpers still live in entry-point modules
+### 5. Shared low-level helpers now live in a neutral helper module
 
-Some pure helpers are still stored in the wrong place architecturally:
+The remaining helper cross-imports between live scan and reprocess were removed
+by introducing
+[src/wuwa_inventory_kamera/scraping/service/shared_scan_helpers.py](src/wuwa_inventory_kamera/scraping/service/shared_scan_helpers.py).
 
-- reprocess still imports rarity helpers from
-  [src/wuwa_inventory_kamera/scraping/scanning/echo_workflow.py](src/wuwa_inventory_kamera/scraping/scanning/echo_workflow.py)
-- live workflow still imports debug-artifact writing from
-  [src/wuwa_inventory_kamera/scraping/service/echo_reprocess.py](src/wuwa_inventory_kamera/scraping/service/echo_reprocess.py)
+That module now owns:
 
-Cleanup direction:
-
-- continue moving rarity helpers and shared crop-debug writing into a neutral
-  helper module
+- pixel-rarity helpers used by echo/weapon live scan and raw-session reprocess
+- shared crop-debug writers for region-level and echo-level OCR artifacts
 
 ### 6. The boundary between capture preparation, OCR orchestration, and assembly is still soft
 
@@ -298,10 +295,11 @@ format.
   both live-scan and raw-session assembly paths.
 2. Normalize the image color-space contract at the `EchoCapture` boundary and
   extend parity coverage beyond crop construction.
-3. Move shared helpers out of entry-point modules.
+3. Clarify ownership of validator logic still imported by `EchoAssembler` from
+  legacy processing modules.
 4. Replace mutable globals and legacy persistence helpers with explicit session
    results.
-6. Quarantine or delete the remaining legacy processing modules and CLI
+5. Quarantine or delete the remaining legacy processing modules and CLI
    bootstrap code.
 
 ## Remaining Open Questions

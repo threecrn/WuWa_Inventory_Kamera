@@ -60,56 +60,9 @@ from ..service.echo_capture_utils import (
     ensure_bgr_image,
 )
 from ..service.ocr_service import OcrService
+from ..service.shared_scan_helpers import _rarity_from_capture_pixel
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Rarity detection from a single sampled pixel (new-UI mechanic)
-# ---------------------------------------------------------------------------
-# Reference colors from game_roi.py comments, expressed in BGR order
-# as used by OpenCV / mss captures.
-#   rarity 5: gold   – (R=1.00, G=0.98, B=0.69)
-#   rarity 4: purple – (R=0.91, G=0.63, B=1.00)
-#   rarity 3: blue   – (R=0.60, G=0.60, B=1.00)
-#   rarity 2: green  – (R=0.60, G=1.00, B=0.60)
-_RARITY_PIXEL_COLORS_BGR: dict[int, np.ndarray] = {
-    5: np.array([176, 250, 255], dtype=np.int32),   # B=176 G=250 R=255
-    4: np.array([255, 161, 232], dtype=np.int32),   # B=255 G=161 R=232
-    3: np.array([255, 153, 153], dtype=np.int32),   # B=255 G=153 R=153
-    2: np.array([153, 255, 153], dtype=np.int32),   # B=153 G=255 R=153
-}
-
-
-def _closest_rarity_from_bgr_pixel(pixel: np.ndarray) -> tuple[int, float]:
-    """Return the closest rarity and squared distance for a BGR pixel."""
-    px = pixel[:3].astype(np.int32)
-    best_rarity = 1
-    best_dist = float('inf')
-    for rarity, ref in _RARITY_PIXEL_COLORS_BGR.items():
-        dist = float(np.sum((px - ref) ** 2))
-        if dist < best_dist:
-            best_dist = dist
-            best_rarity = rarity
-    return best_rarity, best_dist
-
-
-def _rarity_from_bgr_pixel(pixel: np.ndarray) -> int:
-    """Return the rarity (2–5) whose reference color is closest to *pixel* (BGR)."""
-    return _closest_rarity_from_bgr_pixel(pixel)[0]
-
-
-def _rarity_from_rgb_pixel(pixel: np.ndarray) -> int:
-    """Return the rarity for a pixel stored in RGB channel order."""
-    return _rarity_from_bgr_pixel(pixel[::-1])
-
-
-def _rarity_from_capture_pixel(pixel: np.ndarray) -> tuple[int, str, float]:
-    """Return the closest rarity for a capture pixel, tolerating BGR or RGB input."""
-    rarity_bgr, dist_bgr = _closest_rarity_from_bgr_pixel(pixel)
-    rarity_rgb, dist_rgb = _closest_rarity_from_bgr_pixel(pixel[::-1])
-    if dist_bgr <= dist_rgb:
-        return rarity_bgr, 'BGR', dist_bgr
-    return rarity_rgb, 'RGB', dist_rgb
 
 
 class EchoWorkflow:
@@ -421,7 +374,7 @@ class EchoWorkflow:
         # Optionally write debug crop artifacts
         if self.write_debug:
             from types import SimpleNamespace
-            from ..service.echo_reprocess import _write_echo_debug_artifacts
+            from ..service.shared_scan_helpers import _write_echo_debug_artifacts
             from ...config.app_config import app_config
             _debug_base = self.save_raw or (
                 Path(app_config.exportFolder) / self.session.session_id / 'raw'

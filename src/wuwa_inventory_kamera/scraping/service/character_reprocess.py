@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 
 from .echo_capture_utils import ensure_bgr_image
+from .shared_scan_helpers import _write_region_debug_artifacts
 
 logger = logging.getLogger('wuwa.character_reprocess')
 
@@ -56,8 +57,6 @@ def _write_character_debug_artifacts(
     raw_base: str | Path | None,
     crops_by_section: dict[int, dict[str, np.ndarray]],
 ) -> None:
-    from .echo_reprocess import _write_region_debug_artifacts
-
     roi_key_maps = {
         0: _OVERVIEW_DEBUG_ROI_KEYS,
         1: _WEAPON_DEBUG_ROI_KEYS,

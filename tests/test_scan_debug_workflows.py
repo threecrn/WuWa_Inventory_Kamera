@@ -45,7 +45,7 @@ def test_weapon_workflow_write_debug_dumps_region_artifacts(monkeypatch, tmp_pat
         })
 
     monkeypatch.setattr(
-        'wuwa_inventory_kamera.scraping.service.echo_reprocess._write_region_debug_artifacts',
+        'wuwa_inventory_kamera.scraping.service.shared_scan_helpers._write_region_debug_artifacts',
         _fake_write_region_debug_artifacts,
     )
 
@@ -440,7 +440,7 @@ def test_character_workflow_write_debug_dumps_section_artifacts(monkeypatch, tmp
         })
 
     monkeypatch.setattr(
-        'wuwa_inventory_kamera.scraping.service.echo_reprocess._write_region_debug_artifacts',
+        'wuwa_inventory_kamera.scraping.service.shared_scan_helpers._write_region_debug_artifacts',
         _fake_write_region_debug_artifacts,
     )
 

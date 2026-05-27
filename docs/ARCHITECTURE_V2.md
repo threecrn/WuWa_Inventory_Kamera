@@ -556,6 +556,7 @@ src/wuwa_inventory_kamera/
       captures.py           (EchoCapture/Result, WeaponCapture/Result, ItemCapture/Result,
                              CharCapture/Result, AchievementCapture/Result,
                              ShellCapture/Result, CaptureType union, _Stop sentinel)
+      shared_scan_helpers.py (shared pixel-rarity + debug-artifact helpers for scan/reprocess)
       ocr_service.py        (OcrService — queue + single DML thread + context manager)
       assemblers/
         __init__.py

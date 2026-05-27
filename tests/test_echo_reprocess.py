@@ -8,10 +8,8 @@ import cv2
 import numpy as np
 
 from wuwa_inventory_kamera.scraping.service.captures import EchoResult
-from wuwa_inventory_kamera.scraping.service.echo_reprocess import (
-    _write_echo_debug_artifacts,
-    reprocess_echo_scans_with_service,
-)
+from wuwa_inventory_kamera.scraping.service.echo_reprocess import reprocess_echo_scans_with_service
+from wuwa_inventory_kamera.scraping.service.shared_scan_helpers import _write_echo_debug_artifacts
 from wuwa_inventory_kamera.scraping.utils.common import loadRawScans
 
 
@@ -109,9 +107,13 @@ def _install_fake_reprocess_modules(monkeypatch, *, ocr_service_cls=_FakeOcrServ
 
 
 def _install_fake_debug_modules(monkeypatch) -> None:
-    echo_workflow_module = ModuleType('wuwa_inventory_kamera.scraping.scanning.echo_workflow')
-    echo_workflow_module._rarity_from_rgb_pixel = lambda _pixel: 5
-    monkeypatch.setitem(sys.modules, 'wuwa_inventory_kamera.scraping.scanning.echo_workflow', echo_workflow_module)
+    shared_helpers_module = ModuleType('wuwa_inventory_kamera.scraping.service.shared_scan_helpers')
+    shared_helpers_module._rarity_from_rgb_pixel = lambda _pixel: 5
+    monkeypatch.setitem(
+        sys.modules,
+        'wuwa_inventory_kamera.scraping.service.shared_scan_helpers',
+        shared_helpers_module,
+    )
 
     region_specs_module = ModuleType('wuwa_inventory_kamera.scraping.ocr.region_specs')
 

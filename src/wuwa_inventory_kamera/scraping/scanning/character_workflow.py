@@ -438,7 +438,7 @@ class CharacterWorkflow:
         section: int,
         images: dict[str, np.ndarray],
     ) -> None:
-        from ..service.echo_reprocess import _write_region_debug_artifacts
+        from ..service.shared_scan_helpers import _write_region_debug_artifacts
 
         roi_key_maps = {
             0: _OVERVIEW_DEBUG_ROI_KEYS,

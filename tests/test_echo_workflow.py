@@ -7,8 +7,8 @@ import cv2
 import numpy as np
 
 import wuwa_inventory_kamera.scraping.scanning.echo_workflow as echo_workflow_module
-from wuwa_inventory_kamera.scraping.scanning.echo_workflow import (
-    EchoWorkflow,
+from wuwa_inventory_kamera.scraping.scanning.echo_workflow import EchoWorkflow
+from wuwa_inventory_kamera.scraping.service.shared_scan_helpers import (
     _RARITY_PIXEL_COLORS_BGR,
     _rarity_from_capture_pixel,
     _rarity_from_bgr_pixel,
@@ -275,7 +275,7 @@ def test_capture_echo_write_debug_passes_level_crop(monkeypatch, tmp_path) -> No
         debug_call.update(kwargs)
 
     monkeypatch.setattr(
-        'wuwa_inventory_kamera.scraping.service.echo_reprocess._write_echo_debug_artifacts',
+        'wuwa_inventory_kamera.scraping.service.shared_scan_helpers._write_echo_debug_artifacts',
         _fake_write_echo_debug_artifacts,
     )
 

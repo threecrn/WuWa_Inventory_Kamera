@@ -23,8 +23,8 @@
 - [x] Remove legacy-only echo fallback branches after the raw-session format is settled.
   - [x] `ocr_service.py`: drop the no-dedicated-`echo_name` fallback if all active captures always provide that ROI.
   - [x] `echo_assembler.py`: drop the legacy level-text fallback if all active captures always provide `detected_level`.
-- [ ] Move shared helpers out of entry-point modules.
-  - [ ] Relocate rarity helpers and shared debug-artifact helpers into a neutral module.
+- [x] Move shared helpers out of entry-point modules.
+  - [x] Relocate rarity helpers and shared debug-artifact helpers into a neutral module.
 - [ ] Clarify ownership of validator logic still imported by `EchoAssembler` from legacy processing modules.
 - [ ] Remove mutable global scan-result state from `app_config.py` / `scraping.utils.common`.
 - [ ] Decide whether direct-script CLI bootstrap via `sys.path` patching is still a supported workflow.

@@ -35,3 +35,6 @@ __pycache__/
 
 # Ignore restored files and directories
 *.restored
+
+# Ignore egg-info directories
+/src/wuwa_inventory_kamera.egg-info

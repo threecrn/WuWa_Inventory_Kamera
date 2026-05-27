@@ -121,15 +121,15 @@ capturing global mutable data.
 
 ## M-5: Entry-point helper cross-imports between live scan and reprocess
 
-Current narrow reverse dependencies:
+Resolved by introducing
+`src/wuwa_inventory_kamera/scraping/service/shared_scan_helpers.py`.
 
-- `echo_reprocess.py` imports `_rarity_from_rgb_pixel` from `echo_workflow.py`
-- `echo_workflow.py` imports `_write_echo_debug_artifacts` from
-  `echo_reprocess.py`
+Current ownership:
 
-### Plan
-Move rarity helpers and shared debug-artifact helpers into a neutral helper
-module so both entry points depend on that module, not on each other.
+- pixel-rarity helpers now live in the shared helper module and are imported by
+  both live-scan and reprocess entry points
+- shared region-debug and echo-debug artifact writers now live in the same
+  helper module, so live scan no longer reaches into `echo_reprocess.py`
 
 ---
 

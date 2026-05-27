@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-import cv2
 import numpy as np
 
 from .echo_capture_utils import (
@@ -17,32 +16,9 @@ from .echo_capture_utils import (
     decide_echo_level,
     ensure_bgr_image,
 )
+from .shared_scan_helpers import _write_echo_debug_artifacts
 
 logger = logging.getLogger('wuwa.echo_reprocess')
-
-
-_DEBUG_REGION_SPECS: tuple[tuple[str, str], ...] = (
-    ('echoes.echoName', 'echo_name'),
-    ('echoes.fullStatsName', 'stats_name'),
-    ('echoes.fullStatsValue', 'stats_value'),
-    ('echoes.equipped', 'equipped'),
-    ('echoes.level', 'level'),
-)
-
-
-def _resolve_debug_dir(scan, raw_base: str | Path | None) -> Path | None:
-    full_path = getattr(scan, 'full_path', None)
-    if full_path is not None:
-        return Path(full_path).parent / 'debug'
-    if raw_base is not None:
-        return Path(raw_base) / f'echo_{scan.index:04d}' / 'debug'
-    return None
-
-
-def _to_debug_image(image: np.ndarray) -> np.ndarray:
-    if image.ndim == 2:
-        return image
-    return cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
 
 def _crop_roi(image: np.ndarray, roi) -> np.ndarray:
@@ -50,84 +26,6 @@ def _crop_roi(image: np.ndarray, roi) -> np.ndarray:
         int(roi.y): int(roi.y + roi.h),
         int(roi.x): int(roi.x + roi.w),
     ]
-
-
-def _write_region_debug_artifacts(
-    debug_dir: Path,
-    *,
-    basename: str,
-    roi_key: str,
-    raw_bgr: np.ndarray,
-    rarity: int | None,
-) -> None:
-    from ..ocr.region_specs import get_spec
-
-    debug_dir.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(debug_dir / f'{basename}.png'), raw_bgr)
-
-    spec = get_spec(roi_key)
-    if spec is None:
-        return
-
-    preprocessed = spec.preprocess(raw_bgr, rarity=rarity)
-    signature = spec._image_for_signature(raw_bgr, rarity)
-
-    cv2.imwrite(
-        str(debug_dir / f'{basename}_preprocessed.png'),
-        _to_debug_image(preprocessed.ocr_rgb),
-    )
-    cv2.imwrite(str(debug_dir / f'{basename}_signature.png'), signature)
-
-
-def _write_echo_debug_artifacts(
-    scan,
-    *,
-    raw_base: str | Path | None,
-    full_screenshot_space: str,
-    detected_rarity: int | None,
-    echo_name: np.ndarray | None,
-    equipped: np.ndarray | None,
-    level: np.ndarray,
-    stats_name: np.ndarray,
-    stats_value: np.ndarray,
-) -> None:
-    debug_dir = _resolve_debug_dir(scan, raw_base)
-    if debug_dir is None:
-        logger.warning(
-            'Scan %d — write_debug requested but no raw directory could be resolved.',
-            scan.index,
-        )
-        return
-
-    region_images: dict[str, np.ndarray | None] = {
-        'echo_name': echo_name,
-        'equipped': equipped,
-        'level': level,
-        'stats_name': stats_name,
-        'stats_value': stats_value,
-    }
-    region_source_spaces = {
-        'echo_name': 'bgr',
-        'equipped': 'bgr',
-        'level': full_screenshot_space,
-        'stats_name': full_screenshot_space,
-        'stats_value': full_screenshot_space,
-    }
-
-    for roi_key, basename in _DEBUG_REGION_SPECS:
-        raw_image = region_images[basename]
-        if raw_image is None:
-            continue
-        _write_region_debug_artifacts(
-            debug_dir,
-            basename=basename,
-            roi_key=roi_key,
-            raw_bgr=ensure_bgr_image(
-                raw_image,
-                source_space=region_source_spaces[basename],
-            ),
-            rarity=detected_rarity,
-        )
 
 
 def reprocess_echo_scans_with_service(
@@ -144,6 +42,7 @@ def reprocess_echo_scans_with_service(
     from ...game.screen_info import ScreenInfo
     from .captures import EchoCapture
     from .ocr_service import OcrService
+    from .shared_scan_helpers import _rarity_from_rgb_pixel
 
     echoes: list[dict] = []
 
@@ -185,8 +84,6 @@ def reprocess_echo_scans_with_service(
 
             detected_rarity: int | None = None
             if hasattr(si, 'rarityColorPick'):
-                from ..scanning.echo_workflow import _rarity_from_rgb_pixel
-
                 rcp = si.rarityColorPick
                 detected_rarity = _rarity_from_rgb_pixel(
                     scan.full_screenshot[int(rcp.y), int(rcp.x)]

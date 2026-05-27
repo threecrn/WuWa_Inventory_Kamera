@@ -66,9 +66,13 @@ def test_reprocess_reconstructs_weapon_crops(monkeypatch) -> None:
     screen_info_module.ScreenInfo = _FakeScreenInfo
     monkeypatch.setitem(sys.modules, 'wuwa_inventory_kamera.game.screen_info', screen_info_module)
 
-    echo_workflow_module = ModuleType('wuwa_inventory_kamera.scraping.scanning.echo_workflow')
-    echo_workflow_module._rarity_from_capture_pixel = lambda _pixel: (5, 'RGB', 0.0)
-    monkeypatch.setitem(sys.modules, 'wuwa_inventory_kamera.scraping.scanning.echo_workflow', echo_workflow_module)
+    shared_helpers_module = ModuleType('wuwa_inventory_kamera.scraping.service.shared_scan_helpers')
+    shared_helpers_module._rarity_from_capture_pixel = lambda _pixel: (5, 'RGB', 0.0)
+    monkeypatch.setitem(
+        sys.modules,
+        'wuwa_inventory_kamera.scraping.service.shared_scan_helpers',
+        shared_helpers_module,
+    )
 
     ocr_service_module = ModuleType('wuwa_inventory_kamera.scraping.service.ocr_service')
     ocr_service_module.OcrService = _FakeOcrService
@@ -113,9 +117,13 @@ def test_reprocess_weapon_write_debug_dumps_region_images(monkeypatch, tmp_path)
     screen_info_module.ScreenInfo = _FakeScreenInfo
     monkeypatch.setitem(sys.modules, 'wuwa_inventory_kamera.game.screen_info', screen_info_module)
 
-    echo_workflow_module = ModuleType('wuwa_inventory_kamera.scraping.scanning.echo_workflow')
-    echo_workflow_module._rarity_from_capture_pixel = lambda _pixel: (5, 'RGB', 0.0)
-    monkeypatch.setitem(sys.modules, 'wuwa_inventory_kamera.scraping.scanning.echo_workflow', echo_workflow_module)
+    shared_helpers_module = ModuleType('wuwa_inventory_kamera.scraping.service.shared_scan_helpers')
+    shared_helpers_module._rarity_from_capture_pixel = lambda _pixel: (5, 'RGB', 0.0)
+    monkeypatch.setitem(
+        sys.modules,
+        'wuwa_inventory_kamera.scraping.service.shared_scan_helpers',
+        shared_helpers_module,
+    )
 
     ocr_service_module = ModuleType('wuwa_inventory_kamera.scraping.service.ocr_service')
     ocr_service_module.OcrService = _FakeOcrService

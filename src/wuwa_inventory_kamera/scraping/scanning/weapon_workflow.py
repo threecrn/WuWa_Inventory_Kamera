@@ -30,7 +30,6 @@ from ...game.navigation import (
     SortOrder,
 )
 from ...game.screen import capture_full
-from .echo_workflow import _rarity_from_capture_pixel
 from .grid_navigator import GridNavigator
 from .scan_state import (
     GridPosition,
@@ -38,6 +37,7 @@ from .scan_state import (
 )
 from ..service.captures import WeaponCapture, WeaponResult
 from ..service.ocr_service import OcrService
+from ..service.shared_scan_helpers import _rarity_from_capture_pixel
 
 logger = logging.getLogger(__name__)
 
@@ -268,7 +268,7 @@ class WeaponWorkflow:
         equipped: np.ndarray | None,
         detected_rarity: int | None,
     ) -> None:
-        from ..service.echo_reprocess import _write_region_debug_artifacts
+        from ..service.shared_scan_helpers import _write_region_debug_artifacts
 
         debug_dir = self._debug_base() / f'weapon_{pos.scan_index:04d}' / 'debug'
         value_basename = 'level' if rank is not None else 'value'

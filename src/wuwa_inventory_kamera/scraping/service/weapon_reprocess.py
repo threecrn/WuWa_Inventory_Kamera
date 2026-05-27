@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from .echo_capture_utils import ensure_bgr_image
+from .shared_scan_helpers import _write_region_debug_artifacts
 
 logger = logging.getLogger('wuwa.weapon_reprocess')
 
@@ -48,8 +49,6 @@ def _write_weapon_debug_artifacts(
     rank: np.ndarray | None,
     equipped: np.ndarray | None,
 ) -> None:
-    from .echo_reprocess import _write_region_debug_artifacts
-
     debug_dir = _resolve_debug_dir(scan, raw_base)
     if debug_dir is None:
         logger.warning(
@@ -102,9 +101,9 @@ def reprocess_weapon_scans_with_service(
 ) -> list[dict]:
     """Process raw weapon scans through the v2 OcrService pipeline."""
     from ...game.screen_info import ScreenInfo
-    from ..scanning.echo_workflow import _rarity_from_capture_pixel
     from .captures import WeaponCapture
     from .ocr_service import OcrService
+    from .shared_scan_helpers import _rarity_from_capture_pixel
 
     weapons: list[dict] = []
 

@@ -234,20 +234,16 @@ Cleanup direction:
 - keep region specs focused on preprocessing and signatures
 - extract echo-name recognition policy into a dedicated helper or component
 
-### 4. Entry-point reverse dependencies remain, but only in two narrow places
+### 4. Entry-point reverse dependencies are gone for the shared scan helpers
 
-Most of the low-level logic is no longer trapped in entry-point modules. The
-remaining reverse dependencies are now specifically:
+The last helper-level reverse dependencies between live scan and reprocess were
+removed by introducing
+[src/wuwa_inventory_kamera/scraping/service/shared_scan_helpers.py](src/wuwa_inventory_kamera/scraping/service/shared_scan_helpers.py).
 
-- reprocess still imports `_rarity_from_rgb_pixel` from
-  [src/wuwa_inventory_kamera/scraping/scanning/echo_workflow.py](src/wuwa_inventory_kamera/scraping/scanning/echo_workflow.py)
-- live workflow still imports `_write_echo_debug_artifacts` from
-  [src/wuwa_inventory_kamera/scraping/service/echo_reprocess.py](src/wuwa_inventory_kamera/scraping/service/echo_reprocess.py)
+That shared module now owns:
 
-Cleanup direction:
-
-- move shared rarity and debug-artifact helpers into a neutral module alongside
-  the existing capture helpers
+- pixel-rarity helpers for BGR, RGB, and capture-order tolerant sampling
+- shared debug-artifact writers for region-level and echo-level OCR crops
 
 ### 5. Raw-session contract is now unified
 
