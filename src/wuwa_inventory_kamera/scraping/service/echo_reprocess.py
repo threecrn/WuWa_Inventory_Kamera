@@ -202,11 +202,9 @@ def reprocess_echo_scans_with_service(
             sonata_icon_rgb = _crop_roi(scan.full_screenshot, icon_roi)
             sonata_icon = ensure_bgr_image(sonata_icon_rgb, source_space='rgb')
 
-            echo_name = None
-            if hasattr(si, 'echoName'):
-                en = si.echoName
-                echo_name_rgb = _crop_roi(scan.full_screenshot, en)
-                echo_name = ensure_bgr_image(echo_name_rgb, source_space='rgb')
+            en = si.echoName
+            echo_name_rgb = _crop_roi(scan.full_screenshot, en)
+            echo_name = ensure_bgr_image(echo_name_rgb, source_space='rgb')
 
             equipped = None
             if hasattr(si, 'equipped'):
@@ -240,6 +238,7 @@ def reprocess_echo_scans_with_service(
                 echo_index=scan.index,
                 card=card,
                 echo_name=echo_name,
+                level=level_crop_bgr,
                 equipped=equipped,
                 sonata_icon=sonata_icon,
                 sonata_icon_cx=sonata_icon_cx,

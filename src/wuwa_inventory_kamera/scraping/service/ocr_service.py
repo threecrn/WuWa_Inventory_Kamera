@@ -59,6 +59,7 @@ from ..ocr._rapidocr import RapidOcrBackend
 from ..ocr.batch import BatchOcr
 from ..ocr.region_specs import OcrRegionSpec, get_spec
 from .ocr_cache import OcrCache
+from .echo_capture_utils import decide_echo_level
 
 from .captures import (
     _Stop,
@@ -192,6 +193,29 @@ def _preprocess_with_spec(
         return spec.preprocess(bgr, rarity=rarity).ocr_rgb
     # No spec — return image as-is in RGB
     return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+
+
+def _backend_tokens_to_results(
+    tokens,
+    *,
+    image: np.ndarray,
+) -> list[tuple[str, float, np.ndarray]]:
+    """Convert backend OCR tuples into the service's batch-result shape."""
+    h = int(image.shape[0]) if image is not None else 1
+    w = int(image.shape[1]) if image is not None else 1
+    fallback_box = np.asarray(
+        [[0, 0], [max(w - 1, 0), 0], [max(w - 1, 0), max(h - 1, 0)], [0, max(h - 1, 0)]],
+        dtype=np.float32,
+    )
+
+    return [
+        (
+            text,
+            float(conf),
+            np.asarray(bbox, dtype=np.float32) if bbox is not None else fallback_box,
+        )
+        for bbox, text, conf in tokens
+    ]
 
 
 def _echo_name_candidate_from_results(
@@ -576,13 +600,9 @@ class OcrService:
         # then try multiple OCR strategies in priority order.
         name_source_filtered = [
             _preprocess_with_spec(c.echo_name, 'echoes.echoName', rarity=c.detected_rarity)
-            if c.echo_name is not None else c.card
             for c in captures
         ]
-        name_source_raw = [
-            c.echo_name if c.echo_name is not None else c.card
-            for c in captures
-        ]
+        name_source_raw = [c.echo_name for c in captures]
 
         _echo_name_spec = get_spec('echoes.echoName')
         _echo_name_single_line = bool(
@@ -622,33 +642,12 @@ class OcrService:
             )
             return False
 
-        def _backend_to_batch(
-            tokens,
-            *,
-            image: np.ndarray | None = None,
-        ) -> list[tuple[str, float, np.ndarray]]:
-            h = int(image.shape[0]) if image is not None else 1
-            w = int(image.shape[1]) if image is not None else 1
-            fallback_box = np.asarray(
-                [[0, 0], [max(w - 1, 0), 0], [max(w - 1, 0), max(h - 1, 0)], [0, max(h - 1, 0)]],
-                dtype=np.float32,
-            )
-
-            return [
-                (
-                    text,
-                    float(conf),
-                    np.asarray(bbox, dtype=np.float32) if bbox is not None else fallback_box,
-                )
-                for bbox, text, conf in tokens
-            ]
-
         card_results: list[list[tuple[str, float, np.ndarray]] | None] = [None] * len(captures)
         miss_indices: list[int] = []
         for i, c in enumerate(captures):
             # Source image used for cache keying (raw BGR, same as what the
             # spec's make_signature() expects).
-            _cache_src = c.echo_name if c.echo_name is not None else c.card
+            _cache_src = c.echo_name
 
             # ---- Cache lookup (transient + persistent) ----
             if _echo_name_spec is not None:
@@ -677,7 +676,7 @@ class OcrService:
 
         for i in miss_indices:
             c = captures[i]
-            _cache_src = c.echo_name if c.echo_name is not None else c.card
+            _cache_src = c.echo_name
             filtered_result = _filter_echo_name_chars(filtered_results_by_idx[i])
             raw_result = _filter_echo_name_chars(raw_results_by_idx[i])
 
@@ -691,61 +690,57 @@ class OcrService:
             # _has_usable_text and silently block the reliable fallback.
             ocr_result: list[tuple[str, float, np.ndarray]] | None = None
 
-            if c.echo_name is not None:
-                if _echo_name_single_line:
-                    single_results = _filter_echo_name_chars(
-                        _backend_to_batch(
-                            self._backend.recognize_single_line(name_source_filtered[i]),
-                            image=name_source_filtered[i],
-                        )
+            if _echo_name_single_line:
+                single_results = _filter_echo_name_chars(
+                    _backend_tokens_to_results(
+                        self._backend.recognize_single_line(name_source_filtered[i]),
+                        image=name_source_filtered[i],
                     )
-                else:
-                    single_results = _filter_echo_name_chars(
-                        _backend_to_batch(
+                )
+            else:
+                single_results = _filter_echo_name_chars(
+                    _backend_tokens_to_results(
+                        self._backend.recognize(name_source_filtered[i]),
+                        image=name_source_filtered[i],
+                    )
+                )
+
+            if _accept_filtered_echo_name(c, single_results, 'single filtered echoName'):
+                ocr_result = single_results
+            else:
+                if _echo_name_single_line:
+                    thorough_results = _filter_echo_name_chars(
+                        _backend_tokens_to_results(
                             self._backend.recognize(name_source_filtered[i]),
                             image=name_source_filtered[i],
                         )
                     )
-
-                if _accept_filtered_echo_name(c, single_results, 'single filtered echoName'):
-                    ocr_result = single_results
                 else:
-                    if _echo_name_single_line:
-                        thorough_results = _filter_echo_name_chars(
-                            _backend_to_batch(
-                                self._backend.recognize(name_source_filtered[i]),
-                                image=name_source_filtered[i],
-                            )
+                    thorough_results = _filter_echo_name_chars(
+                        _backend_tokens_to_results(
+                            self._backend.thorough_recognize(name_source_filtered[i]),
+                            image=name_source_filtered[i],
                         )
-                    else:
-                        thorough_results = _filter_echo_name_chars(
-                            _backend_to_batch(
-                                self._backend.thorough_recognize(name_source_filtered[i]),
-                                image=name_source_filtered[i],
-                            )
-                        )
+                    )
 
-                    if _accept_filtered_echo_name(c, thorough_results, 'thorough filtered echoName'):
-                        logger.debug(
-                            'Echo %d — echoName recovered via thorough OCR.',
-                            c.echo_index,
-                        )
-                        ocr_result = thorough_results
-                    elif _accept_filtered_echo_name(c, filtered_result, 'batch filtered echoName'):
-                        logger.debug(
-                            'Echo %d — echoName recovered via batch-OCR on filtered crop.',
-                            c.echo_index,
-                        )
-                        ocr_result = filtered_result
-                    elif _has_usable_text(raw_result):
-                        logger.debug(
-                            'Echo %d — echoName recovered via raw echoName crop.',
-                            c.echo_index,
-                        )
-                        ocr_result = raw_result
-            elif _has_usable_text(filtered_result):
-                # Legacy path (no echoName ROI): use batch OCR on card crop.
-                ocr_result = filtered_result
+                if _accept_filtered_echo_name(c, thorough_results, 'thorough filtered echoName'):
+                    logger.debug(
+                        'Echo %d — echoName recovered via thorough OCR.',
+                        c.echo_index,
+                    )
+                    ocr_result = thorough_results
+                elif _accept_filtered_echo_name(c, filtered_result, 'batch filtered echoName'):
+                    logger.debug(
+                        'Echo %d — echoName recovered via batch-OCR on filtered crop.',
+                        c.echo_index,
+                    )
+                    ocr_result = filtered_result
+                elif _has_usable_text(raw_result):
+                    logger.debug(
+                        'Echo %d — echoName recovered via raw echoName crop.',
+                        c.echo_index,
+                    )
+                    ocr_result = raw_result
 
             if ocr_result is None:
                 ocr_result = raw_result
@@ -799,6 +794,21 @@ class OcrService:
             capture = captures[i]
             equipped_raw = equipped_results_map.get(i)
             equipped_tok = to_image_tokens(equipped_raw) if equipped_raw is not None else None
+            if capture.detected_level is None:
+                capture.detected_level = self._resolve_echo_level(capture)
+                if capture.detected_level is None:
+                    warning = 'Dedicated level ROI OCR returned no digits; echo rejected before assembly.'
+                    logger.warning('Echo %d — %s', capture.echo_index, warning)
+                    item.future.set_result(
+                        EchoResult(
+                            echo_index=capture.echo_index,
+                            data=None,
+                            warnings=[warning],
+                            retried=False,
+                            detected_level=0,
+                        )
+                    )
+                    continue
             try:
                 result = self._echo_asm.assemble(
                     capture,
@@ -811,6 +821,40 @@ class OcrService:
             except Exception as exc:
                 logger.exception('OcrService — echo %d assembly error', capture.echo_index)
                 item.future.set_exception(exc)
+
+    def _resolve_echo_level(self, capture: EchoCapture) -> int | None:
+        """Recover a missing echo level from the dedicated level ROI only."""
+        spec = get_spec('echoes.level')
+        ocr_image = _preprocess_with_spec(capture.level, 'echoes.level')
+        allowed_chars = spec.allowed_chars if spec is not None else None
+
+        attempts = []
+        if spec is not None and spec.single_line:
+            attempts.append(
+                ('single-line', self._cpu_backend.recognize_single_line(ocr_image))
+            )
+        attempts.extend([
+            ('detected', self._cpu_backend.recognize(ocr_image)),
+            ('thorough', self._cpu_backend.thorough_recognize(ocr_image)),
+        ])
+
+        for label, raw_tokens in attempts:
+            filtered = self._filter_allowed_chars(
+                [_backend_tokens_to_results(raw_tokens, image=capture.level)],
+                allowed_chars,
+            )[0]
+            level_text = ''.join(text for text, _conf, _box in filtered)
+            decision = decide_echo_level(level_text=level_text)
+            if decision.detected_level is not None:
+                logger.debug(
+                    'Echo %d — recovered level %d via dedicated level ROI (%s OCR).',
+                    capture.echo_index,
+                    decision.detected_level,
+                    label,
+                )
+                return decision.detected_level
+
+        return None
 
     @staticmethod
     def _filter_allowed_chars(

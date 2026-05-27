@@ -122,6 +122,8 @@ def test_capture_echo_reuses_prefetched_level_without_second_ocr(monkeypatch) ->
 
     assert ocr.ocr_calls == 0
     assert ocr.submitted[0].detected_level == 25
+    np.testing.assert_array_equal(ocr.submitted[0].echo_name, image[2:4, 2:4])
+    np.testing.assert_array_equal(ocr.submitted[0].level, image[0:2, 4:6])
     np.testing.assert_array_equal(ocr.submitted[0].sonata_icon, image[4:6, 2:4])
     np.testing.assert_array_equal(
         ocr.submitted[0].stats_name,

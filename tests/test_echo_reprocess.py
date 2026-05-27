@@ -197,6 +197,10 @@ def test_reprocess_reconstructs_echo_name_crop(monkeypatch) -> None:
         capture.equipped,
         cv2.cvtColor(image[2:4, 4:6], cv2.COLOR_RGB2BGR),
     )
+    np.testing.assert_array_equal(
+        capture.level,
+        cv2.cvtColor(image[0:2, 4:6], cv2.COLOR_RGB2BGR),
+    )
 
 
 def test_reprocess_allows_custom_batch_size(monkeypatch) -> None:
@@ -298,6 +302,7 @@ def test_reprocess_write_debug_roundtrips_live_scan_artifacts(monkeypatch, tmp_p
             full_screenshot_space='bgr',
             detected_rarity=5,
             echo_name=image[2:4, 2:4],
+            equipped=image[2:4, 4:6],
             level=image[0:2, 4:6],
             stats_name=image[0:2, 2:4],
             stats_value=image[2:4, 0:2],
@@ -373,6 +378,10 @@ def test_reprocess_uses_shared_level_decision_for_sonata_slot(monkeypatch) -> No
 
     capture = _FakeOcrService.instances[0].submitted[0]
     assert capture.detected_level == 25
+    np.testing.assert_array_equal(
+        capture.level,
+        cv2.cvtColor(image[0:2, 4:6], cv2.COLOR_RGB2BGR),
+    )
     np.testing.assert_array_equal(
         capture.sonata_icon,
         cv2.cvtColor(image[4:6, 2:4], cv2.COLOR_RGB2BGR),

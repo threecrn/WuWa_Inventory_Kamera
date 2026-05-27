@@ -20,9 +20,9 @@
 ### Medium
 
 - [ ] Collapse duplicated `EchoCapture` construction between live scan and reprocess into one shared builder/helper.
-- [ ] Remove legacy-only echo fallback branches after the raw-session format is settled.
-  - [ ] `ocr_service.py`: drop the no-dedicated-`echo_name` fallback if all active captures always provide that ROI.
-  - [ ] `echo_assembler.py`: drop the legacy level-text fallback if all active captures always provide `detected_level`.
+- [x] Remove legacy-only echo fallback branches after the raw-session format is settled.
+  - [x] `ocr_service.py`: drop the no-dedicated-`echo_name` fallback if all active captures always provide that ROI.
+  - [x] `echo_assembler.py`: drop the legacy level-text fallback if all active captures always provide `detected_level`.
 - [ ] Move shared helpers out of entry-point modules.
   - [ ] Relocate rarity helpers and shared debug-artifact helpers into a neutral module.
 - [ ] Clarify ownership of validator logic still imported by `EchoAssembler` from legacy processing modules.

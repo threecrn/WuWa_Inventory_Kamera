@@ -84,43 +84,20 @@ removed.
 
 ---
 
-## M-2: `ocr_service.py` legacy echo-name OCR path for captures without a dedicated ROI
+## Completed: Remove legacy-only echo fallback branches
 
-**File:** `src/.../scraping/service/ocr_service.py`
+**Status:** Resolved in code on 2026-05-27.
 
-```python
-elif _has_usable_text(filtered_result):
-    # Legacy path (no echoName ROI): use batch OCR on card crop.
-    ocr_result = filtered_result
-```
+The active live scan path and the raw-session reprocess path now both submit
+`EchoCapture` objects with the dedicated `echo_name` and `level` crops.
 
-This branch fires only when `EchoCapture` has no dedicated `echo_name` crop.
-Current live scan and v2 reprocess captures do populate that ROI.
-
-### Plan
-Confirm that all active `EchoCapture` producers always provide `echo_name`.
-Then remove this branch and the corresponding guard logic above it.
-
----
-
-## M-3: `echo_assembler.py` level OCR fallback for legacy captures
-
-**File:** `src/.../scraping/service/assemblers/echo_assembler.py`
-
-```python
-if capture.detected_level is not None:
-    level = capture.detected_level
-else:
-    level_text = card_lines[1] if len(card_lines) > 1 else ''
-    ...
-```
-
-The `else` branch exists for `EchoCapture` objects that did not receive
-`detected_level` from the scan layer, which is a pre-level-ROI pattern.
-
-### Plan
-Confirm that `detected_level` is always set in the live scan path and in the
-service reprocess path. If so, remove the fallback branch.
+### What changed
+- `ocr_service.py` no longer falls back to batch OCR on the full card when an
+  echo-name ROI is missing.
+- `echo_assembler.py` no longer parses levels from legacy card-text lines.
+- `OcrService` now treats the dedicated level ROI as the only recovery surface:
+  it makes one last dedicated-ROI recovery attempt before assembly and rejects
+  the echo if that ROI still produces no digits.
 
 ---
 
@@ -234,10 +211,9 @@ to preserve older TOML files.
 ## Suggested Work Order
 
 ```text
-H-1  ->  M-1/M-2/M-3  ->  M-5/M-6/M-7  ->  M-4  ->  L-*
+M-5/M-6/M-7  ->  M-4  ->  L-*
 ```
 
-H-1 is the most important because the split raw-session contract is the biggest
-remaining source of confusion between the live path, reprocess path, and legacy
-processor. The M-* items are all local follow-ons once that format boundary is
-settled. L-* items are still deferrable.
+The remaining M-* items are local ownership and dependency cleanups now that
+the raw-session boundary and the echo-specific compatibility branches have been
+collapsed. L-* items are still deferrable.

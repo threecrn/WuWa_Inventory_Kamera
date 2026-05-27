@@ -87,6 +87,8 @@ def test_echo_assembler_adds_equipped_character(monkeypatch) -> None:
         EchoCapture(
             echo_index=7,
             card=image,
+            echo_name=image,
+            level=image,
             stats_name=image,
             stats_value=image,
             sonata_icon=image,

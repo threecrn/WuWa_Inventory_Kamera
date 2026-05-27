@@ -430,13 +430,11 @@ class EchoWorkflow:
         ]
 
         # ── Echo name crop (colour-filtered in the OCR service) ──────────
-        echo_name: np.ndarray | None = None
-        if hasattr(ei, 'echoName'):
-            en = ei.echoName
-            echo_name = full[
-                int(en.y) : int(en.y + en.h),
-                int(en.x) : int(en.x + en.w),
-            ]
+        en = ei.echoName
+        echo_name = full[
+            int(en.y) : int(en.y + en.h),
+            int(en.x) : int(en.x + en.w),
+        ]
 
         equipped = None
         if hasattr(ei, 'equipped'):
@@ -474,6 +472,7 @@ class EchoWorkflow:
             echo_index=pos.scan_index,
             card=card,
             echo_name=echo_name,
+            level=level_crop_bgr,
             equipped=equipped,
             detected_level=detected_level,
             detected_rarity=detected_rarity,

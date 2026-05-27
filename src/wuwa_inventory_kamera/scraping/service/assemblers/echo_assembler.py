@@ -201,21 +201,11 @@ class EchoAssembler:
             name = name[len('phantom:'):]
             logger.debug('Echo %d — phantom prefix stripped: %r → %r', idx, name_raw, name)
 
-        # Level: prefer the value already parsed during capture (new UI path);
-        # fall back to the third card-OCR line for legacy resolutions.
-        if capture.detected_level is not None:
-            level = capture.detected_level
-        else:
-            # card layout: [name, level, cost] — level is at index 1
-            level_text = card_lines[1] if len(card_lines) > 1 else ''
-            try:
-                level = min(25, int(level_text))
-            except ValueError:
-                # Fallback: trailing digits in name (e.g. phantom OCR merges
-                # name + level into one token like 'phantom:sigillum25')
-                import re as _re
-                m = _re.search(r'(\d+)$', name_raw)
-                level = min(25, int(m.group(1))) if m else 0
+        if capture.detected_level is None:
+            raise ValueError(
+                f'Echo {idx} missing detected_level; upstream capture preparation must resolve the dedicated level ROI before assembly.'
+            )
+        level = capture.detected_level
 
         logger.debug('Echo %d — name lines: %s | name=%r level=%d', idx, card_lines, name, level)
 

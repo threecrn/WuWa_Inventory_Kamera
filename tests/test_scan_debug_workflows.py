@@ -131,7 +131,7 @@ def test_weapon_workflow_write_debug_dumps_region_artifacts(monkeypatch, tmp_pat
 
 
 def test_ocr_service_uses_level_spec_for_weapons_and_value_spec_for_items() -> None:
-    service = ocr_service_module.OcrService.__new__(ocr_service_module.OcrService)
+    service = cast(Any, ocr_service_module.OcrService.__new__(ocr_service_module.OcrService))
     spec_calls: list[tuple[str, int, int | None]] = []
     assemble_calls: list[dict[str, object]] = []
     image = np.zeros((2, 2, 3), dtype=np.uint8)
@@ -201,7 +201,7 @@ def test_ocr_service_uses_level_spec_for_weapons_and_value_spec_for_items() -> N
 
 
 def test_ocr_service_passes_equipped_tokens_for_echoes() -> None:
-    service = ocr_service_module.OcrService.__new__(ocr_service_module.OcrService)
+    service = cast(Any, ocr_service_module.OcrService.__new__(ocr_service_module.OcrService))
     spec_calls: list[tuple[str, int, int | None]] = []
     assemble_calls: list[dict[str, object]] = []
     image = np.zeros((2, 2, 3), dtype=np.uint8)
@@ -246,16 +246,38 @@ def test_ocr_service_passes_equipped_tokens_for_echoes() -> None:
     service._ocr_with_spec = _fake_ocr_with_spec
     service._batch_ocr = _FakeBatchOcr()
     service._ocr_cache = _FakeOcrCache()
+    service._backend = SimpleNamespace(
+        recognize_single_line=lambda _image: [],
+        recognize=lambda _image: [],
+        thorough_recognize=lambda _image: [],
+    )
     service._echo_asm = _FakeEchoAssembler()
 
     group = [
         ocr_service_module._QueueItem(
-            EchoCapture(echo_index=1, card=image, stats_name=image, stats_value=image, equipped=image),
+            EchoCapture(
+                echo_index=1,
+                card=image,
+                echo_name=image,
+                level=image,
+                stats_name=image,
+                stats_value=image,
+                equipped=image,
+                detected_level=25,
+            ),
             0,
             concurrent.futures.Future(),
         ),
         ocr_service_module._QueueItem(
-            EchoCapture(echo_index=2, card=image, stats_name=image, stats_value=image),
+            EchoCapture(
+                echo_index=2,
+                card=image,
+                echo_name=image,
+                level=image,
+                stats_name=image,
+                stats_value=image,
+                detected_level=8,
+            ),
             1,
             concurrent.futures.Future(),
         ),
@@ -275,6 +297,121 @@ def test_ocr_service_passes_equipped_tokens_for_echoes() -> None:
     assert assemble_calls[1]['equipped_texts'] == []
     assert group[0].future.result().echo_index == 1
     assert group[1].future.result().echo_index == 2
+
+
+def test_ocr_service_recovers_missing_detected_level_before_echo_assembly() -> None:
+    service = cast(Any, ocr_service_module.OcrService.__new__(ocr_service_module.OcrService))
+    image = np.zeros((2, 2, 3), dtype=np.uint8)
+    box = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=np.float32)
+    resolved_levels: list[int] = []
+
+    service._ocr_with_spec = lambda _roi_key, images, rarity=None: [
+        [('echoes.fullStats', 1.0, box)] for _ in images
+    ]
+    service._batch_ocr = SimpleNamespace(
+        ocr_images=lambda images: [[('echo-card', 1.0, box)] for _ in images]
+    )
+    service._ocr_cache = SimpleNamespace(
+        lookup=lambda *_args, **_kwargs: None,
+        store=lambda *_args, **_kwargs: None,
+    )
+    service._backend = SimpleNamespace(
+        recognize_single_line=lambda _image: [],
+        recognize=lambda _image: [],
+        thorough_recognize=lambda _image: [],
+    )
+    service._resolve_echo_level = lambda capture: 17
+
+    class _RecordingEchoAssembler:
+        def assemble(self, capture, card_tokens, name_tokens, value_tokens, equipped_tokens=None):
+            resolved_levels.append(capture.detected_level)
+            return EchoResult(
+                echo_index=capture.echo_index,
+                data={'echo': {'id': capture.echo_index}},
+                warnings=[],
+                retried=False,
+                detected_level=capture.detected_level,
+            )
+
+    service._echo_asm = _RecordingEchoAssembler()
+
+    future = concurrent.futures.Future()
+    group = [
+        ocr_service_module._QueueItem(
+            EchoCapture(
+                echo_index=3,
+                card=image,
+                echo_name=image,
+                level=image,
+                stats_name=image,
+                stats_value=image,
+            ),
+            0,
+            future,
+        ),
+    ]
+
+    service._process_echoes(group)
+
+    assert resolved_levels == [17]
+    assert future.result().detected_level == 17
+
+
+def test_ocr_service_rejects_echo_when_dedicated_level_recovery_fails() -> None:
+    service = cast(Any, ocr_service_module.OcrService.__new__(ocr_service_module.OcrService))
+    image = np.zeros((2, 2, 3), dtype=np.uint8)
+    box = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=np.float32)
+    assembler_calls: list[int] = []
+
+    service._ocr_with_spec = lambda _roi_key, images, rarity=None: [
+        [('echoes.fullStats', 1.0, box)] for _ in images
+    ]
+    service._batch_ocr = SimpleNamespace(
+        ocr_images=lambda images: [[('echo-card', 1.0, box)] for _ in images]
+    )
+    service._ocr_cache = SimpleNamespace(
+        lookup=lambda *_args, **_kwargs: None,
+        store=lambda *_args, **_kwargs: None,
+    )
+    service._backend = SimpleNamespace(
+        recognize_single_line=lambda _image: [],
+        recognize=lambda _image: [],
+        thorough_recognize=lambda _image: [],
+    )
+    service._resolve_echo_level = lambda capture: None
+
+    class _FailingIfCalledAssembler:
+        def assemble(self, capture, card_tokens, name_tokens, value_tokens, equipped_tokens=None):
+            assembler_calls.append(capture.echo_index)
+            raise AssertionError('assembler should not be called when level recovery fails')
+
+    service._echo_asm = _FailingIfCalledAssembler()
+
+    future = concurrent.futures.Future()
+    group = [
+        ocr_service_module._QueueItem(
+            EchoCapture(
+                echo_index=4,
+                card=image,
+                echo_name=image,
+                level=image,
+                stats_name=image,
+                stats_value=image,
+            ),
+            0,
+            future,
+        ),
+    ]
+
+    service._process_echoes(group)
+
+    result = future.result()
+    assert assembler_calls == []
+    assert result.data is None
+    assert result.detected_level == 0
+    assert result.warnings == [
+        'Dedicated level ROI OCR returned no digits; echo rejected before assembly.'
+    ]
 
 
 def test_character_workflow_write_debug_dumps_section_artifacts(monkeypatch, tmp_path) -> None:
