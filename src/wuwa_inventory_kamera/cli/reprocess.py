@@ -3,7 +3,8 @@ wuwa_inventory_kamera.cli.reprocess
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Offline re-processing of raw WuWa inventory scan sessions — shipped as the
-``wuwa-reprocess`` console script entry point.
+``wuwa-reprocess`` console script entry point or
+``python -m wuwa_inventory_kamera.cli.reprocess``.
 
 Usage
 -----
@@ -64,16 +65,6 @@ _RAW_SESSION_TYPES: dict[str, dict[str, str]] = {
         'output_filename': 'characters_wuwainventorykamera.json',
     },
 }
-
-# ---------------------------------------------------------------------------
-# Project root on sys.path so the legacy `scraping` package is importable.
-# This file lives at src/wuwa_inventory_kamera/cli/reprocess.py, so the
-# project root is four levels up.
-# ---------------------------------------------------------------------------
-
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-if str(_PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PROJECT_ROOT))
 
 # ---------------------------------------------------------------------------
 # TRACE log level (below DEBUG)

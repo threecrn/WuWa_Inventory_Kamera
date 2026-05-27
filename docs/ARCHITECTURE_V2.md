@@ -536,7 +536,7 @@ src/wuwa_inventory_kamera/
     detect_sonata_icon.py   (sonata template build + detect)
   config/
     __init__.py
-    app_config.py           (basePATH, PROCESS_NAME, WINDOW_NAME, INVENTORY — plain config singleton)
+    app_config.py           (basePATH, PROCESS_NAME, WINDOW_NAME — plain config singleton)
   scraping/
     __init__.py
     data.py                 (loadData — echoesID, weaponsID, echoStats, sonataName, etc.)
@@ -672,7 +672,7 @@ app.py                      (shim → src/.../app.py — delegates to wuwa_inven
 main.py                     (shim → src/.../app.py — delegates to wuwa_inventory_kamera.app.main)
 [DELETED] batch_ocr.py      (superseded by src/.../scraping/ocr/batch.py)
 [DELETED] setup.py          (superseded by pyproject.toml)
-conftest.py                 (root — adds project root to sys.path; keep until no legacy imports remain)
+conftest.py                 (root — shared pytest configuration)
 ```
 
 ---

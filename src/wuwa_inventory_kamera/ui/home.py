@@ -28,7 +28,7 @@ from qfluentwidgets import (
     ProgressBar,
 )
 
-from .config import cfg, INVENTORY, FAILED
+from .config import cfg
 from ..scraping.utils.common import itemsID, savingScraped
 
 logger = logging.getLogger('HomeInterface')
@@ -129,6 +129,9 @@ class HomeInterface(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setObjectName("homeUI")
+        self._manual_inventory_items: dict[int, int] = {}
+        self._manual_failed_items: list[dict] = []
+        self._manual_session_id: str = ''
 
         self.lControlPanel = LControlPanel(self)
         self.lControlPanel.signalNotifier.connect(self.showNotification)
@@ -147,6 +150,26 @@ class HomeInterface(QWidget):
         self.updateUISignal.connect(self.itemsManualRecognition)
         self.itemsManualRecognition()
 
+    def set_manual_recognition_state(
+        self,
+        *,
+        inventory_items: dict[int, int] | None = None,
+        failed_items: list[dict] | None = None,
+        session_id: str = '',
+    ) -> None:
+        self._manual_inventory_items = dict(inventory_items or {})
+        self._manual_failed_items = list(failed_items or [])
+        self._manual_session_id = session_id
+        self.updateUISignal.emit()
+
+    def clear_manual_recognition_state(self) -> None:
+        self.set_manual_recognition_state()
+
+    def _current_failed_item(self) -> dict | None:
+        if not self._manual_failed_items:
+            return None
+        return self._manual_failed_items[0]
+
     # ------------------------------------------------------------------
     # Manual recognition for failed items
     # ------------------------------------------------------------------
@@ -156,7 +179,8 @@ class HomeInterface(QWidget):
             QWidget().setLayout(self.rightWidget.layout())
 
         container = QVBoxLayout()
-        if FAILED:
+        failed_item = self._current_failed_item()
+        if failed_item is not None:
             container.setContentsMargins(0, 0, 0, 0)
             container.addWidget(BodyLabel('Recognition failed, manual update:'))
 
@@ -164,7 +188,7 @@ class HomeInterface(QWidget):
 
             image_label = PixmapLabel()
             try:
-                image = QImage(FAILED[0]['image'])
+                image = QImage(failed_item['image'])
             except Exception:
                 image = QImage('')
             pixmap = QPixmap.fromImage(image)
@@ -180,7 +204,7 @@ class HomeInterface(QWidget):
             owned_label = BodyLabel("Owned")
             self.owned_spinbox = SpinBox()
             self.owned_spinbox.setRange(1, 9999)
-            self.owned_spinbox.setValue(FAILED[0]['owned'])
+            self.owned_spinbox.setValue(failed_item['owned'])
             owned_layout.addWidget(owned_label)
             owned_layout.addWidget(self.owned_spinbox)
             middle_layout.addLayout(owned_layout)
@@ -222,20 +246,24 @@ class HomeInterface(QWidget):
         self.rightWidget.update()
 
     def onSkipButtonClicked(self):
-        if FAILED:
-            Path(FAILED[0]['image']).unlink(missing_ok=True)
-            FAILED.pop(0)
+        failed_item = self._current_failed_item()
+        if failed_item is not None:
+            Path(failed_item['image']).unlink(missing_ok=True)
+            self._manual_failed_items.pop(0)
             self.updateUISignal.emit()
 
     def onChangeButtonClicked(self):
         selected_item = self.list_widget.currentItem()
         if selected_item:
             item_id = itemsID.get(selected_item.text().lower().replace(' ', ''))['id']
-            INVENTORY['items'][item_id] = self.owned_spinbox.value()
-            savingScraped(START_DATE=INVENTORY['date'])
+            self._manual_inventory_items[item_id] = self.owned_spinbox.value()
+            savingScraped(
+                {'inventory_wuwainventorykamera.json': (self._manual_inventory_items, dict)},
+                START_DATE=self._manual_session_id,
+            )
 
-            if FAILED:
-                FAILED.pop(0)
+            if self._manual_failed_items:
+                self._manual_failed_items.pop(0)
 
             self.updateUISignal.emit()
         else:

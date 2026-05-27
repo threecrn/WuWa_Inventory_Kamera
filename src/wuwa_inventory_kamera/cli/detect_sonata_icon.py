@@ -54,14 +54,9 @@ import cv2
 import numpy as np
 
 # ---------------------------------------------------------------------------
-# Bootstrap: make sure the project root is on sys.path so that legacy
-# packages (``scraping``, ``properties``, …) are importable when running
-# as  ``python -m wuwa_inventory_kamera.cli.detect_sonata_icon``  or
-# directly as  ``python src/wuwa_inventory_kamera/cli/detect_sonata_icon.py``.
+# Project root for bundled template assets.
 # ---------------------------------------------------------------------------
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-if str(_PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PROJECT_ROOT))
 
 # ---------------------------------------------------------------------------
 # Defaults

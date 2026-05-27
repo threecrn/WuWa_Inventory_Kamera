@@ -101,21 +101,17 @@ The active live scan path and the raw-session reprocess path now both submit
 
 ---
 
-## M-4: `app_config.py` mutable global state (`INVENTORY`, `FAILED`)
+## M-4: Mutable scan-result globals removed
 
-```python
-INVENTORY: dict = {'items': {}, 'date': ''}
-FAILED: list = []
-```
+Resolved.
 
-These module-level globals are still imported by `ui/home.py` and by
-`scraping/utils/common.py`. `savingScraped()` also captures `INVENTORY['items']`
-in its default argument, which is a Python footgun.
+What changed:
 
-### Plan
-Pass scan results explicitly via return values or callbacks instead of mutating
-shared module state. Rewrite `savingScraped()` to avoid the default argument
-capturing global mutable data.
+- `config/app_config.py` no longer exports `INVENTORY` / `FAILED`
+- `scraping/utils/common.py::savingScraped()` now requires explicit scan data
+  instead of closing over module-global inventory state
+- `ui/home.py` keeps manual-recognition queue state on the `HomeInterface`
+  instance instead of sharing it through package globals
 
 ---
 
@@ -133,21 +129,24 @@ Current ownership:
 
 ---
 
-## M-6: CLI project-root bootstrap still exists in a couple of modules
+## M-6: CLI bootstrap decision
 
-Current occurrences:
+Resolved.
 
-- `src/wuwa_inventory_kamera/cli/reprocess.py`
-- `src/wuwa_inventory_kamera/cli/detect_sonata_icon.py`
+Decision:
 
-Both still prepend the project root to `sys.path` to support direct-script
-execution.
+- direct file-path execution such as `python src/.../reprocess.py` is not a
+  supported workflow
+- supported invocation is package mode via console scripts or
+  `python -m wuwa_inventory_kamera.cli...`
 
-### Plan
-Decide whether direct execution of these modules outside installed/package mode
-is still a supported workflow. If not, remove the bootstrap. If it is, isolate
-it to one small compatibility wrapper instead of keeping it inline in each CLI
-module.
+What changed:
+
+- removed inline project-root `sys.path` bootstrap from
+  `src/wuwa_inventory_kamera/cli/reprocess.py`
+- removed inline project-root `sys.path` bootstrap from
+  `src/wuwa_inventory_kamera/cli/detect_sonata_icon.py`
+- added regression tests that execute both modules through `python -m`
 
 ---
 

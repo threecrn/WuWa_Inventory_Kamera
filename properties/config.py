@@ -14,5 +14,4 @@ from wuwa_inventory_kamera.ui.config import (  # noqa: F401
 from wuwa_inventory_kamera.config.app_config import (  # noqa: F401
     basePATH,
     PROCESS_NAME, WINDOW_NAME,
-    INVENTORY, FAILED,
 )

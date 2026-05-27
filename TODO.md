@@ -26,8 +26,9 @@
 - [x] Move shared helpers out of entry-point modules.
   - [x] Relocate rarity helpers and shared debug-artifact helpers into a neutral module.
 - [x] Clarify ownership of validator logic still imported by `EchoAssembler` from legacy processing modules.
-- [ ] Remove mutable global scan-result state from `app_config.py` / `scraping.utils.common`.
-- [ ] Decide whether direct-script CLI bootstrap via `sys.path` patching is still a supported workflow.
+- [x] Remove mutable global scan-result state from `app_config.py` / `scraping.utils.common`.
+- [x] Decide whether direct-script CLI bootstrap via `sys.path` patching is still a supported workflow.
+  - [x] Direct file-path execution is no longer a supported CLI mode; use console scripts or `python -m wuwa_inventory_kamera.cli...`.
 
 ### Low
 
@@ -47,6 +48,7 @@
 - [ ] minor issues on edge cases:
   - [ ] at 2560x1440, the echo level signature configuration doesn't work properly because the key text color is slightly off
   - [ ] on slow systems, wait delays might be too short for UI animations to complete, causing OCR failures
+    - [ ] add "slow-system" option that adds extra delays and maybe disables some optimizations to improve reliability on lower-end hardware?
 - [ ] RapidOCR CPU backend: multi-threaded batch processing for faster CPU inference?
 - [ ] end-user installation: where to put config and cache files?
 - [ ] fork repo: how to deal with references to the original (e.g. feedback link), README.md, etc?

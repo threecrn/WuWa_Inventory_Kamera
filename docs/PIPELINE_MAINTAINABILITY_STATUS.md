@@ -280,26 +280,23 @@ Cleanup direction:
 - keep deleting direct imports of the compatibility wrapper as legacy callers move
 - remove the wrapper entirely once the remaining legacy processing imports are gone
 
-### 7. Mutable globals and compatibility helpers still add ownership noise
+### 7. Shared scan-state globals and CLI bootstrap are gone
 
-The remaining repository noise is no longer root-level import shims. It is
-mostly package-local compatibility state and helper code such as:
+The active package no longer relies on package-global scan-result state or
+inline CLI path mutation.
 
-- `INVENTORY` and `FAILED` in `config/app_config.py`
-- `savingScraped()` in `scraping/utils/common.py`
-- `loadRawScans()` and `RawEchoScan`
-- project-root bootstrap via `sys.path.insert(...)` in CLI modules that still
-  support direct script execution
+Current state:
 
-This is not the main user-path problem anymore, but it is still a maintenance
-problem because it leaves ownership split between the new pipeline and older
-compatibility habits.
+- `config/app_config.py` now exposes configuration only
+- `savingScraped()` persists explicit caller-provided data
+- `ui/home.py` keeps manual-recognition queue state on the widget instance
+- supported CLI invocation is package mode only: console scripts or `python -m`
 
-Cleanup direction:
+Remaining cleanup direction:
 
-- replace remaining shared mutable state with explicit session/result flow
 - keep compatibility loaders isolated from the core scan and OCR path
-- remove CLI bootstrap code once direct-script execution requirements are clear
+- keep evaluating whether the manual-recognition UI still belongs in the active
+  v2 product surface
 
 ### 8. Test coverage still does not enforce full live/reprocess parity
 

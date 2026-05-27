@@ -219,22 +219,23 @@ Cleanup direction:
   3. assembly and validation: OCR tokens + derived metadata -> `EchoResult`
 - delete the compatibility wrapper once the remaining legacy imports disappear
 
-### 7. Legacy state and compatibility hooks still remain active in the package
+### 7. Explicit result flow replaced the remaining shared scan-state hooks
 
-The remaining compatibility burden is no longer root-level import shims. It is
-mostly package-local state and bootstrap code such as:
+Recent cleanup removed the last package-global scan-result state and the inline
+CLI `sys.path` bootstrap.
 
-- `INVENTORY` and `FAILED` in `config/app_config.py`
-- `savingScraped()` in `scraping/utils/common.py`
-- the manual item-recognition flow in `ui/home.py`
-- project-root `sys.path` bootstrapping in CLI modules that still support direct
-  script execution
+Current state:
 
-Cleanup direction:
+- `savingScraped()` now persists only the explicit data passed by the caller
+- the manual item-recognition UI keeps its pending queue on the `HomeInterface`
+  instance instead of package globals
+- CLI support is package mode only: console scripts or `python -m`
 
-- replace remaining mutable shared state with explicit result flow
-- isolate compatibility loaders/helpers from the main scan pipeline
-- remove CLI bootstrap code once direct-script execution requirements are clear
+Remaining cleanup direction:
+
+- keep compatibility loaders/helpers isolated from the main scan pipeline
+- decide whether the manual item-recognition UI should be retained, expanded,
+  or deleted now that the active v2 scan path returns structured results
 
 ### 8. Legacy processing code still exists in-tree even though the supported surface is smaller
 
@@ -300,10 +301,9 @@ format.
 3. Done: validator logic now lives under `scraping/service/echo_validation.py`;
   keep `scraping/processing/echoesValidator.py` only as a compatibility wrapper
   until the remaining legacy imports are gone.
-4. Replace mutable globals and legacy persistence helpers with explicit session
-   results.
-5. Quarantine or delete the remaining legacy processing modules and CLI
-   bootstrap code.
+4. Done: replace mutable globals and legacy persistence helpers with explicit
+  session results.
+5. Quarantine or delete the remaining legacy processing modules.
 
 ## Remaining Open Questions
 
@@ -313,5 +313,3 @@ format.
   converter instead of the main path?
 - Do we want `OcrService` to remain echo-aware for name-recognition strategy, or
   should that policy move into a dedicated echo-name recognizer component?
-- Do the CLI modules still need direct-script execution support, or can the
-  remaining `sys.path` bootstrap be removed?

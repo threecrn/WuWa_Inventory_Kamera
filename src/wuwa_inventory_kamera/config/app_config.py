@@ -9,7 +9,6 @@ Exports
 - ``app_config`` — singleton :class:`AppConfig` instance
 - ``basePATH``   — project root as :class:`~pathlib.Path`
 - ``PROCESS_NAME``, ``WINDOW_NAME`` — game identification constants
-- ``INVENTORY``, ``FAILED`` — mutable session state (legacy compat)
 """
 from __future__ import annotations
 
@@ -31,14 +30,6 @@ basePATH: Path = Path(__file__).resolve().parents[3]
 
 PROCESS_NAME: str = 'Client-Win64-Shipping.exe'
 WINDOW_NAME: str = 'Wuthering Waves'
-
-# ---------------------------------------------------------------------------
-# Mutable session state (legacy — shared between UI & scraping code)
-# ---------------------------------------------------------------------------
-
-INVENTORY: dict = {'items': {}, 'date': ''}
-FAILED: list = []
-
 
 def default_ocr_cache_path(export_folder: str | Path = 'export') -> str:
     """Return the default SQLite path for the generalized OCR cache."""

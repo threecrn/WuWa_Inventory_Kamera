@@ -30,7 +30,6 @@ from ..config.app_config import (
     app_config,
     basePATH,
     default_ocr_cache_path,
-    INVENTORY, FAILED,
     PROCESS_NAME, WINDOW_NAME,
 )
 

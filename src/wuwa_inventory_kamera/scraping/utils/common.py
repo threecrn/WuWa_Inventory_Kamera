@@ -5,7 +5,7 @@ import logging
 import numpy as np
 from pathlib import Path
 
-from ...config.app_config import app_config, INVENTORY
+from ...config.app_config import app_config
 from ..data import (
     itemsID, charactersID, weaponsID,
     echoesID, achievementsID, echoStats,
@@ -28,7 +28,8 @@ def _trace(logger: logging.Logger, msg: str, *args, **kwargs) -> None:
 
 _logger = logging.getLogger(__name__)
 
-def savingScraped(scannedData: dict = {'inventory_wuwainventorykamera.json': (INVENTORY['items'], dict)}, START_DATE: str = ''):
+def savingScraped(scannedData: dict | None = None, START_DATE: str = ''):
+    scannedData = {} if scannedData is None else scannedData
     savePATH: Path = Path(app_config.exportFolder) / START_DATE
     
     if any(data != emptyType() for data, emptyType in scannedData.values()):
