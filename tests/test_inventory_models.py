@@ -7,6 +7,10 @@ import pytest
 import wuwa_inventory_kamera.ui.inventory_models as inventory_models
 
 
+_REAL_LOAD_GENERATED_CATALOG = inventory_models._load_generated_catalog
+_REAL_LOAD_GENERATED_LOCALE = inventory_models._load_generated_locale
+
+
 def _write_json(path, payload) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -14,6 +18,8 @@ def _write_json(path, payload) -> None:
 
 @pytest.fixture(autouse=True)
 def _patch_metadata(monkeypatch) -> None:
+    monkeypatch.setattr(inventory_models, '_load_generated_catalog', lambda _filename: {})
+    monkeypatch.setattr(inventory_models, '_load_generated_locale', lambda _filename, _language_code: {})
     monkeypatch.setattr(
         inventory_models.scraping_data,
         'itemsID',
@@ -270,6 +276,8 @@ def test_metadata_resolver_prefers_generated_localized_metadata(tmp_path, monkey
 
     monkeypatch.setattr(inventory_models, 'basePATH', tmp_path)
     monkeypatch.setattr(inventory_models.app_config, 'gameLanguage', 'Japanese')
+    monkeypatch.setattr(inventory_models, '_load_generated_catalog', _REAL_LOAD_GENERATED_CATALOG)
+    monkeypatch.setattr(inventory_models, '_load_generated_locale', _REAL_LOAD_GENERATED_LOCALE)
 
     resolver = inventory_models.MetadataResolver()
 

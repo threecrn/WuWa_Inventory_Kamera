@@ -7,7 +7,8 @@ after a new game version adds new sonata sets.
 
 Workflow
 --------
-1. Load all known sonata keys from ``data/en/sonataName.json``.
+1. Load all known sonata keys from ``data/catalog/sonatas.json`` (fallback:
+    ``data/en/sonataName.json``).
 2. Audit which wiki icons (``assets/IconS/*.png``) and which detection
    templates (``assets/IconS/templates/*.png``) already exist.
 3. Download any missing wiki icons from the Fandom wiki API.
@@ -64,7 +65,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "data"
 ICONS_DIR = REPO_ROOT / "assets" / "IconS"
 TEMPLATES_DIR = ICONS_DIR / "templates"
-SONATA_JSON = DATA_DIR / "en" / "sonataName.json"
 
 # Reference icon crop coordinates at 1920 × 1080.
 _REF_WIDTH = 1920
@@ -98,11 +98,31 @@ def normalize(name: str) -> str:
     return re.sub(r"[_\s']", "", name).lower()
 
 
-def load_sonata_keys() -> dict[str, int]:
-    """Return ``{normalized_key: id}`` from ``sonataName.json``."""
-    with SONATA_JSON.open(encoding="utf-8") as f:
-        raw: dict[str, int] = json.load(f)
-    return {normalize(k): v for k, v in raw.items()}
+def load_sonata_keys(data_dir: Path = DATA_DIR) -> dict[str, int]:
+    """Return ``{normalized_key: id}`` from generated sonata data."""
+    catalog_path = data_dir / "catalog" / "sonatas.json"
+    if catalog_path.is_file():
+        with catalog_path.open(encoding="utf-8") as f:
+            raw = json.load(f)
+        if isinstance(raw, dict):
+            return {
+                normalize(key): value["id"]
+                for key, value in raw.items()
+                if isinstance(key, str)
+                and isinstance(value, dict)
+                and isinstance(value.get("id"), int)
+            }
+
+    legacy_path = data_dir / "en" / "sonataName.json"
+    with legacy_path.open(encoding="utf-8") as f:
+        raw = json.load(f)
+    if not isinstance(raw, dict):
+        raise ValueError(f"Unexpected sonata data format in {legacy_path}")
+    return {
+        normalize(key): value
+        for key, value in raw.items()
+        if isinstance(key, str) and isinstance(value, int)
+    }
 
 
 def existing_stems(directory: Path) -> set[str]:

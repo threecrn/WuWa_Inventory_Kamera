@@ -13,7 +13,7 @@
 # ── CONFIG — edit before running ─────────────────────────────────────────────
 
 SORT_ORDER      = 'level'   # sort order to apply before scanning; None = keep current
-# Slugs to process.  None → all slugs in sonataName.json (sorted by ID).
+# Slugs to process.  None → all canonical sonata slugs (sorted by ID).
 SLUGS: list[str] | None = None
 
 # ── Script body — no changes needed below this line ──────────────────────────
@@ -27,7 +27,7 @@ from pathlib import Path
 _arg_parser = argparse.ArgumentParser(prog=Path(__file__).name, add_help=False)
 _arg_parser.add_argument(
     '--lang', default='en', metavar='LANG',
-    help='Language directory for sonataName.json (default: en).',
+    help='Locale code used only for legacy sonataName.json fallback (default: en).',
 )
 _script_args, _ = _arg_parser.parse_known_args()
 
@@ -39,8 +39,7 @@ import main as _ust  # noqa: E402 (late import after path manipulation)
 
 # ── Load sonata names ─────────────────────────────────────────────────────────
 
-_sonata_json = _REPO_ROOT / 'data' / _LANG / 'sonataName.json'
-_sonata_dict: dict[str, int] = json.loads(_sonata_json.read_text(encoding='utf-8'))
+_sonata_dict: dict[str, int] = _ust.load_sonata_keys(_REPO_ROOT / 'data')
 # Process sonatas in ascending ID order so progress is predictable.
 _all_slugs: list[str] = [
     slug for slug, _ in sorted(_sonata_dict.items(), key=lambda kv: kv[1])

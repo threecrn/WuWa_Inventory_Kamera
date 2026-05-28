@@ -10,7 +10,8 @@ Usage
 
 Algorithm
 ---------
-1. Load every sonata key from ``data/en/sonataName.json``.
+1. Load every sonata key from ``data/catalog/sonatas.json`` (fallback:
+    ``data/en/sonataName.json``).
 2. Call the MediaWiki ``allimages`` API to list every ``Icon_*.png`` file
    hosted on the wiki, paging through all results.
 3. Match each wiki filename to a sonata key by normalising both to lowercase
@@ -71,10 +72,25 @@ _WIKI_NAME_OVERRIDES: dict[str, str] = {
 
 
 def load_sonata_keys(data_dir: Path) -> set[str]:
+    catalog_path = data_dir / "catalog" / "sonatas.json"
+    if catalog_path.is_file():
+        with catalog_path.open(encoding="utf-8") as fh:
+            raw = json.load(fh)
+        if isinstance(raw, dict):
+            return {
+                normalize(key)
+                for key, value in raw.items()
+                if isinstance(key, str)
+                and isinstance(value, dict)
+                and isinstance(value.get("id"), int)
+            }
+
     path = data_dir / "en" / "sonataName.json"
     with path.open(encoding="utf-8") as fh:
-        raw: dict[str, int] = json.load(fh)
-    return {normalize(k) for k in raw}
+        raw = json.load(fh)
+    if not isinstance(raw, dict):
+        raise ValueError(f"Unexpected sonata data format in {path}")
+    return {normalize(k) for k in raw if isinstance(k, str)}
 
 
 # ---------------------------------------------------------------------------
@@ -182,12 +198,12 @@ def main() -> None:
         type=Path,
         default=REPO_ROOT / "data",
         metavar="DIR",
-        help="Data directory containing en/sonataName.json (default: data/)",
+        help="Data directory containing catalog/sonatas.json (default: data/)",
     )
     args = parser.parse_args()
 
     sonata_keys = load_sonata_keys(args.data)
-    log.info("Loaded %d sonata keys from sonataName.json", len(sonata_keys))
+    log.info("Loaded %d sonata keys from generated data", len(sonata_keys))
 
     mapping = build_mapping(sonata_keys)
     log.info("Matched %d / %d sonata icons", len(mapping), len(sonata_keys))
