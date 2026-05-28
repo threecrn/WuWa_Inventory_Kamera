@@ -600,8 +600,8 @@ def _build_echo_rows(payload: list, resolver: MetadataResolver) -> tuple[Invento
         if equipped:
             body_lines.append(f'Equipped: {resolver.resolve_character(equipped)}')
 
+        main_stat = _format_main_stat(details)
         stats = details.get('stats')
-        main_stat = _format_main_stat(stats)
         if main_stat:
             body_lines.append(main_stat)
         substat_count = _format_substat_count(stats)
@@ -792,16 +792,11 @@ def _build_echo_details(echo_id: object, details: dict, resolver: MetadataResolv
         lines.append(f'Sonata: {resolver.resolve_sonata(sonata_ref)}')
 
     stats = details.get('stats')
-    if isinstance(stats, dict):
-        main_stats = stats.get('main')
-        if isinstance(main_stats, dict):
-            for stat_name, stat_value in main_stats.items():
-                lines.append(f'Main Stat: {stat_name} {stat_value}')
+    for stat_name, stat_value in _iter_echo_stat_items(stats, 'main'):
+        lines.append(f'Main Stat: {stat_name} {stat_value}')
 
-        sub_stats = stats.get('sub')
-        if isinstance(sub_stats, dict):
-            for stat_name, stat_value in sub_stats.items():
-                lines.append(f'Substat: {stat_name} {stat_value}')
+    for stat_name, stat_value in _iter_echo_stat_items(stats, 'sub'):
+        lines.append(f'Substat: {stat_name} {stat_value}')
 
     return tuple(lines)
 
@@ -1001,14 +996,106 @@ def _format_chain(value: object) -> str | None:
     return f'Chain {value}'
 
 
-def _format_main_stat(stats: object) -> str | None:
-    if not isinstance(stats, dict):
+_FIXED_MAIN_BY_COST: dict[int, str] = {1: 'hp', 3: 'atk', 4: 'atk'}
+
+
+def _format_main_stat(details: object) -> str | None:
+    if not isinstance(details, dict):
         return None
-    main_stats = stats.get('main')
-    if not isinstance(main_stats, dict) or not main_stats:
+    main_stats = _iter_echo_stat_items(details.get('stats'), 'main')
+    selected = _select_display_main_stat(main_stats, details.get('_cost'))
+    if selected is None:
         return None
-    stat_name, stat_value = next(iter(main_stats.items()))
+    stat_name, stat_value = selected
     return f'Main: {stat_name} {stat_value}'
+
+
+def _iter_echo_stat_items(stats: object, bucket: str) -> tuple[tuple[object, object], ...]:
+    if not isinstance(stats, dict):
+        return ()
+    bucket_stats = stats.get(bucket)
+    if not isinstance(bucket_stats, dict) or not bucket_stats:
+        return ()
+
+    items = tuple(bucket_stats.items())
+    stat_order = _get_echo_stat_order(stats, bucket)
+    if not stat_order:
+        return items
+
+    ordered_items: list[tuple[object, object]] = []
+    seen_indices: set[int] = set()
+    for ordered_key in stat_order:
+        for idx, item in enumerate(items):
+            if idx in seen_indices:
+                continue
+            if _echo_stat_keys_match(ordered_key, item[0]):
+                ordered_items.append(item)
+                seen_indices.add(idx)
+                break
+
+    ordered_items.extend(
+        item
+        for idx, item in enumerate(items)
+        if idx not in seen_indices
+    )
+    return tuple(ordered_items)
+
+
+def _get_echo_stat_order(stats: dict, bucket: str) -> tuple[object, ...]:
+    for key in (f'_{bucket}Order', f'{bucket}Order', f'{bucket}_order'):
+        value = stats.get(key)
+        if isinstance(value, list) and value:
+            return tuple(value)
+    return ()
+
+
+def _echo_stat_keys_match(expected: object, actual: object) -> bool:
+    return expected == actual or str(expected) == str(actual)
+
+
+def _select_display_main_stat(
+    main_stats: tuple[tuple[object, object], ...],
+    cost: object,
+) -> tuple[object, object] | None:
+    if not main_stats:
+        return None
+
+    resolved_cost = _coerce_int(cost)
+    fixed_name = _FIXED_MAIN_BY_COST.get(resolved_cost) if resolved_cost is not None else None
+    if fixed_name is not None:
+        for stat_name, stat_value in main_stats:
+            if not _is_fixed_main_stat_name(stat_name, fixed_name):
+                return stat_name, stat_value
+
+    for stat_name, stat_value in main_stats:
+        if not _looks_like_flat_fixed_main_stat(stat_name):
+            return stat_name, stat_value
+
+    return main_stats[0]
+
+
+def _coerce_int(value: object) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_echo_stat_name(stat_name: object) -> str:
+    return ''.join(
+        char for char in str(stat_name).strip().lower()
+        if char.isalnum() or char == '%'
+    )
+
+
+def _is_fixed_main_stat_name(stat_name: object, expected_name: str) -> bool:
+    normalized_name = _normalize_echo_stat_name(stat_name)
+    return not normalized_name.endswith('%') and normalized_name == expected_name
+
+
+def _looks_like_flat_fixed_main_stat(stat_name: object) -> bool:
+    normalized_name = _normalize_echo_stat_name(stat_name)
+    return normalized_name in {'hp', 'atk'}
 
 
 def _format_substat_count(stats: object) -> str | None:

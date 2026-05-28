@@ -344,16 +344,29 @@ class EchoAssembler:
         )
 
         tune_lv = max(0, len(matched_values) - 2)
-        stats: dict = defaultdict(dict)
+        main_stats: dict[str, object] = {}
+        sub_stats: dict[str, object] = {}
+        main_order: list[str] = []
+        sub_order: list[str] = []
 
         for i, (stat_name, raw_value) in enumerate(zip(matched_names, matched_values)):
             display_name = echoStats.get(stat_name, stat_name)
             bucket = 'main' if i < 2 else 'sub'
+            order = main_order if bucket == 'main' else sub_order
+            bucket_stats = main_stats if bucket == 'main' else sub_stats
             value  = _parse_stat_value(raw_value)
             if isinstance(value, float) or (isinstance(value, str) and raw_value.endswith('%')):
-                stats[bucket][f'{display_name}%'] = value
+                stat_key = f'{display_name}%'
             else:
-                stats[bucket][display_name] = value
+                stat_key = display_name
+            bucket_stats[stat_key] = value
+            order.append(stat_key)
+
+        stats: dict[str, object] = {'main': main_stats, 'sub': sub_stats}
+        if main_order:
+            stats['_mainOrder'] = main_order
+        if sub_order:
+            stats['_subOrder'] = sub_order
 
         return tune_lv, dict(stats)
 

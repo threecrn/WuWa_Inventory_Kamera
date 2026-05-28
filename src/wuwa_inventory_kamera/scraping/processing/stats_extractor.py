@@ -88,6 +88,39 @@ def _bbox_center(bbox) -> tuple[float, float]:
     return sum(xs) / len(xs), sum(ys) / len(ys)
 
 
+def _build_stats_dict(names: list[str], values: list[str], echo_stats: dict) -> tuple[int, dict]:
+    tune_lv = max(0, len(values) - 2)
+    stats: dict = defaultdict(dict)
+    main_order: list[str] = []
+    sub_order: list[str] = []
+
+    for idx, (stat_name, stat_value) in enumerate(zip(names, values)):
+        display_name = echo_stats.get(stat_name, stat_name)
+        bucket = 'main' if idx < 2 else 'sub'
+        order = main_order if bucket == 'main' else sub_order
+
+        try:
+            if isinstance(stat_value, str) and stat_value.endswith('%'):
+                stat_key = f'{display_name}%'
+                parsed_value = float(stat_value[:-1])
+            else:
+                stat_key = display_name
+                parsed_value = int(stat_value)
+        except Exception:
+            stat_key = f'{display_name}%' if isinstance(stat_value, str) and stat_value.endswith('%') else display_name
+            parsed_value = stat_value
+
+        stats[bucket][stat_key] = parsed_value
+        order.append(stat_key)
+
+    if main_order:
+        stats['_mainOrder'] = main_order
+    if sub_order:
+        stats['_subOrder'] = sub_order
+
+    return tune_lv, dict(stats)
+
+
 # ---------------------------------------------------------------------------
 # Base class
 # ---------------------------------------------------------------------------
@@ -198,22 +231,10 @@ class StatsExtractor(abc.ABC):
         logger.debug("Scan %d — stats names: %s", scan_index, names)
         logger.debug("Scan %d — stats values: %s", scan_index, values)
 
-        tune_lv = max(0, len(values) - 2)
-        stats: dict = defaultdict(dict)
         echo_stats = _get_echo_stats()
+        tune_lv, stats = _build_stats_dict(names, values, echo_stats)
 
-        for idx, (stat_name, stat_value) in enumerate(zip(names, values)):
-            stat_name = echo_stats.get(stat_name, stat_name)
-            bucket = 'main' if idx < 2 else 'sub'
-            try:
-                if stat_value.endswith('%'):
-                    stats[bucket][f"{stat_name}%"] = float(stat_value[:-1])
-                else:
-                    stats[bucket][stat_name] = int(stat_value)
-            except Exception:
-                stats[bucket][stat_name] = stat_value
-
-        return tune_lv, dict(stats), trace
+        return tune_lv, stats, trace
 
     def retry_execute(
         self,
@@ -265,21 +286,10 @@ class StatsExtractor(abc.ABC):
         logger.debug("Scan %d — retry stats names: %s", scan_index, names)
         logger.debug("Scan %d — retry stats values: %s", scan_index, values)
 
-        tune_lv = max(0, len(values) - 2)
-        stats: dict = defaultdict(dict)
         echo_stats = _get_echo_stats()
-        for idx, (stat_name, stat_value) in enumerate(zip(names, values)):
-            stat_name = echo_stats.get(stat_name, stat_name)
-            bucket = 'main' if idx < 2 else 'sub'
-            try:
-                if stat_value.endswith('%'):
-                    stats[bucket][f"{stat_name}%"] = float(stat_value[:-1])
-                else:
-                    stats[bucket][stat_name] = int(stat_value)
-            except Exception:
-                stats[bucket][stat_name] = stat_value
+        tune_lv, stats = _build_stats_dict(names, values, echo_stats)
 
-        return tune_lv, dict(stats), trace
+        return tune_lv, stats, trace
 
 
 # ---------------------------------------------------------------------------

@@ -19,6 +19,10 @@ def _token(text: str):
     return ([[0, 0], [1, 0], [1, 1], [0, 1]], text, 1.0)
 
 
+def _token_at(text: str, x: int, y: int):
+    return ([[x, y], [x + 1, y], [x + 1, y + 1], [x, y + 1]], text, 1.0)
+
+
 def test_weapon_assembler_adds_equipped_character(monkeypatch) -> None:
     monkeypatch.setattr(
         weapon_assembler_module,
@@ -183,6 +187,33 @@ def test_echo_build_output_includes_explicit_canonical_keys() -> None:
             'stats': {'main': {'atk%': '18%'}, 'sub': {}},
         }
     }
+
+
+def test_echo_parse_stats_records_visual_stat_order() -> None:
+    tune_level, stats = EchoAssembler._parse_stats(
+        [
+            _token_at('Crit', 0, 0),
+            _token_at('DMG', 8, 0),
+            _token_at('ATK', 0, 10),
+            _token_at('ATK', 0, 20),
+            _token_at('Crit', 0, 30),
+            _token_at('Rate', 8, 30),
+            _token_at('HP', 0, 40),
+        ],
+        [
+            _token_at('44.0%', 0, 0),
+            _token_at('150', 0, 10),
+            _token_at('10.9%', 0, 20),
+            _token_at('6.9%', 0, 30),
+            _token_at('7.1%', 0, 40),
+        ],
+        {'critdmg': 'cd', 'atk': 'atk', 'critrate': 'cr', 'hp': 'hp'},
+        scan_index=7,
+    )
+
+    assert tune_level == 3
+    assert stats['_mainOrder'] == ['cd%', 'atk']
+    assert stats['_subOrder'] == ['atk%', 'cr%', 'hp%']
 
 
 def test_parse_equipped_character_fuzzy_matches_localized_character_name(

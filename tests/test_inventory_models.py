@@ -118,6 +118,39 @@ def test_load_inventory_document_normalizes_echo_export() -> None:
     assert 'Substat: Crit Rate 8.4%' in row.details_lines
 
 
+def test_load_inventory_document_uses_rolled_main_and_explicit_stat_order() -> None:
+    payload = [
+        {
+            '310000010': {
+                'level': 25,
+                'tuneLv': 5,
+                'rarity': 5,
+                '_cost': 4,
+                'stats': {
+                    'main': {'ATK': '150', 'Healing Bonus': '26.4%'},
+                    '_mainOrder': ['Healing Bonus', 'ATK'],
+                    'sub': {'ATK%': '9.4%', 'Crit Rate': '8.4%', 'HP%': '7.1%'},
+                    '_subOrder': ['Crit Rate', 'ATK%', 'HP%'],
+                },
+            }
+        }
+    ]
+
+    document = inventory_models.load_inventory_document('echoes_wuwainventorykamera.json', payload)
+
+    row = document.sections[0].rows[0]
+    assert 'Main: Healing Bonus 26.4%' in row.body_lines
+    assert [line for line in row.details_lines if line.startswith('Main Stat:')] == [
+        'Main Stat: Healing Bonus 26.4%',
+        'Main Stat: ATK 150',
+    ]
+    assert [line for line in row.details_lines if line.startswith('Substat:')] == [
+        'Substat: Crit Rate 8.4%',
+        'Substat: ATK% 9.4%',
+        'Substat: HP% 7.1%',
+    ]
+
+
 def test_load_inventory_document_normalizes_weapon_export() -> None:
     payload = [{'id': 21010074, 'level': 90, 'maxLevel': 90, 'rank': 1, '_equipped': 'Shorekeeper'}]
 
