@@ -34,11 +34,15 @@ def test_assets_sonata_loader_prefers_generated_catalog(tmp_path) -> None:
     assert assets_module._load_sonata_keys(data_dir) == {'moonlitclouds'}
 
 
-def test_assets_sonata_loader_falls_back_to_legacy_file(tmp_path) -> None:
+def test_assets_sonata_loader_requires_generated_catalog(tmp_path) -> None:
     data_dir = tmp_path / 'data'
     _write_json(data_dir / 'en' / 'sonataName.json', {'Moonlit Clouds': 12})
 
-    assert assets_module._load_sonata_keys(data_dir) == {'moonlitclouds'}
+    try:
+        assets_module._load_sonata_keys(data_dir)
+    except FileNotFoundError:
+        return
+    raise AssertionError('expected generated sonata catalog to be required')
 
 
 def test_scrape_sonata_icons_loader_prefers_generated_catalog(tmp_path) -> None:
@@ -64,9 +68,13 @@ def test_update_sonata_templates_loader_prefers_generated_catalog(tmp_path) -> N
 
     assert module.load_sonata_keys(data_dir) == {'moonlitclouds': 12}
 
-def test_update_sonata_templates_loader_falls_back_to_legacy_file(tmp_path) -> None:
+def test_update_sonata_templates_loader_requires_generated_catalog(tmp_path) -> None:
     module = _load_module('test_update_sonata_templates_main_legacy', 'tools/update_sonata_templates/main.py')
     data_dir = tmp_path / 'data'
     _write_json(data_dir / 'en' / 'sonataName.json', {'Moonlit Clouds': 12})
 
-    assert module.load_sonata_keys(data_dir) == {'moonlitclouds': 12}
+    try:
+        module.load_sonata_keys(data_dir)
+    except FileNotFoundError:
+        return
+    raise AssertionError('expected generated sonata catalog to be required')

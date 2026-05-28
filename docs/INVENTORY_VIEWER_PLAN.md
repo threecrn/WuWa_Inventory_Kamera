@@ -22,7 +22,7 @@ The current implementation still matches the legacy inventory export shape that 
 
 - `inventory_wuwainventorykamera.json`
 - shape: `{ "2": 12345, "10800": 3 }`
-- display metadata source: `data/<lang>/items.json`
+- display metadata source: `data/catalog/items.json` plus `data/locale/<lang>/items.json`
 
 The app no longer produces that file, and the viewer does not need to support it.
 
@@ -48,18 +48,18 @@ The current `Inventory` tab does not detect which schema was loaded, and it does
 - Character exports are keyed by character id and contain nested `weapon`, `skills`, and `chain` data.
 - CLI session exports can also include `achievements` and `shell` results.
 
-If one of those files is opened in the current tab, the UI still tries to treat each top-level key as an item id from `items.json`. That means non-legacy files are still displayed incorrectly, even though the write-back corruption path is gone.
+If one of those files is opened in the current tab, the UI still tries to treat each top-level key as an item id from the old item metadata lookup. That means non-legacy files are still displayed incorrectly, even though the write-back corruption path is gone.
 
 ## Data And Asset Inventory
 
 ### Metadata already available
 
-- `data/<lang>/items.json` contains `id`, `name`, and `image`.
-- `data/<lang>/weapons.json` contains `id`, `name`, `rarity`, and `image`.
-- `data/<lang>/characters.json` currently contains only `name -> id`.
-- `data/<lang>/echoes.json` currently contains only `name -> id`.
-- `data/<lang>/achievements.json` currently contains only `name -> id`.
-- `data/<lang>/sonataName.json` plus `assets/IconS/` already support sonata-set icon matching.
+- `data/catalog/items.json` plus `data/locale/<lang>/items.json` contain item ids, localized display names, and images.
+- `data/catalog/weapons.json` plus `data/locale/<lang>/weapons.json` contain weapon ids, localized display names, rarity, and images.
+- `data/catalog/characters.json` plus `data/locale/<lang>/characters.json` contain stable character ids and localized names.
+- `data/catalog/echoes.json` plus `data/locale/<lang>/echoes.json` contain stable echo ids and localized names.
+- `data/catalog/achievements.json` plus `data/locale/<lang>/achievements.json` contain stable achievement ids and localized names.
+- `data/catalog/sonatas.json` plus `data/locale/<lang>/sonatas.json` and `assets/IconS/` support sonata-set icon matching.
 
 ### Asset gaps discovered during inspection
 

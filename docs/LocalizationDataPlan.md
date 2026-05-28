@@ -17,34 +17,25 @@ Implemented so far:
 - `BaseDataUpdater` generates `data/catalog/` and `data/locale/<lang>/` outputs and can bootstrap them when those generated files are missing.
 - Non-English updater runs bootstrap the English canonical catalog first so canonical keys remain English-derived.
 - The inventory viewer metadata resolver already prefers generated catalog plus locale data.
-- OCR/runtime consumers for echo names, equipped-character names, and sonata filter matching already prefer generated locale data with legacy fallback.
-- Shared compatibility globals in `scraping.data` can now rebuild themselves from generated catalog plus locale data when legacy `data/<lang>/*.json` files are missing.
+- OCR/runtime consumers for echo names, equipped-character names, and sonata filter matching already use generated locale data.
+- Shared compatibility globals in `scraping.data` now rebuild themselves directly from generated catalog plus locale data, without reading legacy `data/<lang>/*.json` compatibility files.
 - Runtime callers have been migrated to cache-specific compatibility getters, so they no longer depend on updater-emitted legacy compatibility bundles.
-- `sonataName.json` is no longer emitted by the updater; sonata loading now treats it as fallback-only legacy input.
+- The updater no longer emits legacy compatibility files under `data/<lang>/` for items, weapons, characters, echoes, achievements, stats, defined text, or sonatas.
 
 Still incomplete:
 
 - Export schemas still need a deliberate cleanup pass so canonical keys are explicit and unambiguous.
 - OCR coverage is still only partially localized; more menu text and region-specific checks need to stop assuming English text.
-- Legacy compatibility outputs and fallback readers still exist for transition safety, even though runtime consumers no longer require the full legacy bundle to be emitted.
+- The old raw-source layout under `data/<lang>/` still exists for updater inputs such as `MultiText.json`, `ItemInfo.json`, and `WeaponConf.json`; moving those raw files into a clearer `data/raw/` layout is still optional future cleanup.
 
 ## Current Mismatch
 
-The main architectural split now exists, but several legacy compatibility files are still present as localized lookup dicts keyed by normalized display text:
+The main architectural split now exists and the legacy generated compatibility files are no longer part of the intended contract.
 
-- `characters.json`
-- `echoes.json`
-- `achievements.json`
-- `echoStats.json`
+The remaining mismatch is narrower:
 
-`sonataName.json` is now a fallback-only legacy input rather than a regularly generated output.
-
-That happens to work for English because the English normalized display string is also the identifier we want to keep in result JSONs. It breaks down for non-English support because the key space would then change with the chosen locale.
-
-The remaining mismatch now shows up in a smaller set of places:
-
-- Legacy compatibility files still expose localized normalized-name keys instead of stable canonical keys.
-- Some fallback paths and tool surfaces still accept those compatibility files instead of relying solely on the generated catalog plus locale contract.
+- Raw updater inputs still live under `data/<lang>/`, which makes that directory serve two very different roles at once.
+- In-memory compatibility getters still expose old lookup shapes for transitional runtime callers, even though those shapes are now synthesized from generated data instead of loaded from disk.
 - Export payloads still mix ids, canonical names, and display-oriented fields in ways that are not yet explicit.
 
 ## Recommended Model

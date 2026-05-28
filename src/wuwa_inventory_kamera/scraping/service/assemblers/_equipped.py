@@ -37,7 +37,6 @@ def _runtime_character_names() -> tuple[str, ...]:
         'characters.json',
         language_code,
         base_path=basePATH,
-        include_legacy=True,
     )
 
     last_exc: Exception | None = None

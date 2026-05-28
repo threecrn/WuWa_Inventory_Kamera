@@ -117,13 +117,18 @@ def test_parse_equipped_character_fuzzy_matches_localized_character_name(
     monkeypatch,
 ) -> None:
     data_dir = tmp_path / 'data'
-    (data_dir / 'ja').mkdir(parents=True)
+    (data_dir / 'locale' / 'ja').mkdir(parents=True)
     (data_dir / 'languages.json').write_text(
         '{"English": "en", "日本語": "ja"}',
         encoding='utf-8',
     )
-    (data_dir / 'ja' / 'characters.json').write_text(
-        '{"iuno": 1410, "shorekeeper": 1505}',
+    (data_dir / 'locale' / 'ja' / 'characters.json').write_text(
+        (
+            '{'
+            '"iuno": {"display_name": "イウノ", "normalized": "イウノ", "aliases": ["イウノ", "iuno"]},'
+            '"shorekeeper": {"display_name": "ショアキーパー", "normalized": "ショアキーパー", "aliases": ["ショアキーパー"]}'
+            '}'
+        ),
         encoding='utf-8',
     )
 

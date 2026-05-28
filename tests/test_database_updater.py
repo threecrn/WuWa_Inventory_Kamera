@@ -137,13 +137,16 @@ def test_update_items_overwrites_existing_outputs(tmp_path: Path, monkeypatch) -
 	updater = BaseDataUpdater(lang='English')
 	updater.updateItems()
 
-	items = json.loads((tmp_path / 'data' / 'en' / 'items.json').read_text(encoding='utf-8'))
-	weapons = json.loads((tmp_path / 'data' / 'en' / 'weapons.json').read_text(encoding='utf-8'))
+	assert not (tmp_path / 'data' / 'en' / 'items.json').exists()
+	assert not (tmp_path / 'data' / 'en' / 'weapons.json').exists()
 
-	assert 'shellcredit' in items
-	assert 'stale' not in items
-	assert 'trainingbroadblade' in weapons
-	assert 'stale' not in weapons
+	item_catalog = json.loads((tmp_path / 'data' / 'catalog' / 'items.json').read_text(encoding='utf-8'))
+	weapon_catalog = json.loads((tmp_path / 'data' / 'catalog' / 'weapons.json').read_text(encoding='utf-8'))
+
+	assert 'shellcredit' in item_catalog
+	assert 'stale' not in item_catalog
+	assert 'trainingbroadblade' in weapon_catalog
+	assert 'stale' not in weapon_catalog
 
 
 def test_update_items_writes_catalog_and_locale_outputs(tmp_path: Path, monkeypatch) -> None:

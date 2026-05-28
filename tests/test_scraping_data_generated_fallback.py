@@ -22,43 +22,66 @@ def _write_json(path: Path, data) -> None:
 
 def test_scraping_data_does_not_preload_until_requested(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
-    _write_json(tmp_path / 'data' / 'en' / 'items.json', {'shellcredit': {'id': 1}})
+    _write_json(
+        tmp_path / 'data' / 'catalog' / 'items.json',
+        {'shellcredit': {'id': 1, 'text_key': 'ItemInfo_1_Name'}},
+    )
+    _write_json(
+        tmp_path / 'data' / 'locale' / 'en' / 'items.json',
+        {'shellcredit': {'display_name': 'Shell Credit', 'normalized': 'shellcredit', 'aliases': ['shellcredit']}},
+    )
 
     reloaded = importlib.reload(scraping_data)
 
     assert reloaded.itemsID == {}
 
-    assert item_assembler_module._get_data() == {'shellcredit': {'id': 1}}
+    assert item_assembler_module._get_data() == {'shellcredit': {'id': 1, 'name': 'Shell Credit'}}
 
 
 def test_cache_specific_getter_only_loads_requested_file(tmp_path, monkeypatch, caplog) -> None:
     monkeypatch.chdir(tmp_path)
-    _write_json(tmp_path / 'data' / 'en' / 'echoStats.json', {'critrate': 'cr%'})
     _write_json(
-        tmp_path / 'data' / 'en' / 'definedText.json',
-        {'PrefabTextItem_1547656443_Text': 'terminal localized'},
+        tmp_path / 'data' / 'locale' / 'en' / 'stats.json',
+        {'cr': {'display_name': 'Crit Rate', 'normalized': 'critrate', 'aliases': ['critrate']}},
+    )
+    _write_json(
+        tmp_path / 'data' / 'locale' / 'en' / 'definedText.json',
+        {'PrefabTextItem_1547656443_Text': {'display_text': 'Terminal', 'normalized': 'terminallocalized', 'aliases': ['terminallocalized']}},
     )
 
     reloaded = importlib.reload(scraping_data)
 
     caplog.set_level(logging.INFO)
 
-    assert reloaded.getEchoStats() == {'critrate': 'cr%'}
+    assert reloaded.getEchoStats() == {'critrate': 'cr'}
     assert reloaded.definedText == {}
 
     loading_lines = [
         record.getMessage()
         for record in caplog.records
-        if record.getMessage().startswith('Loading file:')
+        if record.getMessage().startswith('Loading generated cache:')
     ]
-    assert loading_lines == [f'Loading file: {Path("data") / "en" / "echoStats.json"}']
+    assert loading_lines == ['Loading generated cache: echoStats (en)']
 
 
 def test_echoes_processor_get_data_only_loads_echo_name_and_sonata_files(tmp_path, monkeypatch, caplog) -> None:
     monkeypatch.chdir(tmp_path)
-    _write_json(tmp_path / 'data' / 'en' / 'echoes.json', {'vanguardjunrock': 310000010})
-    _write_json(tmp_path / 'data' / 'en' / 'sonataName.json', ['moonlitclouds'])
-    _write_json(tmp_path / 'data' / 'en' / 'echoStats.json', {'critrate': 'cr%'})
+    _write_json(
+        tmp_path / 'data' / 'catalog' / 'echoes.json',
+        {'vanguardjunrock': {'id': 310000010, 'text_key': 'MonsterInfo_310000010_Name'}},
+    )
+    _write_json(
+        tmp_path / 'data' / 'locale' / 'en' / 'echoes.json',
+        {'vanguardjunrock': {'display_name': 'Vanguard Junrock', 'normalized': 'vanguardjunrock', 'aliases': ['vanguardjunrock']}},
+    )
+    _write_json(
+        tmp_path / 'data' / 'catalog' / 'sonatas.json',
+        {'moonlitclouds': {'id': 12, 'text_key': 'PhantomFetter_12_Name'}},
+    )
+    _write_json(
+        tmp_path / 'data' / 'locale' / 'en' / 'stats.json',
+        {'cr': {'display_name': 'Crit Rate', 'normalized': 'critrate', 'aliases': ['critrate']}},
+    )
 
     reloaded_data = importlib.reload(scraping_data)
     reloaded_processor = importlib.reload(echoes_processor_module)
@@ -74,17 +97,20 @@ def test_echoes_processor_get_data_only_loads_echo_name_and_sonata_files(tmp_pat
     loading_lines = [
         record.getMessage()
         for record in caplog.records
-        if record.getMessage().startswith('Loading file:')
+        if record.getMessage().startswith('Loading generated cache:')
     ]
     assert loading_lines == [
-        f'Loading file: {Path("data") / "en" / "echoes.json"}',
-        f'Loading file: {Path("data") / "en" / "sonataName.json"}',
+        'Loading generated cache: echoesID (en)',
+        'Loading generated cache: sonataName (en)',
     ]
 
 
 def test_stats_extractor_loads_echo_stats_on_demand(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
-    _write_json(tmp_path / 'data' / 'en' / 'echoStats.json', {'critrate': 'cr%'})
+    _write_json(
+        tmp_path / 'data' / 'locale' / 'en' / 'stats.json',
+        {'cr': {'display_name': 'Crit Rate', 'normalized': 'critrate', 'aliases': ['critrate']}},
+    )
 
     reloaded_data = importlib.reload(scraping_data)
     reloaded_stats = importlib.reload(stats_extractor_module)
@@ -92,14 +118,14 @@ def test_stats_extractor_loads_echo_stats_on_demand(tmp_path, monkeypatch) -> No
     assert reloaded_data.echoStats == {}
 
     assert reloaded_stats._matchStats(['crit', 'rate']) == ['critrate']
-    assert reloaded_data.echoStats == {'critrate': 'cr%'}
+    assert reloaded_data.echoStats == {'critrate': 'cr'}
 
 
 def test_navigation_main_menu_check_loads_defined_text_on_demand(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     _write_json(
-        tmp_path / 'data' / 'en' / 'definedText.json',
-        {'PrefabTextItem_1547656443_Text': 'terminal localized'},
+        tmp_path / 'data' / 'locale' / 'en' / 'definedText.json',
+        {'PrefabTextItem_1547656443_Text': {'display_text': 'Terminal', 'normalized': 'terminallocalized', 'aliases': ['terminallocalized']}},
     )
 
     reloaded_data = importlib.reload(scraping_data)
@@ -109,7 +135,7 @@ def test_navigation_main_menu_check_loads_defined_text_on_demand(tmp_path, monke
         'capture_full',
         lambda *_args, **_kwargs: np.zeros((12, 12, 3), dtype=np.uint8),
     )
-    monkeypatch.setattr(navigation_module, '_nav_ocr', lambda *_args, **_kwargs: 'terminal localized')
+    monkeypatch.setattr(navigation_module, '_nav_ocr', lambda *_args, **_kwargs: 'terminallocalized')
 
     navigator = navigation_module.GameNavigator.__new__(navigation_module.GameNavigator)
     navigator.layout = SimpleNamespace(
@@ -122,12 +148,19 @@ def test_navigation_main_menu_check_loads_defined_text_on_demand(tmp_path, monke
 
     assert reloaded_data.definedText == {}
     assert navigator.is_in_main_menu() is True
-    assert reloaded_data.definedText == {'PrefabTextItem_1547656443_Text': 'terminal localized'}
+    assert reloaded_data.definedText == {'PrefabTextItem_1547656443_Text': 'terminallocalized'}
 
 
 def test_achievement_workflow_loads_achievements_on_demand(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
-    _write_json(tmp_path / 'data' / 'en' / 'achievements.json', {'first step': 1})
+    _write_json(
+        tmp_path / 'data' / 'catalog' / 'achievements.json',
+        {'firststep': {'id': 1, 'text_key': 'Achievement_1_Name'}},
+    )
+    _write_json(
+        tmp_path / 'data' / 'locale' / 'en' / 'achievements.json',
+        {'firststep': {'display_name': 'first step', 'normalized': 'firststep', 'aliases': ['firststep']}},
+    )
 
     reloaded_data = importlib.reload(scraping_data)
     monkeypatch.setattr(
@@ -274,11 +307,21 @@ def test_load_data_falls_back_to_generated_outputs_when_compat_missing(tmp_path,
 def test_load_data_clears_stale_values_on_reload(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
 
-    _write_json(tmp_path / 'data' / 'en' / 'characters.json', {'alpha': 1})
-    _write_json(tmp_path / 'data' / 'ja' / 'characters.json', {'beta': 2})
+    _write_json(
+        tmp_path / 'data' / 'catalog' / 'characters.json',
+        {'alpha': {'id': 1, 'text_key': 'RoleInfo_1_Name'}},
+    )
+    _write_json(
+        tmp_path / 'data' / 'locale' / 'en' / 'characters.json',
+        {'alpha': {'display_name': 'Alpha', 'normalized': 'alpha', 'aliases': ['alpha']}},
+    )
+    _write_json(
+        tmp_path / 'data' / 'locale' / 'ja' / 'characters.json',
+        {'alpha': {'display_name': 'ベータ', 'normalized': 'beta', 'aliases': ['beta']}},
+    )
 
     scraping_data.loadData('en')
     assert scraping_data.charactersID == {'alpha': 1}
 
     scraping_data.loadData('ja')
-    assert scraping_data.charactersID == {'beta': 2}
+    assert scraping_data.charactersID == {'beta': 1}

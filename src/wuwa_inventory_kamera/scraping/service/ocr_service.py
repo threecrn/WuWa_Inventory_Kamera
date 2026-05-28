@@ -165,7 +165,6 @@ def _runtime_echo_name_allowed_chars() -> str | None:
         language_code,
         base_path=basePATH,
         include_lookup=True,
-        include_legacy=True,
     )
 
     last_exc: Exception | None = None

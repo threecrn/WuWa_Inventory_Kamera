@@ -2,13 +2,13 @@
 wuwa_inventory_kamera.scraping.data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Shared in-memory data caches loaded from ``./data/<language>/*.json``.
+Shared in-memory compatibility caches synthesized from generated
+``data/catalog`` and ``data/locale`` outputs.
 
-These are the single source of truth for all scrapers and the updater.
-When the legacy compatibility files are missing, the loader synthesizes the
-same lookup shapes from generated ``data/catalog`` and ``data/locale``
-outputs. The path ``./data/`` is relative to CWD, so run the tool from the
-repo root.
+The cache shapes match the legacy lookup dictionaries used by older runtime
+callers, but disk-level ``data/<language>/*.json`` compatibility files are no
+longer required or read. The path ``./data/`` is relative to CWD, so run the
+tool from the repo root.
 """
 from __future__ import annotations
 
@@ -46,29 +46,6 @@ def _load_json(path: pathlib.Path, default):
             return obj
     except (FileNotFoundError, json.JSONDecodeError):
         return default
-
-
-def _load_payload(
-    data_root: pathlib.Path,
-    data_dir: pathlib.Path,
-    filename: str,
-    *,
-    default=None,
-    generated=None,
-):
-    if default is None:
-        default = {}
-    path = data_dir / filename
-    logging.info('Loading file: %s', path)
-    payload = _load_json(path, default)
-    if payload != default:
-        return payload
-    if generated is not None:
-        generated_payload = generated()
-        if generated_payload:
-            logging.info('Falling back to generated data for %s', filename)
-            return generated_payload
-    return default
 
 
 def _load_generated_locale(data_root: pathlib.Path, language: str, filename: str) -> dict:
@@ -234,107 +211,56 @@ def _sync_loaded_language() -> None:
 
 def _load_cache(cache_name: str, language: str) -> None:
     data_root = pathlib.Path('data')
-    data_dir = data_root / language
+    logging.info('Loading generated cache: %s (%s)', cache_name, language)
 
     if cache_name == 'itemsID':
         itemsID.clear()
-        itemsID.update(
-            _load_payload(
-                data_root,
-                data_dir,
-                'items.json',
-                generated=lambda: _build_generated_items(data_root, language),
-            )
-        )
+        itemsID.update(_build_generated_items(data_root, language))
     elif cache_name == 'charactersID':
         charactersID.clear()
         charactersID.update(
-            _load_payload(
+            _build_generated_id_lookup(
                 data_root,
-                data_dir,
-                'characters.json',
-                generated=lambda: _build_generated_id_lookup(
-                    data_root,
-                    language,
-                    catalog_filename='characters.json',
-                    locale_filename='characters.json',
-                    key_field='normalized',
-                ),
+                language,
+                catalog_filename='characters.json',
+                locale_filename='characters.json',
+                key_field='normalized',
             )
         )
     elif cache_name == 'weaponsID':
         weaponsID.clear()
-        weaponsID.update(
-            _load_payload(
-                data_root,
-                data_dir,
-                'weapons.json',
-                generated=lambda: _build_generated_weapons(data_root, language),
-            )
-        )
+        weaponsID.update(_build_generated_weapons(data_root, language))
     elif cache_name == 'echoesID':
         echoesID.clear()
         echoesID.update(
-            _load_payload(
+            _build_generated_id_lookup(
                 data_root,
-                data_dir,
-                'echoes.json',
-                generated=lambda: _build_generated_id_lookup(
-                    data_root,
-                    language,
-                    catalog_filename='echoes.json',
-                    locale_filename='echoes.json',
-                    key_field='normalized',
-                ),
+                language,
+                catalog_filename='echoes.json',
+                locale_filename='echoes.json',
+                key_field='normalized',
             )
         )
     elif cache_name == 'achievementsID':
         achievementsID.clear()
         achievementsID.update(
-            _load_payload(
+            _build_generated_id_lookup(
                 data_root,
-                data_dir,
-                'achievements.json',
-                generated=lambda: _build_generated_id_lookup(
-                    data_root,
-                    language,
-                    catalog_filename='achievements.json',
-                    locale_filename='achievements.json',
-                    key_field='display_name',
-                ),
+                language,
+                catalog_filename='achievements.json',
+                locale_filename='achievements.json',
+                key_field='display_name',
             )
         )
     elif cache_name == 'echoStats':
         echoStats.clear()
-        echoStats.update(
-            _load_payload(
-                data_root,
-                data_dir,
-                'echoStats.json',
-                generated=lambda: _build_generated_stats(data_root, language),
-            )
-        )
+        echoStats.update(_build_generated_stats(data_root, language))
     elif cache_name == 'definedText':
         definedText.clear()
-        definedText.update(
-            _load_payload(
-                data_root,
-                data_dir,
-                'definedText.json',
-                generated=lambda: _build_generated_defined_text(data_root, language),
-            )
-        )
+        definedText.update(_build_generated_defined_text(data_root, language))
     elif cache_name == 'sonataName':
         sonataName.clear()
-        sonataName.extend(
-            _load_payload(
-                data_root,
-                data_dir,
-                'sonataName.json',
-                default=[],
-                generated=lambda: _build_generated_sonata_keys(data_root),
-            )
-        )
+        sonataName.extend(_build_generated_sonata_keys(data_root))
     else:
         raise ValueError(f'Unknown scraping data cache: {cache_name}')
 

@@ -66,18 +66,18 @@ def test_allowed_chars_from_names_includes_case_variants() -> None:
     assert ':' in allowed
 
 
-def test_runtime_echo_name_allowed_chars_uses_selected_language_file(
+def test_runtime_echo_name_allowed_chars_uses_selected_language_locale_data(
     tmp_path,
     monkeypatch,
 ) -> None:
     data_dir = tmp_path / 'data'
-    (data_dir / 'ja').mkdir(parents=True)
+    (data_dir / 'locale' / 'ja').mkdir(parents=True)
     (data_dir / 'languages.json').write_text(
         '{"English": "en", "日本語": "ja"}',
         encoding='utf-8',
     )
-    (data_dir / 'ja' / 'echoes.json').write_text(
-        '{"先兵岩塊": 1, "jué": 2}',
+    (data_dir / 'locale' / 'ja' / 'echoes.json').write_text(
+        '{"bellbornegeochelone": {"display_name": "先兵岩塊", "normalized": "先兵岩塊", "aliases": ["先兵岩塊"]}, "scaraberrantnightmare": {"display_name": "jué", "normalized": "jué", "aliases": ["jué"]}}',
         encoding='utf-8',
     )
 

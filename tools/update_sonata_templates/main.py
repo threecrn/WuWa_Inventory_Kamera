@@ -7,8 +7,7 @@ after a new game version adds new sonata sets.
 
 Workflow
 --------
-1. Load all known sonata keys from ``data/catalog/sonatas.json`` (fallback:
-    legacy compatibility file ``data/en/sonataName.json``).
+1. Load all known sonata keys from ``data/catalog/sonatas.json``.
 2. Audit which wiki icons (``assets/IconS/*.png``) and which detection
    templates (``assets/IconS/templates/*.png``) already exist.
 3. Download any missing wiki icons from the Fandom wiki API.

@@ -21,7 +21,7 @@ def resolve_game_language_code(*, base_path: Path, selected_language: object | N
     selected = str(selected_language or 'English')
     data_root = base_path / 'data'
 
-    if (data_root / 'locale' / selected).is_dir() or (data_root / selected).is_dir():
+    if (data_root / 'locale' / selected).is_dir():
         return selected
 
     payload = load_json_file(data_root / 'languages.json')
@@ -56,19 +56,8 @@ def load_sonata_id_map(*, data_root: Path, strict: bool = False) -> dict[str, in
         if strict and catalog_path.is_file():
             raise ValueError(f'Unexpected sonata data format in {catalog_path}')
 
-    legacy_path = data_root / 'en' / 'sonataName.json'
-    payload = load_json_file(legacy_path)
-    if isinstance(payload, dict):
-        return {
-            slug: identifier
-            for slug, identifier in payload.items()
-            if isinstance(slug, str) and isinstance(identifier, int)
-        }
-
     if strict:
-        if legacy_path.is_file():
-            raise ValueError(f'Unexpected sonata data format in {legacy_path}')
-        raise FileNotFoundError(f'Missing sonata data: {catalog_path} or {legacy_path}')
+        raise FileNotFoundError(f'Missing sonata data: {catalog_path}')
 
     return {}
 
@@ -93,7 +82,6 @@ def iter_locale_data_paths(
     *,
     base_path: Path,
     include_lookup: bool = False,
-    include_legacy: bool = False,
     fallback_to_english: bool = True,
 ) -> tuple[Path, ...]:
     paths: list[Path] = []
@@ -101,9 +89,6 @@ def iter_locale_data_paths(
         if include_lookup:
             paths.append(base_path / 'data' / 'locale' / code / 'lookup' / filename)
         paths.append(base_path / 'data' / 'locale' / code / filename)
-    if include_legacy:
-        for code in _language_candidates(language_code, fallback_to_english=fallback_to_english):
-            paths.append(base_path / 'data' / code / filename)
     return tuple(paths)
 
 

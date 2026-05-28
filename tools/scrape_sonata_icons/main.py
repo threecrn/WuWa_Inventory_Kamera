@@ -10,8 +10,7 @@ Usage
 
 Algorithm
 ---------
-1. Load every sonata key from ``data/catalog/sonatas.json`` (fallback:
-    legacy compatibility file ``data/en/sonataName.json``).
+1. Load every sonata key from ``data/catalog/sonatas.json``.
 2. Call the MediaWiki ``allimages`` API to list every ``Icon_*.png`` file
    hosted on the wiki, paging through all results.
 3. Match each wiki filename to a sonata key by normalising both to lowercase

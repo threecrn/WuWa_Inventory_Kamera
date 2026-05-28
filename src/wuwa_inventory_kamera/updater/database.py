@@ -239,6 +239,15 @@ class BaseDataUpdater:
 		except Exception as e:
 			logger.error('Failed to save %s: %s', filename or path.name, e)
 
+	def _removeLegacyCompatFile(self, filename: str) -> None:
+		path = self._compatDir() / filename
+		try:
+			path.unlink()
+		except FileNotFoundError:
+			return
+		except OSError as e:
+			logger.warning('Failed to remove legacy compatibility file %s: %s', path, e)
+
 	def _loadInfoText(self) -> dict[str, str]:
 		info_text = self.loadJson('MultiText.json')
 		if not isinstance(info_text, dict) or not info_text:
@@ -489,25 +498,25 @@ class BaseDataUpdater:
 		"""Called at the end of :meth:`run`."""
 
 	def _afterUpdateItems(self, items: dict, weapons: dict) -> None:
-		"""Called after items.json / weapons.json are written."""
+		"""Called after generated item and weapon data is written."""
 
 	def _afterUpdateCharacters(self, data: dict) -> None:
-		"""Called after characters.json is written."""
+		"""Called after generated character data is written."""
 
 	def _afterUpdateEchoes(self, data: dict) -> None:
-		"""Called after echoes.json is written."""
+		"""Called after generated echo data is written."""
 
 	def _afterUpdateAchievements(self, data: dict) -> None:
-		"""Called after achievements.json is written."""
+		"""Called after generated achievement data is written."""
 
 	def _afterUpdateEchoStats(self, stats: dict) -> None:
-		"""Called after echoStats.json is written."""
+		"""Called after generated stat data is written."""
 
 	def _afterUpdateSonata(self, data: dict) -> None:
 		"""Called after sonata data is written."""
 
 	def _afterUpdateDefinedText(self, stats: dict) -> None:
-		"""Called after definedText.json is written."""
+		"""Called after generated defined-text data is written."""
 
 	# ------------------------------------------------------------------
 	# I/O helpers
@@ -588,7 +597,7 @@ class BaseDataUpdater:
 
 	def updateItems(self) -> None:
 		"""Generate items.json and weapons.json from downloaded data."""
-		logger.info('Generating items.json and weapons.json...')
+		logger.info('Generating item and weapon catalog plus locale data...')
 		try:
 			infoText = self._loadInfoText()
 			itemInfo = self.loadJson('ItemInfo.json')
@@ -658,8 +667,6 @@ class BaseDataUpdater:
 					}
 				weapon_locale[canonical_key] = self._buildLocaleRecord(display_name, normalized=compat_key)
 
-			self.saveJson(items, 'items.json')
-			self.saveJson(weapons, 'weapons.json')
 			if self._isCanonicalLanguage():
 				self._saveCatalogEntries('items.json', item_catalog)
 				self._saveCatalogEntries('weapons.json', weapon_catalog)
@@ -667,7 +674,9 @@ class BaseDataUpdater:
 				self._saveLocaleEntries('items.json', item_locale)
 			if self._isCanonicalLanguage() or weapon_locale:
 				self._saveLocaleEntries('weapons.json', weapon_locale)
-			logger.info('Generated items.json (%d items) and weapons.json (%d weapons)', len(items), len(weapons))
+			self._removeLegacyCompatFile('items.json')
+			self._removeLegacyCompatFile('weapons.json')
+			logger.info('Generated item and weapon data (%d items, %d weapons)', len(items), len(weapons))
 			self._afterUpdateItems(items, weapons)
 
 		except Exception as e:
@@ -699,7 +708,7 @@ class BaseDataUpdater:
 
 	def updateCharacters(self) -> None:
 		data = self._updatePatternCategory(
-			compat_filename='characters.json',
+			compat_filename=None,
 			catalog_filename='characters.json',
 			locale_filename='characters.json',
 			pattern=r'^RoleInfo_(\d+)_Name$',
@@ -707,11 +716,12 @@ class BaseDataUpdater:
 			canonical_key_builder=lambda text, match: self._normalizeText(text) if int(match.group(1)) < 5000 else None,
 			normalized_builder=lambda text, _: self._normalizeText(text),
 		)
+		self._removeLegacyCompatFile('characters.json')
 		self._afterUpdateCharacters(data)
 
 	def updateEcho(self) -> None:
 		data = self._updatePatternCategory(
-			compat_filename='echoes.json',
+			compat_filename=None,
 			catalog_filename='echoes.json',
 			locale_filename='echoes.json',
 			pattern=r'^MonsterInfo_(\d+)_Name$',
@@ -719,11 +729,12 @@ class BaseDataUpdater:
 			canonical_key_builder=lambda text, match: self._normalizeText(text) if int(match.group(1)) < 350000000 else None,
 			normalized_builder=lambda text, _: self._normalizeText(text),
 		)
+		self._removeLegacyCompatFile('echoes.json')
 		self._afterUpdateEchoes(data)
 
 	def updateAchievements(self) -> None:
 		data = self._updatePatternCategory(
-			compat_filename='achievements.json',
+			compat_filename=None,
 			catalog_filename='achievements.json',
 			locale_filename='achievements.json',
 			pattern=r'^Achievement_(\d+)_Name$',
@@ -731,6 +742,7 @@ class BaseDataUpdater:
 			canonical_key_builder=lambda text, _: self._normalizeText(text),
 			normalized_builder=lambda text, _: self._normalizeText(text),
 		)
+		self._removeLegacyCompatFile('achievements.json')
 		self._afterUpdateAchievements(data)
 
 	def updateEchoStats(self) -> None:
@@ -753,7 +765,7 @@ class BaseDataUpdater:
 			'PropertyIndex_10027_Name': 'havoc',
 			'PropertyIndex_10035_Name': 'healing',
 		}
-		logger.info('Generating echoStats.json...')
+		logger.info('Generating localized stat data...')
 		try:
 			infoText = self._loadInfoText()
 			if not infoText:
@@ -772,15 +784,15 @@ class BaseDataUpdater:
 					catalog_data[canonical_key] = {'text_key': text_key}
 				locale_data[canonical_key] = self._buildLocaleRecord(display_name, normalized=normalized)
 
-			self.saveJson(stats, 'echoStats.json')
 			if self._isCanonicalLanguage():
 				self._saveCatalogEntries('stats.json', catalog_data)
 			if self._isCanonicalLanguage() or locale_data:
 				self._saveLocaleEntries('stats.json', locale_data)
-			logger.info('Generated echoStats.json with %d entries', len(stats))
+			self._removeLegacyCompatFile('echoStats.json')
+			logger.info('Generated localized stat data with %d entries', len(stats))
 			self._afterUpdateEchoStats(stats)
 		except Exception as e:
-			logger.error('Failed to generate echoStats.json: %s', e, exc_info=True)
+			logger.error('Failed to generate localized stat data: %s', e, exc_info=True)
 
 	def updateSonata(self) -> None:
 		data = self._updatePatternCategory(
@@ -792,6 +804,7 @@ class BaseDataUpdater:
 			canonical_key_builder=lambda text, _: self._normalizeText(text),
 			normalized_builder=lambda text, _: self._normalizeText(text),
 		)
+		self._removeLegacyCompatFile('sonataName.json')
 		self._afterUpdateSonata(data)
 
 	def updateDefinedText(self) -> None:
@@ -800,7 +813,7 @@ class BaseDataUpdater:
 			'PrefabTextItem_128820487_Text',   # Claim
 			'PrefabTextItem_3963945691_Text',  # Activated
 		]
-		logger.info('Generating definedText.json...')
+		logger.info('Generating localized defined-text data...')
 		try:
 			infoText = self._loadInfoText()
 			if not infoText:
@@ -820,13 +833,13 @@ class BaseDataUpdater:
 					'aliases': [normalized] if normalized else [],
 				}
 
-			self.saveJson(stats, 'definedText.json')
 			if self._isCanonicalLanguage() or locale_data:
 				self._saveLocaleEntries('definedText.json', locale_data)
-			logger.info('Generated definedText.json')
+			self._removeLegacyCompatFile('definedText.json')
+			logger.info('Generated localized defined-text data')
 			self._afterUpdateDefinedText(stats)
 		except Exception as e:
-			logger.error('Failed to generate definedText.json: %s', e, exc_info=True)
+			logger.error('Failed to generate localized defined-text data: %s', e, exc_info=True)
 
 	def run(self) -> None:
 		logger.info('Starting data update...')
