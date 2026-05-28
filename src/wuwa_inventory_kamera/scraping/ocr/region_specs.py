@@ -210,7 +210,7 @@ class OcrRegionSpec:
         rarity: int | None = None,
     ) -> OcrPreprocessResult:
         """
-        Apply the declared pipeline, returning a color-aware OCR input and debug artifacts.
+        Apply the declared OCR pipeline, returning the OCR image, signature image, and debug artifacts.
         """
         # 1. Pre-scaling
         scaled_bgr = _apply_scaling_stage(
@@ -220,7 +220,7 @@ class OcrRegionSpec:
         )
         # 2. Build text mask
         text_mask = self.build_text_mask(scaled_bgr, rarity)
-        # 3. Render for OCR (currently legacy path, will expand)
+        # 3. Render the OCR input from the scaled crop and computed text mask.
         rendered_rgb = self.render_for_ocr(scaled_bgr, text_mask, rarity=rarity)
         # 4. Post-scaling
         rendered_rgb = _apply_scaling_stage(
@@ -228,7 +228,8 @@ class OcrRegionSpec:
             upscale_min=self.post_upscale,
             downscale_max=self.post_downscale,
         )
-        # 5. Signature image (legacy path)
+        # 5. Derive the cache-signature image from the original crop,
+        #    using signature-specific preprocessing overrides when configured.
         signature_image = self._image_for_signature(bgr, rarity)
         debug_steps = {
             "scaled_bgr": scaled_bgr,

@@ -251,6 +251,28 @@ def test_post_scaling_resizes_ocr_output() -> None:
     assert processed.ocr_rgb.shape == (12, 12, 3)
 
 
+def test_preprocess_tracks_ocr_and_signature_outputs_separately() -> None:
+    spec = OcrRegionSpec(
+        roi_key="echoes.fullStatsValue",
+        threshold_mode="floor",
+        floor_value=200,
+        post_upscale=(10, 10),
+        signature_preprocess=SignaturePreprocessSpec(
+            color_space="gray",
+            post_downscale=(6, 4),
+        ),
+    )
+    image = np.zeros((8, 8, 3), dtype=np.uint8)
+    image[2:6, 3:5] = 255
+
+    processed = spec.preprocess(image)
+
+    assert processed.ocr_rgb.shape == (10, 10, 3)
+    assert processed.signature_image.shape == (4, 4)
+    assert np.array_equal(processed.debug_steps["rendered_rgb"], processed.ocr_rgb)
+    assert np.array_equal(processed.debug_steps["signature"], processed.signature_image)
+
+
 def test_invert_flips_thresholded_foreground_and_background() -> None:
     spec = OcrRegionSpec(
         roi_key="echoes.level",

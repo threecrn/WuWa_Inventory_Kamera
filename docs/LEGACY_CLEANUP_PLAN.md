@@ -179,21 +179,19 @@ results in `thorough_recognize()`.
 
 ---
 
-## L-2: `region_specs.py` still labels parts of the render/signature flow as a "legacy path"
+## L-2: `region_specs.py` comment wording cleaned up
 
-Current comments include:
+The preprocessing stage comments in `OcrRegionSpec.preprocess()` now describe
+the implemented flow directly:
 
 ```python
-# 3. Render for OCR (currently legacy path, will expand)
-# 5. Signature image (legacy path)
+# 3. Render the OCR input from the scaled crop and computed text mask.
+# 5. Derive the cache-signature image from the original crop,
+#    using signature-specific preprocessing overrides when configured.
 ```
 
-This is not dead code, but it signals unresolved design intent in the OCR spec
-pipeline.
-
-### Plan
-Either update the comments to describe the current implementation plainly, or
-continue the color-aware rendering work and remove the "legacy path" wording.
+That keeps the comments aligned with the current pipeline instead of implying a
+compatibility-only branch.
 
 ---
 

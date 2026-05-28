@@ -35,10 +35,11 @@
 - [ ] Re-evaluate the extra RapidOCR fallback pass (`fallback_text_score`) and remove it if it has no measurable value.
 - [ ] Finish OCR region-spec cleanup.
   - [x] Remove the `sig_downscale` compatibility alias if older TOML files no longer need it.
-  - [ ] Replace remaining `legacy path` comments in `region_specs.py` with plain descriptions of the current behavior.
+  - [x] Replace remaining `legacy path` comments in `region_specs.py` with plain descriptions of the current behavior.
 
 ## Backlog
 
+- [ ] Recognize and handle the "Discard echo" popup notice when opening the inventory
 - [ ] Localization: multi-language support for sonata names, achievement names, character names, etc.
   - [ ] separate canonical names for echoes, characters, etc from English localized strings
   - [ ] directory layout and strategy for managing multi-language data
