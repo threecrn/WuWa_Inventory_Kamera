@@ -11,6 +11,10 @@ def _write_json(path: Path, data) -> None:
 	path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
 
 
+def _raw_path(base: Path, lang: str, filename: str) -> Path:
+	return base / 'data' / 'raw' / lang / filename
+
+
 def _prepare_workspace(tmp_path: Path, monkeypatch) -> None:
 	monkeypatch.chdir(tmp_path)
 	_write_json(tmp_path / 'data' / 'languages.json', {'English': 'en'})
@@ -19,7 +23,7 @@ def _prepare_workspace(tmp_path: Path, monkeypatch) -> None:
 def test_load_json_normalizes_list_based_multitext(tmp_path: Path, monkeypatch) -> None:
 	_prepare_workspace(tmp_path, monkeypatch)
 	_write_json(
-		tmp_path / 'data' / 'en' / 'MultiText.json',
+		_raw_path(tmp_path, 'en', 'MultiText.json'),
 		[
 			{'Id': 'RoleInfo_1_Name', 'Content': 'Rover', 'RedirectDbIndex': 0},
 			{'Id': 'MonsterInfo_340000160_Name', 'Content': 'Tambourinist', 'RedirectDbIndex': 0},
@@ -89,6 +93,10 @@ def test_update_files_uses_sha_state_for_normalized_multitext(tmp_path: Path, mo
 		'https://example.test/weapons',
 	]
 	assert any('Textmaps/en/multi_text/MultiText.json' in url for url in requested_urls)
+	assert _raw_path(tmp_path, 'en', 'MultiText.json').is_file()
+	assert _raw_path(tmp_path, 'en', 'ItemInfo.json').is_file()
+	assert _raw_path(tmp_path, 'en', 'WeaponConf.json').is_file()
+	assert _raw_path(tmp_path, 'en', '.updater_state.json').is_file()
 	assert updater.loadJson('MultiText.json') == {'RoleInfo_1_Name': 'Rover'}
 
 	updater = BaseDataUpdater(lang='English', source='arikatsu')
@@ -99,6 +107,35 @@ def test_update_files_uses_sha_state_for_normalized_multitext(tmp_path: Path, mo
 		'https://example.test/items',
 		'https://example.test/weapons',
 	]
+
+
+def test_init_migrates_legacy_raw_files_into_data_raw(tmp_path: Path, monkeypatch) -> None:
+	_prepare_workspace(tmp_path, monkeypatch)
+	_write_json(
+		tmp_path / 'data' / 'en' / 'MultiText.json',
+		{'RoleInfo_1_Name': 'Rover'},
+	)
+	_write_json(
+		tmp_path / 'data' / 'en' / 'ItemInfo.json',
+		[{'Id': 1, 'Name': 'ItemInfo_1_Name', 'Icon': 'Icon'}],
+	)
+	_write_json(
+		tmp_path / 'data' / 'en' / 'WeaponConf.json',
+		[{'WeaponName': 'WeaponConf_1_WeaponName', 'ModelId': 101, 'QualityId': 4, 'Icon': 'Icon'}],
+	)
+	_write_json(tmp_path / 'data' / 'en' / '.updater_state.json', {'source': 'dimbreath', 'files': {}})
+
+	updater = BaseDataUpdater(lang='English')
+
+	assert updater.loadJson('MultiText.json') == {'RoleInfo_1_Name': 'Rover'}
+	assert _raw_path(tmp_path, 'en', 'MultiText.json').is_file()
+	assert _raw_path(tmp_path, 'en', 'ItemInfo.json').is_file()
+	assert _raw_path(tmp_path, 'en', 'WeaponConf.json').is_file()
+	assert _raw_path(tmp_path, 'en', '.updater_state.json').is_file()
+	assert not (tmp_path / 'data' / 'en' / 'MultiText.json').exists()
+	assert not (tmp_path / 'data' / 'en' / 'ItemInfo.json').exists()
+	assert not (tmp_path / 'data' / 'en' / 'WeaponConf.json').exists()
+	assert not (tmp_path / 'data' / 'en' / '.updater_state.json').exists()
 
 
 def test_update_items_overwrites_existing_outputs(tmp_path: Path, monkeypatch) -> None:

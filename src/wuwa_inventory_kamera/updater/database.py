@@ -45,6 +45,12 @@ class SourceConfig:
 
 
 class BaseDataUpdater:
+	_RAW_FILENAMES = (
+		'MultiText.json',
+		'ItemInfo.json',
+		'WeaponConf.json',
+		'.updater_state.json',
+	)
 	_CATALOG_FILENAMES = (
 		'items.json',
 		'weapons.json',
@@ -106,8 +112,9 @@ class BaseDataUpdater:
 		self.ref = self.source_config.ref
 		self.lang = self._getLanguage(lang)
 		self.makeFolder(self.lang)
+		self._migrateLegacyRawFiles(self.lang)
 		self.files = list(self.source_config.files)
-		self.state_path = Path('data') / self.lang / '.updater_state.json'
+		self.state_path = self._rawDir() / '.updater_state.json'
 		self.state = self._loadUpdaterState()
 		self.updated = False
 		self._update_failed = False
@@ -150,8 +157,11 @@ class BaseDataUpdater:
 	def _dataRoot(self) -> Path:
 		return Path('data')
 
-	def _compatDir(self, lang: Optional[str] = None) -> Path:
+	def _legacyLangDir(self, lang: Optional[str] = None) -> Path:
 		return self._dataRoot() / (lang or self.lang)
+
+	def _rawDir(self, lang: Optional[str] = None) -> Path:
+		return self._dataRoot() / 'raw' / (lang or self.lang)
 
 	def _catalogDir(self) -> Path:
 		return self._dataRoot() / 'catalog'
@@ -239,8 +249,23 @@ class BaseDataUpdater:
 		except Exception as e:
 			logger.error('Failed to save %s: %s', filename or path.name, e)
 
+	def _migrateLegacyRawFiles(self, lang: Optional[str] = None) -> None:
+		legacy_dir = self._legacyLangDir(lang)
+		raw_dir = self._rawDir(lang)
+		raw_dir.mkdir(parents=True, exist_ok=True)
+
+		for filename in self._RAW_FILENAMES:
+			legacy_path = legacy_dir / filename
+			raw_path = raw_dir / filename
+			if not legacy_path.exists() or raw_path.exists():
+				continue
+			try:
+				legacy_path.replace(raw_path)
+			except OSError as e:
+				logger.warning('Failed to migrate legacy raw file %s: %s', legacy_path, e)
+
 	def _removeLegacyCompatFile(self, filename: str) -> None:
-		path = self._compatDir() / filename
+		path = self._legacyLangDir() / filename
 		try:
 			path.unlink()
 		except FileNotFoundError:
@@ -465,7 +490,7 @@ class BaseDataUpdater:
 
 	def makeFolder(self, lang=None) -> None:
 		if lang:
-			dir = self._compatDir(lang)
+			dir = self._rawDir(lang)
 		else:
 			dir = self._dataRoot()
 		dir.mkdir(parents=True, exist_ok=True)
@@ -525,13 +550,13 @@ class BaseDataUpdater:
 	def loadJson(self, filename: str) -> Any:
 		if filename == 'languages.json':
 			return self._loadJsonPath(self._dataRoot() / filename, filename)
-		return self._loadJsonPath(self._compatDir() / filename, filename)
+		return self._loadJsonPath(self._rawDir() / filename, filename)
 
 	def saveJson(self, data: Any, filename: str) -> None:
 		if filename == 'languages.json':
 			self._saveJsonPath(data, self._dataRoot() / filename, filename)
 			return
-		self._saveJsonPath(data, self._compatDir() / filename, filename)
+		self._saveJsonPath(data, self._rawDir() / filename, filename)
 
 	# ------------------------------------------------------------------
 	# Update steps
@@ -554,7 +579,7 @@ class BaseDataUpdater:
 			logger.info('Checking for updates on file: %s', local_name)
 			try:
 				data = self.fetchFileData(url)
-				filePath = Path('data') / self.lang / local_name
+				filePath = self._rawDir() / local_name
 
 				if not isinstance(data, dict) or not data.get('download_url'):
 					logger.warning('No downloadable data received for %s', local_name)

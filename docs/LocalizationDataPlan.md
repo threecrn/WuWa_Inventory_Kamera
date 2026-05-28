@@ -21,12 +21,12 @@ Implemented so far:
 - Shared compatibility globals in `scraping.data` now rebuild themselves directly from generated catalog plus locale data, without reading legacy `data/<lang>/*.json` compatibility files.
 - Runtime callers have been migrated to cache-specific compatibility getters, so they no longer depend on updater-emitted legacy compatibility bundles.
 - The updater no longer emits legacy compatibility files under `data/<lang>/` for items, weapons, characters, echoes, achievements, stats, defined text, or sonatas.
+- Raw updater inputs and updater state now live under `data/raw/<lang>/` instead of reusing `data/<lang>/`.
 
 Still incomplete:
 
 - Export schemas still need a deliberate cleanup pass so canonical keys are explicit and unambiguous.
 - OCR coverage is still only partially localized; more menu text and region-specific checks need to stop assuming English text.
-- The old raw-source layout under `data/<lang>/` still exists for updater inputs such as `MultiText.json`, `ItemInfo.json`, and `WeaponConf.json`; moving those raw files into a clearer `data/raw/` layout is still optional future cleanup.
 
 ## Current Mismatch
 
@@ -34,7 +34,6 @@ The main architectural split now exists and the legacy generated compatibility f
 
 The remaining mismatch is narrower:
 
-- Raw updater inputs still live under `data/<lang>/`, which makes that directory serve two very different roles at once.
 - In-memory compatibility getters still expose old lookup shapes for transitional runtime callers, even though those shapes are now synthesized from generated data instead of loaded from disk.
 - Export payloads still mix ids, canonical names, and display-oriented fields in ways that are not yet explicit.
 
@@ -113,7 +112,7 @@ data/
 Current status:
 
 - `data/catalog/` and `data/locale/` are already implemented and should be treated as the generated source of truth.
-- Raw updater inputs still effectively live in the legacy per-language layout today; moving them into `data/raw/` is still optional later cleanup.
+- Raw updater inputs now live under `data/raw/<lang>/` and are no longer mixed into the legacy per-language generated-output layout.
 
 ## File Contracts
 
@@ -305,7 +304,7 @@ Status: mostly complete
 
 - Keep `data/catalog/` as the canonical generated contract.
 - Keep `data/locale/<lang>/` plus locale lookup indexes as the localized generated contract.
-- Continue keeping `data/<lang>/*.json` lookup files only as compatibility artifacts for now.
+- Keep raw updater source caches isolated under `data/raw/<lang>/`.
 - Preserve tests that confirm canonical keys stay identical across `en` and at least one non-English locale.
 - Preserve updater bootstrapping so `wuwa-app` and `cli/update_data.py` can regenerate missing generated outputs from already-downloaded sources.
 
@@ -334,7 +333,6 @@ Status: blocked on phase 2 and phase 3 completion
 
 - Remove consumers of the old `normalized localized name -> id` files.
 - Deprecate or delete the old generated lookup shape.
-- Optionally move raw updater inputs into a dedicated `data/raw/<lang>/` tree.
 
 ## OCR Roadmap
 
@@ -383,6 +381,7 @@ Notable remaining gaps:
 These choices keep the plan coherent and reduce future churn.
 
 - Use `data/catalog/` plus `data/locale/` as the generated contract.
+- Use `data/raw/<lang>/` for downloaded updater source caches and updater state.
 - Keep English display strings in `data/locale/en/`, not in the catalog.
 - Materialize lookup JSONs instead of building them ad hoc at runtime so tests can assert the exact output.
 - Prefer explicit `*_key` export fields when a schema is already being touched.
