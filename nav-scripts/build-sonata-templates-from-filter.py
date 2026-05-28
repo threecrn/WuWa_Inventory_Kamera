@@ -27,7 +27,7 @@ from pathlib import Path
 _arg_parser = argparse.ArgumentParser(prog=Path(__file__).name, add_help=False)
 _arg_parser.add_argument(
     '--lang', default='en', metavar='LANG',
-    help='Locale code used only for legacy sonataName.json fallback (default: en).',
+    help='Display-only locale label retained for compatibility (default: en).',
 )
 _script_args, _ = _arg_parser.parse_known_args()
 

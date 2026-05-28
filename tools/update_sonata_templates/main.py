@@ -8,7 +8,7 @@ after a new game version adds new sonata sets.
 Workflow
 --------
 1. Load all known sonata keys from ``data/catalog/sonatas.json`` (fallback:
-    ``data/en/sonataName.json``).
+    legacy compatibility file ``data/en/sonataName.json``).
 2. Audit which wiki icons (``assets/IconS/*.png``) and which detection
    templates (``assets/IconS/templates/*.png``) already exist.
 3. Download any missing wiki icons from the Fandom wiki API.
@@ -62,6 +62,10 @@ import numpy as np
 # ---------------------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "src"))
+
+from wuwa_inventory_kamera import localization_data as _localization_data
+
 DATA_DIR = REPO_ROOT / "data"
 ICONS_DIR = REPO_ROOT / "assets" / "IconS"
 TEMPLATES_DIR = ICONS_DIR / "templates"
@@ -100,24 +104,7 @@ def normalize(name: str) -> str:
 
 def load_sonata_keys(data_dir: Path = DATA_DIR) -> dict[str, int]:
     """Return ``{normalized_key: id}`` from generated sonata data."""
-    catalog_path = data_dir / "catalog" / "sonatas.json"
-    if catalog_path.is_file():
-        with catalog_path.open(encoding="utf-8") as f:
-            raw = json.load(f)
-        if isinstance(raw, dict):
-            return {
-                normalize(key): value["id"]
-                for key, value in raw.items()
-                if isinstance(key, str)
-                and isinstance(value, dict)
-                and isinstance(value.get("id"), int)
-            }
-
-    legacy_path = data_dir / "en" / "sonataName.json"
-    with legacy_path.open(encoding="utf-8") as f:
-        raw = json.load(f)
-    if not isinstance(raw, dict):
-        raise ValueError(f"Unexpected sonata data format in {legacy_path}")
+    raw = _localization_data.load_sonata_id_map(data_root=data_dir, strict=True)
     return {
         normalize(key): value
         for key, value in raw.items()

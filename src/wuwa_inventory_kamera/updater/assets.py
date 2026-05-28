@@ -20,6 +20,7 @@ import urllib.request
 import logging
 from pathlib import Path
 
+from .. import localization_data as _localization_data
 from ..config.app_config import basePATH
 
 logger = logging.getLogger('AssetsUpdater')
@@ -79,25 +80,8 @@ def _iter_icon_files():
 
 
 def _load_sonata_keys(data_dir: Path) -> set[str]:
-    catalog_path = data_dir / 'catalog' / 'sonatas.json'
-    if catalog_path.is_file():
-        with catalog_path.open(encoding='utf-8') as fh:
-            raw = json.load(fh)
-        if isinstance(raw, dict):
-            return {
-                _normalize(key)
-                for key, value in raw.items()
-                if isinstance(key, str)
-                and isinstance(value, dict)
-                and isinstance(value.get('id'), int)
-            }
-
-    path = data_dir / 'en' / 'sonataName.json'
-    with path.open(encoding='utf-8') as fh:
-        raw = json.load(fh)
-    if not isinstance(raw, dict):
-        raise ValueError(f'Unexpected sonata data format in {path}')
-    return {_normalize(k) for k in raw if isinstance(k, str)}
+    raw = _localization_data.load_sonata_id_map(data_root=data_dir, strict=True)
+    return {_normalize(key) for key in raw}
 
 
 def _build_icon_mapping(sonata_keys: set[str]) -> dict[str, str]:

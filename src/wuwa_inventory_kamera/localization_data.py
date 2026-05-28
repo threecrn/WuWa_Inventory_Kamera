@@ -40,6 +40,39 @@ def load_generated_catalog(filename: str, *, base_path: Path) -> dict[str, dict]
     return payload if isinstance(payload, dict) else {}
 
 
+def load_sonata_id_map(*, data_root: Path, strict: bool = False) -> dict[str, int]:
+    catalog_path = data_root / 'catalog' / 'sonatas.json'
+    payload = load_json_file(catalog_path)
+    if isinstance(payload, dict):
+        catalog = {
+            slug: info['id']
+            for slug, info in payload.items()
+            if isinstance(slug, str)
+            and isinstance(info, dict)
+            and isinstance(info.get('id'), int)
+        }
+        if catalog:
+            return catalog
+        if strict and catalog_path.is_file():
+            raise ValueError(f'Unexpected sonata data format in {catalog_path}')
+
+    legacy_path = data_root / 'en' / 'sonataName.json'
+    payload = load_json_file(legacy_path)
+    if isinstance(payload, dict):
+        return {
+            slug: identifier
+            for slug, identifier in payload.items()
+            if isinstance(slug, str) and isinstance(identifier, int)
+        }
+
+    if strict:
+        if legacy_path.is_file():
+            raise ValueError(f'Unexpected sonata data format in {legacy_path}')
+        raise FileNotFoundError(f'Missing sonata data: {catalog_path} or {legacy_path}')
+
+    return {}
+
+
 def load_generated_locale(
     filename: str,
     language_code: str,

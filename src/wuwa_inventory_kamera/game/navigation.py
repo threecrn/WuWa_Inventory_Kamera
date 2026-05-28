@@ -135,27 +135,7 @@ def _resolve_game_language_code() -> str:
 
 
 def _load_sonata_catalog() -> dict[str, int]:
-    payload = _localization_data.load_generated_catalog('sonatas.json', base_path=basePATH)
-    if isinstance(payload, dict):
-        catalog = {
-            slug: info['id']
-            for slug, info in payload.items()
-            if isinstance(slug, str)
-            and isinstance(info, dict)
-            and isinstance(info.get('id'), int)
-        }
-        if catalog:
-            return catalog
-
-    payload = _load_json_file(basePATH / 'data' / 'en' / 'sonataName.json')
-    if isinstance(payload, dict):
-        return {
-            slug: identifier
-            for slug, identifier in payload.items()
-            if isinstance(slug, str) and isinstance(identifier, int)
-        }
-
-    return {}
+    return _localization_data.load_sonata_id_map(data_root=basePATH / 'data')
 
 
 def _load_sonata_locale(language_code: str) -> dict[str, dict]:
@@ -481,7 +461,7 @@ class GameNavigator:
         Parameters
         ----------
         sonata_slug:
-            Slug key from ``sonataName.json`` (e.g. ``'chromaticfoam'``),
+            Canonical sonata slug (e.g. ``'chromaticfoam'``),
             or ``None`` / ``'off'`` to clear the filter ("Filter On/Off").
 
         Returns

@@ -63,3 +63,10 @@ def test_update_sonata_templates_loader_prefers_generated_catalog(tmp_path) -> N
     _write_json(data_dir / 'en' / 'sonataName.json', {'stalelegacy': 1})
 
     assert module.load_sonata_keys(data_dir) == {'moonlitclouds': 12}
+
+def test_update_sonata_templates_loader_falls_back_to_legacy_file(tmp_path) -> None:
+    module = _load_module('test_update_sonata_templates_main_legacy', 'tools/update_sonata_templates/main.py')
+    data_dir = tmp_path / 'data'
+    _write_json(data_dir / 'en' / 'sonataName.json', {'Moonlit Clouds': 12})
+
+    assert module.load_sonata_keys(data_dir) == {'moonlitclouds': 12}

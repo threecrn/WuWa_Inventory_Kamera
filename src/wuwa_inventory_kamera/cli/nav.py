@@ -520,7 +520,7 @@ class NavSession:
             self.nav.set_sort_order(o, **kw)
 
     def set_sonata_filter(self, sonata: str | None = None) -> int | None:
-        """Filter the echoes list by sonata.  sonata: slug from sonataName.json, or None/'off' to clear.
+        """Filter the echoes list by sonata.  sonata: canonical sonata slug, or None/'off' to clear.
 
         Returns the number of echoes matching the filter as shown in the
         dropdown, or ``None`` if the count could not be read.

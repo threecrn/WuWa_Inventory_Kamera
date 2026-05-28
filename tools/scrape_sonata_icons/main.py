@@ -11,7 +11,7 @@ Usage
 Algorithm
 ---------
 1. Load every sonata key from ``data/catalog/sonatas.json`` (fallback:
-    ``data/en/sonataName.json``).
+    legacy compatibility file ``data/en/sonataName.json``).
 2. Call the MediaWiki ``allimages`` API to list every ``Icon_*.png`` file
    hosted on the wiki, paging through all results.
 3. Match each wiki filename to a sonata key by normalising both to lowercase
@@ -32,6 +32,7 @@ import argparse
 import json
 import logging
 import re
+import sys
 import time
 import urllib.parse
 import urllib.request
@@ -43,6 +44,9 @@ from typing import Iterator
 # ---------------------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "src"))
+
+from wuwa_inventory_kamera import localization_data as _localization_data
 
 API_URL = "https://wutheringwaves.fandom.com/api.php"
 
@@ -72,25 +76,8 @@ _WIKI_NAME_OVERRIDES: dict[str, str] = {
 
 
 def load_sonata_keys(data_dir: Path) -> set[str]:
-    catalog_path = data_dir / "catalog" / "sonatas.json"
-    if catalog_path.is_file():
-        with catalog_path.open(encoding="utf-8") as fh:
-            raw = json.load(fh)
-        if isinstance(raw, dict):
-            return {
-                normalize(key)
-                for key, value in raw.items()
-                if isinstance(key, str)
-                and isinstance(value, dict)
-                and isinstance(value.get("id"), int)
-            }
-
-    path = data_dir / "en" / "sonataName.json"
-    with path.open(encoding="utf-8") as fh:
-        raw = json.load(fh)
-    if not isinstance(raw, dict):
-        raise ValueError(f"Unexpected sonata data format in {path}")
-    return {normalize(k) for k in raw if isinstance(k, str)}
+    raw = _localization_data.load_sonata_id_map(data_root=data_dir, strict=True)
+    return {normalize(key) for key in raw if isinstance(key, str)}
 
 
 # ---------------------------------------------------------------------------

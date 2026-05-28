@@ -23,6 +23,13 @@ def test_load_sonata_catalog_prefers_generated_catalog(tmp_path, monkeypatch) ->
     assert navigation._load_sonata_catalog() == {'moonlitclouds': 42}
 
 
+def test_load_sonata_catalog_falls_back_to_legacy_file(tmp_path, monkeypatch) -> None:
+    _write_json(tmp_path / 'data' / 'en' / 'sonataName.json', {'Moonlit Clouds': 12})
+
+    monkeypatch.setattr(navigation, 'basePATH', tmp_path)
+
+    assert navigation._load_sonata_catalog() == {'Moonlit Clouds': 12}
+
 
 def test_sonata_text_matching_uses_localized_candidates(tmp_path, monkeypatch) -> None:
     _write_json(tmp_path / 'data' / 'languages.json', {'English': 'en', '日本語': 'ja'})
