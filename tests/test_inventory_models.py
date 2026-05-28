@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 import wuwa_inventory_kamera.ui.inventory_models as inventory_models
@@ -151,3 +153,69 @@ def test_load_inventory_document_rejects_legacy_inventory() -> None:
     assert document.kind == 'unsupported_legacy'
     assert document.sections == ()
     assert document.message_lines[0] == 'Legacy inventory files are no longer supported.'
+
+
+def test_load_inventory_session_prefers_scan_result(tmp_path) -> None:
+    session_dir = tmp_path / '2026-05-28_120000'
+    session_dir.mkdir()
+
+    (session_dir / 'scan_result.json').write_text(
+        json.dumps(
+            {
+                'date': '2026-05-28_120000',
+                'characters': {
+                    '1105': {
+                        '_name': 'shorekeeper',
+                        'level': 90,
+                        'ascension': 6,
+                        'weapon': {'id': 21010074, 'level': 90, 'rank': 1},
+                        'skills': {'normal': 10},
+                        'chain': 2,
+                    }
+                },
+            }
+        ),
+        encoding='utf-8',
+    )
+    (session_dir / 'echoes_wuwainventorykamera.json').write_text(
+        json.dumps([{'310000010': {'level': 25, 'tuneLv': 5, 'rarity': 5, 'stats': {'main': {'ATK%': '18%'}}}}]),
+        encoding='utf-8',
+    )
+
+    document = inventory_models.load_inventory_session(session_dir)
+
+    assert document.kind == 'scan_session'
+    assert document.message_lines[0] == 'Session folder: 2026-05-28_120000'
+    assert document.message_lines[1] == 'Session: 2026-05-28_120000'
+    assert [section.title for section in document.sections] == ['Characters']
+
+
+def test_load_inventory_session_aggregates_standalone_exports(tmp_path) -> None:
+    session_dir = tmp_path / '2026-05-28_130000'
+    session_dir.mkdir()
+
+    (session_dir / 'echoes_wuwainventorykamera.json').write_text(
+        json.dumps([{'310000010': {'level': 25, 'tuneLv': 5, 'rarity': 5, 'stats': {'main': {'ATK%': '18%'}}}}]),
+        encoding='utf-8',
+    )
+    (session_dir / 'resources_wuwainventorykamera.json').write_text(
+        json.dumps([{'id': 2, 'count': 321}]),
+        encoding='utf-8',
+    )
+
+    document = inventory_models.load_inventory_session(session_dir)
+
+    assert document.kind == 'scan_session'
+    assert document.message_lines == ('Session folder: 2026-05-28_130000',)
+    assert [section.title for section in document.sections] == ['Echoes', 'Resources']
+
+
+def test_load_inventory_session_reports_missing_supported_exports(tmp_path) -> None:
+    session_dir = tmp_path / 'empty_session'
+    session_dir.mkdir()
+
+    document = inventory_models.load_inventory_session(session_dir)
+
+    assert document.kind == 'scan_session'
+    assert document.sections == ()
+    assert document.message_lines[-1] == 'No supported result files were found in this session folder.'

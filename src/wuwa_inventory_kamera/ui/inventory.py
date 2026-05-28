@@ -6,15 +6,15 @@ Inventory viewer — load and inspect JSON result files.
 """
 from __future__ import annotations
 
-import json
 import logging
+import os
 from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QWidget, QFileDialog, QGridLayout, QLayout,
-    QVBoxLayout,
+    QWidget, QFileDialog, QGridLayout, QHBoxLayout, QLayout,
+    QVBoxLayout, QComboBox,
 )
 
 from qfluentwidgets import FluentIcon as FIF
@@ -26,7 +26,13 @@ from qfluentwidgets import (
 from .custom_widgets import MultiplePushSettingCard
 from .config import cfg
 from ..config.app_config import basePATH
-from .inventory_models import InventoryDocument, InventoryRow, InventorySection, load_inventory_document
+from .inventory_models import (
+    InventoryDocument,
+    InventoryRow,
+    InventorySection,
+    load_inventory_file,
+    load_inventory_session,
+)
 
 logger = logging.getLogger('InventoryInterface')
 
@@ -93,6 +99,10 @@ class InventoryInterface(ScrollArea):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
+        self._currentSectionIndex = 0
+        self._currentDocument = InventoryDocument(kind='empty', title='', message_lines=())
+        self._currentSourcePath: Path | None = None
+        self._currentSourceKind: str | None = None
         self.setObjectName("inventoryUI")
         self.setStyleSheet("""
             QScrollArea { background: transparent; }
@@ -106,9 +116,14 @@ class InventoryInterface(ScrollArea):
 
         self.inventoryGroup = SettingCardGroup(self.tr("Inventory"), self.scrollWidget)
         self.inventoryFileCard = MultiplePushSettingCard(
-            [self.tr('Open file')],
+            [
+                self.tr('Open file'),
+                self.tr('Open session'),
+                self.tr('Reload'),
+                self.tr('Open folder'),
+            ],
             FIF.DOWNLOAD,
-            self.tr("Result file"),
+            self.tr("Result source"),
             parent=self.inventoryGroup,
         )
 
@@ -133,7 +148,10 @@ class InventoryInterface(ScrollArea):
         self.contentLayout.setSpacing(16)
         self.contentLayout.setContentsMargins(0, 0, 0, 0)
 
-        self.__renderDocument(
+        self.inventoryFileCard.buttons[2].setEnabled(False)
+        self.inventoryFileCard.buttons[3].setEnabled(False)
+
+        self.__setDocument(
             InventoryDocument(
                 kind='empty',
                 title='',
@@ -147,6 +165,12 @@ class InventoryInterface(ScrollArea):
     def __onInventoryFileCardClicked(self, index):
         if index == 0:
             self.__loadInventoryFile()
+        elif index == 1:
+            self.__loadInventorySession()
+        elif index == 2:
+            self.__reloadCurrentSource()
+        elif index == 3:
+            self.__openContainingFolder()
 
     def __loadInventoryFile(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -156,26 +180,59 @@ class InventoryInterface(ScrollArea):
             "JSON Files (*.json)",
         )
         if file_path:
-            self.inventoryFileCard.setContent(file_path)
-            with open(file_path, 'r', encoding='utf-8') as file:
-                try:
-                    data = json.load(file)
-                    self.__renderDocument(load_inventory_document(file_path, data))
-                except json.JSONDecodeError as e:
-                    logger.error("Error loading JSON file: %s", e, exc_info=True)
-                    self.__renderDocument(
-                        InventoryDocument(
-                            kind='error',
-                            title=Path(file_path).name,
-                            message_lines=(
-                                'The selected file could not be parsed as JSON.',
-                                str(e),
-                            ),
-                        )
-                    )
+            self.__loadSource(Path(file_path), source_kind='file')
 
-    def __renderDocument(self, document: InventoryDocument):
+    def __loadInventorySession(self):
+        folder_path = QFileDialog.getExistingDirectory(
+            self,
+            self.tr('Choose session folder to load'),
+            cfg.get(cfg.exportFolder),
+        )
+        if folder_path:
+            self.__loadSource(Path(folder_path), source_kind='session')
+
+    def __loadSource(self, path: Path, *, source_kind: str):
+        self._currentSourcePath = path
+        self._currentSourceKind = source_kind
+        self.inventoryFileCard.setContent(str(path))
+        self.inventoryFileCard.buttons[2].setEnabled(True)
+        self.inventoryFileCard.buttons[3].setEnabled(True)
+
+        if source_kind == 'session':
+            self.__setDocument(load_inventory_session(path))
+        else:
+            self.__setDocument(load_inventory_file(path))
+
+    def __reloadCurrentSource(self):
+        if self._currentSourcePath is None or self._currentSourceKind is None:
+            return
+
+        self.__loadSource(self._currentSourcePath, source_kind=self._currentSourceKind)
+
+    def __openContainingFolder(self):
+        if self._currentSourcePath is None:
+            return
+
+        target = self._currentSourcePath if self._currentSourceKind == 'session' else self._currentSourcePath.parent
+        if target.exists():
+            os.startfile(target)
+
+    def __setDocument(self, document: InventoryDocument):
+        self._currentDocument = document
+        self._currentSectionIndex = 0
+        self.__renderCurrentDocument()
+
+    def __renderCurrentDocument(self):
+        document = self._currentDocument
+        section_count = len(document.sections)
+        selected_index = min(self._currentSectionIndex, max(section_count - 1, 0))
+        self._currentSectionIndex = selected_index
+
         self.__clearLayout(self.contentLayout)
+
+        if document.title:
+            title = StrongBodyLabel(document.title, self.contentWidget)
+            self.contentLayout.addWidget(title)
 
         for message in document.message_lines:
             label = BodyLabel(message, self.contentWidget)
@@ -186,8 +243,10 @@ class InventoryInterface(ScrollArea):
             if document.message_lines:
                 self.contentLayout.addSpacing(8)
 
-            for section in document.sections:
-                self.__addSection(section)
+            if len(document.sections) > 1:
+                self.__addSectionSelector(document.sections, selected_index)
+
+            self.__addSection(document.sections[selected_index], show_title=len(document.sections) == 1)
         elif not document.message_lines:
             label = BodyLabel('No supported results were found in this file.', self.contentWidget)
             label.setWordWrap(True)
@@ -195,9 +254,35 @@ class InventoryInterface(ScrollArea):
 
         self.contentLayout.addStretch(1)
 
-    def __addSection(self, section: InventorySection):
-        title = StrongBodyLabel(f'{section.title} ({len(section.rows)})', self.contentWidget)
-        self.contentLayout.addWidget(title)
+    def __addSectionSelector(self, sections: tuple[InventorySection, ...], selected_index: int):
+        selectorWidget = QWidget(self.contentWidget)
+        selectorLayout = QHBoxLayout(selectorWidget)
+        selectorLayout.setContentsMargins(0, 0, 0, 0)
+        selectorLayout.setSpacing(12)
+
+        selectorLabel = StrongBodyLabel('Section', selectorWidget)
+        selectorLayout.addWidget(selectorLabel)
+
+        selector = QComboBox(selectorWidget)
+        for section in sections:
+            selector.addItem(f'{section.title} ({len(section.rows)})')
+        selector.setCurrentIndex(selected_index)
+        selector.currentIndexChanged.connect(self.__onSectionChanged)
+        selectorLayout.addWidget(selector, 1)
+
+        self.contentLayout.addWidget(selectorWidget)
+
+    def __onSectionChanged(self, index: int):
+        if index < 0 or index == self._currentSectionIndex:
+            return
+
+        self._currentSectionIndex = index
+        self.__renderCurrentDocument()
+
+    def __addSection(self, section: InventorySection, *, show_title: bool):
+        if show_title:
+            title = StrongBodyLabel(f'{section.title} ({len(section.rows)})', self.contentWidget)
+            self.contentLayout.addWidget(title)
 
         sectionWidget = QWidget(self.contentWidget)
         sectionGrid = QGridLayout(sectionWidget)

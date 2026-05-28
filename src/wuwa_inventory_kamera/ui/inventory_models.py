@@ -6,10 +6,20 @@ Normalization helpers for read-only scan result viewing.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..scraping import data as scraping_data
+
+_SESSION_SCAN_RESULT = 'scan_result.json'
+_SESSION_EXPORT_FILES: tuple[str, ...] = (
+    'echoes_wuwainventorykamera.json',
+    'weapons_wuwainventorykamera.json',
+    'devItems_wuwainventorykamera.json',
+    'resources_wuwainventorykamera.json',
+    'characters_wuwainventorykamera.json',
+)
 
 
 @dataclass(frozen=True)
@@ -183,6 +193,87 @@ def load_inventory_document(file_path: str, payload: object) -> InventoryDocumen
     )
 
 
+def load_inventory_file(file_path: str | Path) -> InventoryDocument:
+    """Read one result file from disk and normalize it."""
+    path = Path(file_path)
+    try:
+        with open(path, encoding='utf-8') as handle:
+            payload = json.load(handle)
+    except json.JSONDecodeError as exc:
+        return InventoryDocument(
+            kind='error',
+            title=path.name,
+            message_lines=(
+                'The selected file could not be parsed as JSON.',
+                str(exc),
+            ),
+        )
+    except OSError as exc:
+        return InventoryDocument(
+            kind='error',
+            title=path.name,
+            message_lines=(
+                'The selected file could not be opened.',
+                str(exc),
+            ),
+        )
+
+    return load_inventory_document(str(path), payload)
+
+
+def load_inventory_session(session_path: str | Path) -> InventoryDocument:
+    """Load a session folder by preferring scan_result.json, then standalone exports."""
+    folder = Path(session_path)
+    folder_name = folder.name or str(folder)
+
+    if not folder.exists() or not folder.is_dir():
+        return InventoryDocument(
+            kind='error',
+            title=folder_name,
+            message_lines=('The selected session folder does not exist.',),
+        )
+
+    scan_result_path = folder / _SESSION_SCAN_RESULT
+    session_prefix = f'Session folder: {folder_name}'
+
+    if scan_result_path.exists():
+        document = load_inventory_file(scan_result_path)
+        if document.kind != 'error':
+            return _prepend_message_line(document, session_prefix)
+
+    message_lines: list[str] = [session_prefix]
+    if scan_result_path.exists():
+        message_lines.extend(_prefix_message_lines(_SESSION_SCAN_RESULT, load_inventory_file(scan_result_path).message_lines))
+
+    sections: list[InventorySection] = []
+    for filename in _SESSION_EXPORT_FILES:
+        file_path = folder / filename
+        if not file_path.exists():
+            continue
+
+        document = load_inventory_file(file_path)
+        if document.sections:
+            sections.extend(document.sections)
+            continue
+
+        if document.message_lines and document.kind == 'error':
+            message_lines.extend(_prefix_message_lines(filename, document.message_lines))
+
+    if sections:
+        return InventoryDocument(
+            kind='scan_session',
+            title=folder_name,
+            sections=tuple(sections),
+            message_lines=tuple(message_lines),
+        )
+
+    return InventoryDocument(
+        kind='scan_session',
+        title=folder_name,
+        message_lines=tuple(message_lines + ['No supported result files were found in this session folder.']),
+    )
+
+
 def _document_with_single_section(
     kind: str,
     title: str,
@@ -196,6 +287,19 @@ def _document_with_single_section(
         title=title,
         message_lines=(f'{section_title} export is empty.',),
     )
+
+
+def _prepend_message_line(document: InventoryDocument, message: str) -> InventoryDocument:
+    return InventoryDocument(
+        kind=document.kind,
+        title=document.title,
+        sections=document.sections,
+        message_lines=(message,) + document.message_lines,
+    )
+
+
+def _prefix_message_lines(prefix: str, message_lines: tuple[str, ...]) -> list[str]:
+    return [f'{prefix}: {line}' for line in message_lines]
 
 
 def _build_session_sections(payload: dict, resolver: MetadataResolver) -> tuple[InventorySection, ...]:

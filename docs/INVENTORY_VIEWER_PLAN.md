@@ -107,6 +107,15 @@ For session-folder loading, prefer this order:
 2. known standalone exports such as `echoes_wuwainventorykamera.json`
 3. raw/debug folder links as secondary context
 
+Current implementation target for Milestone 1:
+
+- support `Open file`
+- support `Open session`
+- prefer `scan_result.json` when present in the selected session folder
+- otherwise aggregate the known standalone exports into one read-only document view
+- use a simple section selector when one document exposes multiple result sections
+- keep quick `Reload` and `Open folder` actions on the active source
+
 ### Result types to support in the first full implementation
 
 - echoes exports
