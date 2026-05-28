@@ -51,10 +51,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _get_data():
-    from ...data import ensureDataLoaded, echoesID, echoStats, sonataName
+    from ...data import getEchoesID, getEchoStats, getSonataName
 
-    ensureDataLoaded()
-    return echoesID, echoStats, sonataName
+    return getEchoesID(), getEchoStats(), getSonataName()
 
 
 def _get_validators():

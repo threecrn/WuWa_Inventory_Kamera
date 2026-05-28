@@ -91,9 +91,9 @@ def _runtime_character_names() -> tuple[str, ...]:
     if last_exc is not None:
         logger.debug('Equipped-name runtime character fallback: %s', last_exc)
 
-    from ...data import ensureDataLoaded, charactersID
+    from ...data import getCharactersID
 
-    ensureDataLoaded(language_code)
+    charactersID = getCharactersID(language_code)
 
     fallback: dict[str, str] = {}
     for name in charactersID.keys():

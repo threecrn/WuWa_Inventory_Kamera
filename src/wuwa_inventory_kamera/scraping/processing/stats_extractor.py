@@ -38,10 +38,9 @@ logger = logging.getLogger(__name__)
 
 
 def _get_echo_stats() -> dict:
-    from ..data import ensureDataLoaded, echoStats
+    from ..data import getEchoStats
 
-    ensureDataLoaded()
-    return echoStats
+    return getEchoStats()
 
 
 # ---------------------------------------------------------------------------

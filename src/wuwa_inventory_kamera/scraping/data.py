@@ -25,6 +25,16 @@ echoStats: dict = {}
 definedText: dict = {}
 sonataName: list = []
 _loaded_language: str | None = None
+_loaded_cache_languages: dict[str, str | None] = {
+    'itemsID': None,
+    'charactersID': None,
+    'weaponsID': None,
+    'echoesID': None,
+    'achievementsID': None,
+    'echoStats': None,
+    'definedText': None,
+    'sonataName': None,
+}
 
 
 def _load_json(path: pathlib.Path, default):
@@ -36,6 +46,29 @@ def _load_json(path: pathlib.Path, default):
             return obj
     except (FileNotFoundError, json.JSONDecodeError):
         return default
+
+
+def _load_payload(
+    data_root: pathlib.Path,
+    data_dir: pathlib.Path,
+    filename: str,
+    *,
+    default=None,
+    generated=None,
+):
+    if default is None:
+        default = {}
+    path = data_dir / filename
+    logging.info('Loading file: %s', path)
+    payload = _load_json(path, default)
+    if payload != default:
+        return payload
+    if generated is not None:
+        generated_payload = generated()
+        if generated_payload:
+            logging.info('Falling back to generated data for %s', filename)
+            return generated_payload
+    return default
 
 
 def _load_generated_locale(data_root: pathlib.Path, language: str, filename: str) -> dict:
@@ -189,92 +222,141 @@ def _build_generated_sonata_keys(data_root: pathlib.Path) -> list[str]:
     return [canonical_key for canonical_key, _ in ordered]
 
 
+def _sync_loaded_language() -> None:
+    global _loaded_language
+
+    loaded_languages = set(_loaded_cache_languages.values())
+    if None not in loaded_languages and len(loaded_languages) == 1:
+        _loaded_language = next(iter(loaded_languages))
+        return
+    _loaded_language = None
+
+
+def _load_cache(cache_name: str, language: str) -> None:
+    data_root = pathlib.Path('data')
+    data_dir = data_root / language
+
+    if cache_name == 'itemsID':
+        itemsID.clear()
+        itemsID.update(
+            _load_payload(
+                data_root,
+                data_dir,
+                'items.json',
+                generated=lambda: _build_generated_items(data_root, language),
+            )
+        )
+    elif cache_name == 'charactersID':
+        charactersID.clear()
+        charactersID.update(
+            _load_payload(
+                data_root,
+                data_dir,
+                'characters.json',
+                generated=lambda: _build_generated_id_lookup(
+                    data_root,
+                    language,
+                    catalog_filename='characters.json',
+                    locale_filename='characters.json',
+                    key_field='normalized',
+                ),
+            )
+        )
+    elif cache_name == 'weaponsID':
+        weaponsID.clear()
+        weaponsID.update(
+            _load_payload(
+                data_root,
+                data_dir,
+                'weapons.json',
+                generated=lambda: _build_generated_weapons(data_root, language),
+            )
+        )
+    elif cache_name == 'echoesID':
+        echoesID.clear()
+        echoesID.update(
+            _load_payload(
+                data_root,
+                data_dir,
+                'echoes.json',
+                generated=lambda: _build_generated_id_lookup(
+                    data_root,
+                    language,
+                    catalog_filename='echoes.json',
+                    locale_filename='echoes.json',
+                    key_field='normalized',
+                ),
+            )
+        )
+    elif cache_name == 'achievementsID':
+        achievementsID.clear()
+        achievementsID.update(
+            _load_payload(
+                data_root,
+                data_dir,
+                'achievements.json',
+                generated=lambda: _build_generated_id_lookup(
+                    data_root,
+                    language,
+                    catalog_filename='achievements.json',
+                    locale_filename='achievements.json',
+                    key_field='display_name',
+                ),
+            )
+        )
+    elif cache_name == 'echoStats':
+        echoStats.clear()
+        echoStats.update(
+            _load_payload(
+                data_root,
+                data_dir,
+                'echoStats.json',
+                generated=lambda: _build_generated_stats(data_root, language),
+            )
+        )
+    elif cache_name == 'definedText':
+        definedText.clear()
+        definedText.update(
+            _load_payload(
+                data_root,
+                data_dir,
+                'definedText.json',
+                generated=lambda: _build_generated_defined_text(data_root, language),
+            )
+        )
+    elif cache_name == 'sonataName':
+        sonataName.clear()
+        sonataName.extend(
+            _load_payload(
+                data_root,
+                data_dir,
+                'sonataName.json',
+                default=[],
+                generated=lambda: _build_generated_sonata_keys(data_root),
+            )
+        )
+    else:
+        raise ValueError(f'Unknown scraping data cache: {cache_name}')
+
+    _loaded_cache_languages[cache_name] = language
+    _sync_loaded_language()
+
+
+def _ensure_cache_loaded(cache_name: str, language: str | None = None) -> None:
+    requested_language = language or 'en'
+    if _loaded_cache_languages[cache_name] != requested_language:
+        _load_cache(cache_name, requested_language)
+
+
 def loadData(language: str | None = None) -> None:
     """(Re-)load all data files for *language* (default ``'en'``)."""
     if language is None:
         language = 'en'
 
     logging.info('Loading data for language: %s', language)
-    data_root = pathlib.Path('data')
-    data_dir = data_root / language
+    for cache_name in _loaded_cache_languages:
+        _load_cache(cache_name, language)
 
-    def _load(filename: str, default=None, generated=None):
-        if default is None:
-            default = {}
-        path = data_dir / filename
-        logging.info('Loading file: %s', path)
-        payload = _load_json(path, default)
-        if payload != default:
-            return payload
-        if generated is not None:
-            generated_payload = generated()
-            if generated_payload:
-                logging.info('Falling back to generated data for %s', filename)
-                return generated_payload
-        return default
-
-    global itemsID, charactersID, weaponsID, echoesID, achievementsID
-    global echoStats, definedText, sonataName
-    global _loaded_language
-
-    itemsID.clear()
-    itemsID.update(_load('items.json', generated=lambda: _build_generated_items(data_root, language)))
-
-    charactersID.clear()
-    charactersID.update(
-        _load(
-            'characters.json',
-            generated=lambda: _build_generated_id_lookup(
-                data_root,
-                language,
-                catalog_filename='characters.json',
-                locale_filename='characters.json',
-                key_field='normalized',
-            ),
-        )
-    )
-
-    weaponsID.clear()
-    weaponsID.update(_load('weapons.json', generated=lambda: _build_generated_weapons(data_root, language)))
-
-    echoesID.clear()
-    echoesID.update(
-        _load(
-            'echoes.json',
-            generated=lambda: _build_generated_id_lookup(
-                data_root,
-                language,
-                catalog_filename='echoes.json',
-                locale_filename='echoes.json',
-                key_field='normalized',
-            ),
-        )
-    )
-
-    achievementsID.clear()
-    achievementsID.update(
-        _load(
-            'achievements.json',
-            generated=lambda: _build_generated_id_lookup(
-                data_root,
-                language,
-                catalog_filename='achievements.json',
-                locale_filename='achievements.json',
-                key_field='display_name',
-            ),
-        )
-    )
-
-    echoStats.clear()
-    echoStats.update(_load('echoStats.json', generated=lambda: _build_generated_stats(data_root, language)))
-
-    definedText.clear()
-    definedText.update(_load('definedText.json', generated=lambda: _build_generated_defined_text(data_root, language)))
-
-    sonataName.clear()
-    sonataName.extend(_load('sonataName.json', default=[], generated=lambda: _build_generated_sonata_keys(data_root)))
-
-    _loaded_language = language
     logging.info('Data loaded: %d definedText entries', len(definedText))
 
 
@@ -287,3 +369,43 @@ def ensureDataLoaded(language: str | None = None) -> None:
     requested_language = language or 'en'
     if _loaded_language != requested_language:
         loadData(requested_language)
+
+
+def getItemsID(language: str | None = None) -> dict:
+    _ensure_cache_loaded('itemsID', language)
+    return itemsID
+
+
+def getCharactersID(language: str | None = None) -> dict:
+    _ensure_cache_loaded('charactersID', language)
+    return charactersID
+
+
+def getWeaponsID(language: str | None = None) -> dict:
+    _ensure_cache_loaded('weaponsID', language)
+    return weaponsID
+
+
+def getEchoesID(language: str | None = None) -> dict:
+    _ensure_cache_loaded('echoesID', language)
+    return echoesID
+
+
+def getAchievementsID(language: str | None = None) -> dict:
+    _ensure_cache_loaded('achievementsID', language)
+    return achievementsID
+
+
+def getEchoStats(language: str | None = None) -> dict:
+    _ensure_cache_loaded('echoStats', language)
+    return echoStats
+
+
+def getDefinedText(language: str | None = None) -> dict:
+    _ensure_cache_loaded('definedText', language)
+    return definedText
+
+
+def getSonataName(language: str | None = None) -> list:
+    _ensure_cache_loaded('sonataName', language)
+    return sonataName

@@ -686,9 +686,7 @@ class GameNavigator:
         Quick OCR check to see if the game is showing the main terminal
         menu.
         """
-        from ..scraping.data import ensureDataLoaded, definedText
-
-        ensureDataLoaded()
+        from ..scraping.data import getDefinedText
 
         full = capture_full(self.layout.width, self.layout.height, self.layout.monitor, gw=self.gw)
         terminal_roi = self.layout.terminal
@@ -698,7 +696,7 @@ class GameNavigator:
         ]
         text = _nav_ocr(crop).lower()
         from difflib import get_close_matches
-        target = definedText.get('PrefabTextItem_1547656443_Text', 'terminal')
+        target = getDefinedText().get('PrefabTextItem_1547656443_Text', 'terminal')
         return bool(get_close_matches(text, [target]))
 
     # ── Internal helpers ─────────────────────────────────────────────────

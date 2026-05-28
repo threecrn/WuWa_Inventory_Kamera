@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -27,6 +28,29 @@ def test_scraping_data_does_not_preload_until_requested(tmp_path, monkeypatch) -
     assert reloaded.itemsID == {}
 
     assert item_assembler_module._get_data() == {'shellcredit': {'id': 1}}
+
+
+def test_cache_specific_getter_only_loads_requested_file(tmp_path, monkeypatch, caplog) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_json(tmp_path / 'data' / 'en' / 'echoStats.json', {'critrate': 'cr%'})
+    _write_json(
+        tmp_path / 'data' / 'en' / 'definedText.json',
+        {'PrefabTextItem_1547656443_Text': 'terminal localized'},
+    )
+
+    reloaded = importlib.reload(scraping_data)
+
+    caplog.set_level(logging.INFO)
+
+    assert reloaded.getEchoStats() == {'critrate': 'cr%'}
+    assert reloaded.definedText == {}
+
+    loading_lines = [
+        record.getMessage()
+        for record in caplog.records
+        if record.getMessage().startswith('Loading file:')
+    ]
+    assert loading_lines == [f'Loading file: {Path("data") / "en" / "echoStats.json"}']
 
 
 def test_stats_extractor_loads_echo_stats_on_demand(tmp_path, monkeypatch) -> None:

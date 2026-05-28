@@ -26,10 +26,9 @@ _DIGITS_RE = re.compile(r'\d[\d,]*')
 
 
 def _get_data():
-    from ...data import ensureDataLoaded, itemsID
+    from ...data import getItemsID
 
-    ensureDataLoaded()
-    return itemsID
+    return getItemsID()
 
 
 class ItemAssembler:

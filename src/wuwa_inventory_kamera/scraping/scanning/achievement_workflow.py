@@ -93,9 +93,9 @@ class AchievementWorkflow:
         list[str]
             List of completed achievement IDs.
         """
-        from ...scraping.data import ensureDataLoaded, achievementsID
+        from ...scraping.data import getAchievementsID
 
-        ensureDataLoaded()
+        achievementsID = getAchievementsID()
 
         layout = self.nav.layout
         ctrl   = self.nav.ctrl

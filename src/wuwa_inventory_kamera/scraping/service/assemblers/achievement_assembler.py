@@ -29,10 +29,9 @@ logger = logging.getLogger(__name__)
 
 
 def _get_defined_text() -> dict:
-    from ...data import ensureDataLoaded, definedText
+    from ...data import getDefinedText
 
-    ensureDataLoaded()
-    return definedText
+    return getDefinedText()
 
 
 class AchievementAssembler:
