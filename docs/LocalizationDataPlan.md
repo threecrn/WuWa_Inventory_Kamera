@@ -7,6 +7,8 @@
 - Let OCR and validation run against the selected in-game language.
 - Make updater outputs explicit about which files are canonical and which are locale-specific.
 - Remove the current coupling where one JSON file simultaneously acts as identifier source, display source, and OCR lookup table.
+- Keep the current `*_wuwainventorykamera.json` files backward compatible for third-party tools that already consume them.
+- Establish a versioned export path if additive-only evolution of the current files becomes too constraining.
 
 ## Status On 2026-05-28
 
@@ -27,6 +29,7 @@ Implemented so far:
 Still incomplete:
 
 - Export schema cleanup has started additively, but more result payloads still need the same explicit canonical-key treatment.
+- The export plan still needs an explicit compatibility policy for third-party consumers and a threshold for when a v2 format becomes justified.
 - OCR coverage is still only partially localized; more menu text and region-specific checks need to stop assuming English text.
 
 ## Current Mismatch
@@ -194,6 +197,14 @@ These files are not the source of truth. They are derived indexes built from the
 
 Result JSONs should persist canonical keys, not locale-specific display text.
 
+Compatibility constraint for current exports:
+
+- Treat the existing `*_wuwainventorykamera.json` files as an external API consumed by third-party tools.
+- Do not remove existing fields from the current export files.
+- Do not change the meaning of existing fields in ways that would break current consumers.
+- Do not change the current use of numeric ids as object keys or join fields in the existing export files.
+- In the current export family, migrate additively: keep old fields and shapes, and add explicit canonical-key fields alongside them.
+
 Recommended rules:
 
 - Echo records store a canonical echo key.
@@ -213,6 +224,26 @@ When touching export schemas, prefer explicit field names such as:
 If existing result schemas already expose a normalized-name field, phase 1 can keep that field but must redefine it as a canonical key and stop localizing it.
 
 Display strings should be resolved at read time by the UI, not embedded as the authoritative identifier in exported data.
+
+### Versioning strategy
+
+The current export family should remain backward compatible.
+
+If additive migration becomes too awkward, define a versioned v2 export contract instead of overloading the existing files.
+
+Recommended trigger conditions for v2:
+
+- the current export needs incompatible field renames or removals
+- the current numeric-id keyed outer shape becomes a blocker for clarity or correctness
+- current compatibility fields begin to dominate payload size or maintenance cost
+- downstream consumers would benefit from an explicit schema identifier and cleaner canonical-key-first structure
+
+Recommended v2 shape decisions:
+
+- include an explicit schema version field such as `export_version: 2`
+- either use new filenames such as `*_wuwainventorykamera_v2.json` or a new session envelope version, rather than silently changing the existing files
+- make canonical `*_key` fields the primary identifiers in v2 while retaining numeric ids only as secondary join metadata
+- document v1 and v2 side-by-side during the transition window
 
 ## Updater Responsibilities
 
@@ -324,13 +355,15 @@ Status: mostly complete
 
 Status: started, additive first slice landed
 
-- Update assemblers and exporters to persist canonical keys only.
+- Keep the current export family backward compatible while adding explicit canonical-key fields.
 - Add explicit `*_key` fields where current names are ambiguous.
 - Echo exports now include explicit `echo_key` and `sonata_key` fields while preserving the current id-keyed outer shape.
 - Character exports now include explicit `character_key` and nested `weapon_key` fields while preserving the current id-keyed outer shape.
 - The inventory viewer now renders those key-bearing payloads and resolves localized sonata and equipped-character labels from generated locale data.
-- Stop relying on localized labels in result payloads.
+- Stop adding new reliance on localized labels in result payloads.
 - Add round-trip tests proving a non-English game locale still exports English canonical identifiers.
+- Add compatibility tests that assert the existing export files keep their legacy fields and numeric-id keying.
+- Define explicit criteria for when export cleanup should branch into a versioned v2 contract instead of extending v1 further.
 
 ### Phase 4: compatibility cleanup
 
