@@ -331,6 +331,46 @@ def test_update_stats_and_defined_text_write_locale_outputs(tmp_path: Path, monk
 	}
 
 
+def test_update_sonata_writes_generated_outputs_without_legacy_compat_file(tmp_path: Path, monkeypatch) -> None:
+	_prepare_workspace(tmp_path, monkeypatch)
+	_write_json(tmp_path / 'data' / 'languages.json', {'English': 'en', 'Japanese': 'ja'})
+	_write_json(
+		tmp_path / 'data' / 'en' / 'MultiText.json',
+		{'PhantomFetter_1_Name': 'Moonlit Clouds'},
+	)
+	_write_json(
+		tmp_path / 'data' / 'ja' / 'MultiText.json',
+		{'PhantomFetter_1_Name': '月を窺う軽雲'},
+	)
+
+	english_updater = BaseDataUpdater(lang='English')
+	english_updater.updateSonata()
+
+	localized_updater = BaseDataUpdater(lang='Japanese')
+	localized_updater.updateSonata()
+
+	sonata_catalog = json.loads((tmp_path / 'data' / 'catalog' / 'sonatas.json').read_text(encoding='utf-8'))
+	ja_locale = json.loads((tmp_path / 'data' / 'locale' / 'ja' / 'sonatas.json').read_text(encoding='utf-8'))
+	ja_lookup = json.loads((tmp_path / 'data' / 'locale' / 'ja' / 'lookup' / 'sonatas.json').read_text(encoding='utf-8'))
+
+	assert sonata_catalog == {
+		'moonlitclouds': {
+			'id': 1,
+			'text_key': 'PhantomFetter_1_Name',
+		},
+	}
+	assert ja_locale == {
+		'moonlitclouds': {
+			'display_name': '月を窺う軽雲',
+			'normalized': '月を窺う軽雲',
+			'aliases': ['月を窺う軽雲'],
+		},
+	}
+	assert ja_lookup == {'月を窺う軽雲': 'moonlitclouds'}
+	assert not (tmp_path / 'data' / 'en' / 'sonataName.json').exists()
+	assert not (tmp_path / 'data' / 'ja' / 'sonataName.json').exists()
+
+
 def test_run_bootstraps_missing_generated_outputs_from_existing_source_data(
 	tmp_path: Path,
 	monkeypatch,

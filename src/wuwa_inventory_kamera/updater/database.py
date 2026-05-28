@@ -340,7 +340,7 @@ class BaseDataUpdater:
 	def _updatePatternCategory(
 		self,
 		*,
-		compat_filename: str,
+		compat_filename: str | None,
 		catalog_filename: str,
 		locale_filename: str,
 		pattern: str,
@@ -348,7 +348,8 @@ class BaseDataUpdater:
 		canonical_key_builder,
 		normalized_builder,
 	) -> dict:
-		logger.info('Generating %s...', compat_filename)
+		output_label = compat_filename or locale_filename
+		logger.info('Generating %s...', output_label)
 		try:
 			info_text = self._loadInfoText()
 			if not info_text:
@@ -391,16 +392,17 @@ class BaseDataUpdater:
 					normalized=normalized_builder(display_name, match),
 				)
 
-			self.saveJson(compat_data, compat_filename)
+			if compat_filename is not None:
+				self.saveJson(compat_data, compat_filename)
 			if self._isCanonicalLanguage():
 				self._saveCatalogEntries(catalog_filename, catalog_data)
 			if self._isCanonicalLanguage() or locale_data:
 				self._saveLocaleEntries(locale_filename, locale_data)
 
-			logger.info('Generated %s with %d entries', compat_filename, len(compat_data))
+			logger.info('Generated %s with %d entries', output_label, len(compat_data))
 			return compat_data
 		except Exception as e:
-			logger.error('Failed to generate %s: %s', compat_filename, e, exc_info=True)
+			logger.error('Failed to generate %s: %s', output_label, e, exc_info=True)
 			return {}
 
 	def _normalizeJson(self, filename: str, data: Any) -> Any:
@@ -502,7 +504,7 @@ class BaseDataUpdater:
 		"""Called after echoStats.json is written."""
 
 	def _afterUpdateSonata(self, data: dict) -> None:
-		"""Called after sonataName.json is written."""
+		"""Called after sonata data is written."""
 
 	def _afterUpdateDefinedText(self, stats: dict) -> None:
 		"""Called after definedText.json is written."""
@@ -782,7 +784,7 @@ class BaseDataUpdater:
 
 	def updateSonata(self) -> None:
 		data = self._updatePatternCategory(
-			compat_filename='sonataName.json',
+			compat_filename=None,
 			catalog_filename='sonatas.json',
 			locale_filename='sonatas.json',
 			pattern=r'^PhantomFetter_(\d+)_Name$',

@@ -10,7 +10,7 @@
 
 ## Status On 2026-05-28
 
-The architecture described below is no longer only aspirational. The repository already has the new generated contract in place, and the remaining work is now mostly about finishing consumer migration and cleaning up exports.
+The architecture described below is no longer only aspirational. The repository already has the new generated contract in place, and the remaining work is now mostly about export cleanup, broader OCR localization, and reducing the temporary compatibility layer.
 
 Implemented so far:
 
@@ -19,13 +19,14 @@ Implemented so far:
 - The inventory viewer metadata resolver already prefers generated catalog plus locale data.
 - OCR/runtime consumers for echo names, equipped-character names, and sonata filter matching already prefer generated locale data with legacy fallback.
 - Shared compatibility globals in `scraping.data` can now rebuild themselves from generated catalog plus locale data when legacy `data/<lang>/*.json` files are missing.
+- Runtime callers have been migrated to cache-specific compatibility getters, so they no longer depend on updater-emitted legacy compatibility bundles.
+- `sonataName.json` is no longer emitted by the updater; sonata loading now treats it as fallback-only legacy input.
 
 Still incomplete:
 
-- Some consumers still read legacy `data/<lang>/*.json` compatibility files directly instead of going through generated catalog plus locale helpers.
 - Export schemas still need a deliberate cleanup pass so canonical keys are explicit and unambiguous.
 - OCR coverage is still only partially localized; more menu text and region-specific checks need to stop assuming English text.
-- Legacy compatibility outputs still exist and are still part of the runtime fallback path.
+- Legacy compatibility outputs and fallback readers still exist for transition safety, even though runtime consumers no longer require the full legacy bundle to be emitted.
 
 ## Current Mismatch
 
@@ -34,15 +35,16 @@ The main architectural split now exists, but several legacy compatibility files 
 - `characters.json`
 - `echoes.json`
 - `achievements.json`
-- `sonataName.json`
 - `echoStats.json`
+
+`sonataName.json` is now a fallback-only legacy input rather than a regularly generated output.
 
 That happens to work for English because the English normalized display string is also the identifier we want to keep in result JSONs. It breaks down for non-English support because the key space would then change with the chosen locale.
 
 The remaining mismatch now shows up in a smaller set of places:
 
 - Legacy compatibility files still expose localized normalized-name keys instead of stable canonical keys.
-- Some runtime consumers still use those compatibility files directly instead of the generated catalog plus locale contract.
+- Some fallback paths and tool surfaces still accept those compatibility files instead of relying solely on the generated catalog plus locale contract.
 - Export payloads still mix ids, canonical names, and display-oriented fields in ways that are not yet explicit.
 
 ## Recommended Model
@@ -393,4 +395,4 @@ These choices keep the plan coherent and reduce future churn.
 - Keep English display strings in `data/locale/en/`, not in the catalog.
 - Materialize lookup JSONs instead of building them ad hoc at runtime so tests can assert the exact output.
 - Prefer explicit `*_key` export fields when a schema is already being touched.
-- Treat the current `data/<lang>/*.json` name-to-id files as temporary compatibility outputs, not as the long-term contract.
+- Treat the current `data/<lang>/*.json` name-to-id files as temporary compatibility artifacts, not as the long-term contract.
