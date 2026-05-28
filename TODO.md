@@ -53,6 +53,7 @@
 - [ ] RapidOCR CPU backend: multi-threaded batch processing for faster CPU inference?
 - [ ] end-user installation: where to put config and cache files?
 - [ ] fork repo: how to deal with references to the original (e.g. feedback link), README.md, etc?
+- [ ] windowed game support: consistent command line and config option vs autodetection
 
 ## Docs And Consistency
 
