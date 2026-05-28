@@ -168,6 +168,64 @@ def test_load_inventory_document_normalizes_character_export() -> None:
     assert 'Skill skill: 10' in row.details_lines
 
 
+def test_load_inventory_document_normalizes_keyed_echo_export() -> None:
+    payload = [
+        {
+            '310000010': {
+                'echo_key': 'bellbornegeochelone',
+                'level': 25,
+                'tuneLv': 5,
+                'sonata': 'moonlitclouds',
+                'sonata_key': 'moonlitclouds',
+                'rarity': 5,
+                '_equipped': 'shorekeeper',
+                'stats': {
+                    'main': {'Healing Bonus': '26.4%'},
+                    'sub': {'Crit Rate': '8.4%', 'ATK%': '9.4%'},
+                },
+            }
+        }
+    ]
+
+    document = inventory_models.load_inventory_document('echoes_wuwainventorykamera.json', payload)
+
+    row = document.sections[0].rows[0]
+    assert row.title == 'Bell Borne Geochelone'
+    assert row.subtitle == 'Echo Key: bellbornegeochelone'
+    assert 'Sonata: Moonlitclouds' in row.body_lines
+    assert 'Equipped: Shorekeeper' in row.body_lines
+    assert 'Echo Key: bellbornegeochelone' in row.details_lines
+    assert 'Sonata Key: moonlitclouds' in row.details_lines
+
+
+def test_load_inventory_document_normalizes_keyed_character_export() -> None:
+    payload = {
+        '1105': {
+            '_name': 'shorekeeper',
+            'character_key': 'shorekeeper',
+            'level': 90,
+            'ascension': 6,
+            'weapon': {
+                'id': 21010074,
+                'weapon_key': 'emeraldofgenesis',
+                'level': 90,
+                'rank': 1,
+            },
+            'skills': {'normal': 10, 'skill': 10},
+            'chain': 2,
+        }
+    }
+
+    document = inventory_models.load_inventory_document('characters_wuwainventorykamera.json', payload)
+
+    row = document.sections[0].rows[0]
+    assert row.title == 'Shorekeeper'
+    assert row.subtitle == 'Character Key: shorekeeper'
+    assert 'Weapon: Emerald of Genesis | Lv. 90 | Rank 1' in row.body_lines
+    assert 'Character Key: shorekeeper' in row.details_lines
+    assert 'Weapon Key: emeraldofgenesis' in row.details_lines
+
+
 def test_load_inventory_document_normalizes_scan_session_sections() -> None:
     payload = {
         'date': '2026-05-28_120000',
@@ -298,6 +356,10 @@ def test_metadata_resolver_prefers_generated_localized_metadata(tmp_path, monkey
         tmp_path / 'data' / 'locale' / 'ja' / 'achievements.json',
         {'firststeps': {'display_name': '最初の一歩', 'normalized': '最初の一歩', 'aliases': ['最初の一歩']}},
     )
+    _write_json(
+        tmp_path / 'data' / 'locale' / 'ja' / 'sonatas.json',
+        {'moonlitclouds': {'display_name': '月を窺う軽雲', 'normalized': '月を窺う軽雲', 'aliases': ['月を窺う軽雲']}},
+    )
 
     monkeypatch.setattr(inventory_models, 'basePATH', tmp_path)
     monkeypatch.setattr(inventory_models.app_config, 'gameLanguage', 'Japanese')
@@ -314,9 +376,15 @@ def test_metadata_resolver_prefers_generated_localized_metadata(tmp_path, monkey
     assert weapon_name == '翠緑の残光'
     assert weapon_image == 'IconWeapon/emerald.png'
     assert rarity == 5
+    assert resolver.resolve_item('shellcredit')[0] == 'シェルクレジット'
+    assert resolver.resolve_weapon('emeraldofgenesis')[0] == '翠緑の残光'
     assert resolver.resolve_character(1105) == 'ショアキーパー'
+    assert resolver.resolve_character('shorekeeper') == 'ショアキーパー'
     assert resolver.resolve_echo(310000010) == '鐘鳴の亀守'
+    assert resolver.resolve_echo('bellbornegeochelone') == '鐘鳴の亀守'
     assert resolver.resolve_achievement(9001) == '最初の一歩'
+    assert resolver.resolve_achievement('firststeps') == '最初の一歩'
+    assert resolver.resolve_sonata('moonlitclouds') == '月を窺う軽雲'
 
 
 def test_load_inventory_session_prefers_scan_result(tmp_path) -> None:

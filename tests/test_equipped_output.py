@@ -112,6 +112,31 @@ def test_echo_assembler_adds_equipped_character(monkeypatch) -> None:
     }
 
 
+def test_echo_build_output_includes_explicit_canonical_keys() -> None:
+    payload = EchoAssembler._build_echo(
+        'bellbornegeochelone',
+        25,
+        5,
+        'moonlitclouds',
+        5,
+        {'main': {'atk%': '18%'}, 'sub': {}},
+        {'bellbornegeochelone': 310000010},
+        {},
+    )
+
+    assert payload == {
+        '310000010': {
+            'echo_key': 'bellbornegeochelone',
+            'level': 25,
+            'tuneLv': 5,
+            'sonata': 'moonlitclouds',
+            'sonata_key': 'moonlitclouds',
+            'rarity': 5,
+            'stats': {'main': {'atk%': '18%'}, 'sub': {}},
+        }
+    }
+
+
 def test_parse_equipped_character_fuzzy_matches_localized_character_name(
     tmp_path,
     monkeypatch,

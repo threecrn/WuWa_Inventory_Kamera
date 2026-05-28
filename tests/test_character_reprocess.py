@@ -11,6 +11,7 @@ from wuwa_inventory_kamera.scraping.service.captures import CharResult
 from wuwa_inventory_kamera.scraping.service.character_reprocess import (
     reprocess_character_scans_with_service,
 )
+from wuwa_inventory_kamera.scraping.scanning.character_workflow import CharacterWorkflow
 from wuwa_inventory_kamera.scraping.utils.common import loadCharacterRawScans
 
 
@@ -49,6 +50,7 @@ class _FakeOcrService:
                     'name': 'alpha',
                     'level': 80,
                     'ascension': 6,
+                    'weaponName': 'sword_alpha',
                     'weaponId': 'sword_alpha',
                     'weaponLevel': 70,
                     'weaponMaxLevel': 80,
@@ -179,10 +181,12 @@ def test_reprocess_character_scans_reconstructs_sections_and_outputs_dict(monkey
     assert result == {
         'alpha': {
             '_name': 'alpha',
+            'character_key': 'alpha',
             'level': 80,
             'ascension': 6,
             'weapon': {
                 'id': 'sword_alpha',
+                'weapon_key': 'sword_alpha',
                 'level': 70,
                 'ascension': 5,
                 'rank': 3,
@@ -240,6 +244,27 @@ def test_reprocess_character_scans_reconstructs_sections_and_outputs_dict(monkey
         submitted[3].crops['chain_0'],
         cv2.cvtColor(chain, cv2.COLOR_RGB2BGR),
     )
+
+
+def test_character_workflow_output_includes_explicit_canonical_keys() -> None:
+    output = CharacterWorkflow._build_output(
+        {
+            'name': 'shorekeeper',
+            'level': 90,
+            'ascension': 6,
+            'weaponName': 'emeraldofgenesis',
+            'weaponId': 21010074,
+            'weaponLevel': 90,
+            'weaponMaxLevel': 90,
+            'weaponRank': 1,
+            'skills': {},
+            'chain': {},
+        }
+    )
+
+    assert output['character_key'] == 'shorekeeper'
+    assert output['weapon']['id'] == 21010074
+    assert output['weapon']['weapon_key'] == 'emeraldofgenesis'
 
 
 def test_reprocess_character_write_debug_writes_overview_preprocessed_artifacts(

@@ -375,9 +375,11 @@ class EchoAssembler:
         echo_id = str(echoesID.get(name, name))
         return {
             echo_id: {
+                'echo_key': name,
                 'level':   level,
                 'tuneLv':  tune_lv,
                 'sonata':  sonata,
+                'sonata_key': sonata,
                 'rarity':  rarity,
                 'stats':   stats,
             }

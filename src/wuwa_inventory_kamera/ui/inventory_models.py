@@ -96,33 +96,61 @@ class MetadataResolver:
     def __init__(self) -> None:
         language_code = _resolve_game_language_code()
 
-        self._items_by_id = self._build_info_lookup(scraping_data.getItemsID(language_code))
-        self._items_by_id.update(
-            self._build_generated_info_lookup('items.json', language_code=language_code, fields=('image',))
+        item_mapping = scraping_data.getItemsID(language_code)
+        self._items_by_id = self._build_info_lookup(item_mapping)
+        self._items_by_key = self._build_info_key_lookup(item_mapping)
+        generated_items_by_id, generated_items_by_key = self._build_generated_info_lookups(
+            'items.json',
+            language_code=language_code,
+            fields=('image',),
         )
+        self._items_by_id.update(generated_items_by_id)
+        self._items_by_key.update(generated_items_by_key)
 
-        self._weapons_by_id = self._build_info_lookup(scraping_data.getWeaponsID(language_code))
-        self._weapons_by_id.update(
-            self._build_generated_info_lookup(
-                'weapons.json',
-                language_code=language_code,
-                fields=('image', 'rarity'),
-            )
+        weapon_mapping = scraping_data.getWeaponsID(language_code)
+        self._weapons_by_id = self._build_info_lookup(weapon_mapping)
+        self._weapons_by_key = self._build_info_key_lookup(weapon_mapping)
+        generated_weapons_by_id, generated_weapons_by_key = self._build_generated_info_lookups(
+            'weapons.json',
+            language_code=language_code,
+            fields=('image', 'rarity'),
         )
+        self._weapons_by_id.update(generated_weapons_by_id)
+        self._weapons_by_key.update(generated_weapons_by_key)
 
-        self._characters_by_id = self._build_name_lookup(scraping_data.getCharactersID(language_code), prettify=True)
-        self._characters_by_id.update(
-            self._build_generated_name_lookup('characters.json', language_code=language_code)
+        character_mapping = scraping_data.getCharactersID(language_code)
+        self._characters_by_id = self._build_name_lookup(character_mapping, prettify=True)
+        self._characters_by_key = self._build_name_key_lookup(character_mapping, prettify=True)
+        generated_characters_by_id, generated_characters_by_key = self._build_generated_name_lookups(
+            'characters.json',
+            language_code=language_code,
         )
+        self._characters_by_id.update(generated_characters_by_id)
+        self._characters_by_key.update(generated_characters_by_key)
 
-        self._echoes_by_id = self._build_name_lookup(scraping_data.getEchoesID(language_code), prettify=True)
-        self._echoes_by_id.update(
-            self._build_generated_name_lookup('echoes.json', language_code=language_code)
+        echo_mapping = scraping_data.getEchoesID(language_code)
+        self._echoes_by_id = self._build_name_lookup(echo_mapping, prettify=True)
+        self._echoes_by_key = self._build_name_key_lookup(echo_mapping, prettify=True)
+        generated_echoes_by_id, generated_echoes_by_key = self._build_generated_name_lookups(
+            'echoes.json',
+            language_code=language_code,
         )
+        self._echoes_by_id.update(generated_echoes_by_id)
+        self._echoes_by_key.update(generated_echoes_by_key)
 
-        self._achievements_by_id = self._build_name_lookup(scraping_data.getAchievementsID(language_code), prettify=False)
-        self._achievements_by_id.update(
-            self._build_generated_name_lookup('achievements.json', language_code=language_code)
+        achievement_mapping = scraping_data.getAchievementsID(language_code)
+        self._achievements_by_id = self._build_name_lookup(achievement_mapping, prettify=False)
+        self._achievements_by_key = self._build_name_key_lookup(achievement_mapping, prettify=False)
+        generated_achievements_by_id, generated_achievements_by_key = self._build_generated_name_lookups(
+            'achievements.json',
+            language_code=language_code,
+        )
+        self._achievements_by_id.update(generated_achievements_by_id)
+        self._achievements_by_key.update(generated_achievements_by_key)
+
+        self._sonatas_by_key = self._build_generated_key_name_lookup(
+            'sonatas.json',
+            language_code=language_code,
         )
 
     @staticmethod
@@ -134,6 +162,14 @@ class MetadataResolver:
         return result
 
     @staticmethod
+    def _build_info_key_lookup(mapping: dict) -> dict[str, dict]:
+        result: dict[str, dict] = {}
+        for key, info in mapping.items():
+            if isinstance(key, str) and key and isinstance(info, dict):
+                result[key] = info
+        return result
+
+    @staticmethod
     def _build_name_lookup(mapping: dict, *, prettify: bool) -> dict[str, str]:
         result: dict[str, str] = {}
         for name, identifier in mapping.items():
@@ -141,6 +177,15 @@ class MetadataResolver:
                 continue
             display_name = MetadataResolver._prettify_name(name) if prettify else str(name)
             result[str(identifier)] = display_name
+        return result
+
+    @staticmethod
+    def _build_name_key_lookup(mapping: dict, *, prettify: bool) -> dict[str, str]:
+        result: dict[str, str] = {}
+        for name in mapping.keys():
+            if not isinstance(name, str) or not name:
+                continue
+            result[name] = MetadataResolver._prettify_name(name) if prettify else str(name)
         return result
 
     @staticmethod
@@ -159,19 +204,20 @@ class MetadataResolver:
         return None
 
     @classmethod
-    def _build_generated_info_lookup(
+    def _build_generated_info_lookups(
         cls,
         catalog_filename: str,
         *,
         language_code: str,
         fields: tuple[str, ...],
-    ) -> dict[str, dict]:
+    ) -> tuple[dict[str, dict], dict[str, dict]]:
         catalog = _load_generated_catalog(catalog_filename)
         locale = _load_generated_locale(catalog_filename, language_code)
         if not catalog or not locale:
-            return {}
+            return {}, {}
 
-        result: dict[str, dict] = {}
+        result_by_id: dict[str, dict] = {}
+        result_by_key: dict[str, dict] = {}
         for canonical_key, info in catalog.items():
             if not isinstance(info, dict) or 'id' not in info:
                 continue
@@ -184,24 +230,48 @@ class MetadataResolver:
                 value = info.get(field)
                 if value is not None:
                     record[field] = value
-            result[str(info['id'])] = record
-        return result
+            result_by_id[str(info['id'])] = record
+            result_by_key[str(canonical_key)] = record
+        return result_by_id, result_by_key
 
     @classmethod
-    def _build_generated_name_lookup(cls, catalog_filename: str, *, language_code: str) -> dict[str, str]:
+    def _build_generated_name_lookups(
+        cls,
+        catalog_filename: str,
+        *,
+        language_code: str,
+    ) -> tuple[dict[str, str], dict[str, str]]:
         catalog = _load_generated_catalog(catalog_filename)
         locale = _load_generated_locale(catalog_filename, language_code)
         if not catalog or not locale:
-            return {}
+            return {}, {}
 
-        result: dict[str, str] = {}
+        result_by_id: dict[str, str] = {}
+        result_by_key: dict[str, str] = {}
         for canonical_key, info in catalog.items():
             if not isinstance(info, dict) or 'id' not in info:
                 continue
             display_name = cls._extract_display_text(locale.get(canonical_key))
             if not display_name:
                 continue
-            result[str(info['id'])] = display_name
+            result_by_id[str(info['id'])] = display_name
+            result_by_key[str(canonical_key)] = display_name
+        return result_by_id, result_by_key
+
+    @classmethod
+    def _build_generated_key_name_lookup(cls, locale_filename: str, *, language_code: str) -> dict[str, str]:
+        locale = _load_generated_locale(locale_filename, language_code)
+        if not locale:
+            return {}
+
+        result: dict[str, str] = {}
+        for canonical_key, record in locale.items():
+            if not isinstance(canonical_key, str) or not canonical_key:
+                continue
+            display_name = cls._extract_display_text(record)
+            if not display_name:
+                continue
+            result[canonical_key] = display_name
         return result
 
     @staticmethod
@@ -211,35 +281,49 @@ class MetadataResolver:
             return text.title()
         return text[:1].upper() + text[1:]
 
+    @classmethod
+    def _fallback_name(cls, raw_ref: str, prefix: str) -> str:
+        if raw_ref and not raw_ref.isdigit():
+            return cls._prettify_name(raw_ref)
+        return f'{prefix} {raw_ref}'
+
     def resolve_item(self, item_id: object) -> tuple[str, str | None]:
         item_key = str(item_id)
-        info = self._items_by_id.get(item_key)
+        info = self._items_by_id.get(item_key) or self._items_by_key.get(item_key)
         if info:
             return str(info.get('name', item_key)), self._coerce_image(info.get('image'))
-        return f'Item {item_key}', None
+        return self._fallback_name(item_key, 'Item'), None
 
     def resolve_weapon(self, weapon_id: object) -> tuple[str, str | None, object | None]:
         weapon_key = str(weapon_id)
-        info = self._weapons_by_id.get(weapon_key)
+        info = self._weapons_by_id.get(weapon_key) or self._weapons_by_key.get(weapon_key)
         if info:
             return (
                 str(info.get('name', weapon_key)),
                 self._coerce_image(info.get('image')),
                 info.get('rarity'),
             )
-        return f'Weapon {weapon_key}', None, None
+        return self._fallback_name(weapon_key, 'Weapon'), None, None
 
     def resolve_character(self, character_id: object) -> str:
         character_key = str(character_id)
-        return self._characters_by_id.get(character_key, f'Character {character_key}')
+        return self._characters_by_id.get(character_key) or self._characters_by_key.get(character_key) or self._fallback_name(character_key, 'Character')
 
     def resolve_echo(self, echo_id: object) -> str:
         echo_key = str(echo_id)
-        return self._echoes_by_id.get(echo_key, f'Echo {echo_key}')
+        return self._echoes_by_id.get(echo_key) or self._echoes_by_key.get(echo_key) or self._fallback_name(echo_key, 'Echo')
 
     def resolve_achievement(self, achievement_id: object) -> str:
         achievement_key = str(achievement_id)
-        return self._achievements_by_id.get(achievement_key, f'Achievement {achievement_key}')
+        return (
+            self._achievements_by_id.get(achievement_key)
+            or self._achievements_by_key.get(achievement_key)
+            or self._fallback_name(achievement_key, 'Achievement')
+        )
+
+    def resolve_sonata(self, sonata_key: object) -> str:
+        sonata_ref = str(sonata_key)
+        return self._sonatas_by_key.get(sonata_ref, self._fallback_name(sonata_ref, 'Sonata'))
 
     @staticmethod
     def _coerce_image(image_path: object) -> str | None:
@@ -504,9 +588,9 @@ def _build_echo_rows(payload: list, resolver: MetadataResolver) -> tuple[Invento
         if summary:
             body_lines.append(summary)
 
-        sonata = details.get('sonata')
-        if sonata:
-            body_lines.append(f'Sonata: {sonata}')
+        sonata_ref = details.get('sonata_key') or details.get('sonata')
+        if sonata_ref:
+            body_lines.append(f'Sonata: {resolver.resolve_sonata(sonata_ref)}')
 
         cost = details.get('_cost')
         if cost is not None:
@@ -514,7 +598,7 @@ def _build_echo_rows(payload: list, resolver: MetadataResolver) -> tuple[Invento
 
         equipped = details.get('_equipped')
         if equipped:
-            body_lines.append(f'Equipped: {equipped}')
+            body_lines.append(f'Equipped: {resolver.resolve_character(equipped)}')
 
         stats = details.get('stats')
         main_stat = _format_main_stat(stats)
@@ -527,9 +611,13 @@ def _build_echo_rows(payload: list, resolver: MetadataResolver) -> tuple[Invento
         rows.append(
             InventoryRow(
                 title=resolver.resolve_echo(echo_id),
-                subtitle=f'Echo ID: {echo_id}',
+                subtitle=(
+                    f'Echo Key: {details.get("echo_key")}'
+                    if details.get('echo_key')
+                    else f'Echo ID: {echo_id}'
+                ),
                 body_lines=tuple(body_lines),
-                details_lines=_build_echo_details(echo_id, details),
+                details_lines=_build_echo_details(echo_id, details, resolver),
             )
         )
     return tuple(rows)
@@ -538,9 +626,10 @@ def _build_echo_rows(payload: list, resolver: MetadataResolver) -> tuple[Invento
 def _build_weapon_rows(payload: list, resolver: MetadataResolver) -> tuple[InventoryRow, ...]:
     rows: list[InventoryRow] = []
     for entry in payload:
-        if not isinstance(entry, dict) or 'id' not in entry:
+        if not isinstance(entry, dict) or ('id' not in entry and 'weapon_key' not in entry):
             continue
-        weapon_name, image_path, rarity = resolver.resolve_weapon(entry.get('id'))
+        weapon_ref = entry.get('id', entry.get('weapon_key'))
+        weapon_name, image_path, rarity = resolver.resolve_weapon(weapon_ref)
 
         body_lines: list[str] = []
         summary = _join_non_empty_parts(
@@ -554,12 +643,16 @@ def _build_weapon_rows(payload: list, resolver: MetadataResolver) -> tuple[Inven
 
         equipped = entry.get('_equipped')
         if equipped:
-            body_lines.append(f'Equipped: {equipped}')
+            body_lines.append(f'Equipped: {resolver.resolve_character(equipped)}')
 
         rows.append(
             InventoryRow(
                 title=weapon_name,
-                subtitle=f'Weapon ID: {entry.get("id")}',
+                subtitle=(
+                    f'Weapon Key: {entry.get("weapon_key")}'
+                    if entry.get('weapon_key')
+                    else f'Weapon ID: {entry.get("id")}'
+                ),
                 body_lines=tuple(body_lines),
                 details_lines=_build_weapon_details(entry, rarity),
                 image_path=image_path,
@@ -571,15 +664,20 @@ def _build_weapon_rows(payload: list, resolver: MetadataResolver) -> tuple[Inven
 def _build_item_rows(payload: list, resolver: MetadataResolver) -> tuple[InventoryRow, ...]:
     rows: list[InventoryRow] = []
     for entry in payload:
-        if not isinstance(entry, dict) or 'id' not in entry:
+        if not isinstance(entry, dict) or ('id' not in entry and 'item_key' not in entry):
             continue
-        item_name, image_path = resolver.resolve_item(entry.get('id'))
+        item_ref = entry.get('id', entry.get('item_key'))
+        item_name, image_path = resolver.resolve_item(item_ref)
         count = entry.get('count')
         body_lines = (f'Count: {count}',) if count is not None else ()
         rows.append(
             InventoryRow(
                 title=item_name,
-                subtitle=f'Item ID: {entry.get("id")}',
+                subtitle=(
+                    f'Item Key: {entry.get("item_key")}'
+                    if entry.get('item_key')
+                    else f'Item ID: {entry.get("id")}'
+                ),
                 body_lines=body_lines,
                 details_lines=_build_item_details(entry),
                 image_path=image_path,
@@ -605,7 +703,8 @@ def _build_character_rows(payload: dict, resolver: MetadataResolver) -> tuple[In
 
         weapon = details.get('weapon')
         if isinstance(weapon, dict) and weapon:
-            weapon_name, _, _ = resolver.resolve_weapon(weapon.get('id', ''))
+            weapon_ref = weapon.get('id', weapon.get('weapon_key', ''))
+            weapon_name, _, _ = resolver.resolve_weapon(weapon_ref)
             weapon_summary = _join_non_empty_parts(
                 weapon_name,
                 _format_level(weapon.get('level')),
@@ -621,9 +720,13 @@ def _build_character_rows(payload: dict, resolver: MetadataResolver) -> tuple[In
         rows.append(
             InventoryRow(
                 title=resolver.resolve_character(character_id),
-                subtitle=f'Character ID: {character_id}',
+                subtitle=(
+                    f'Character Key: {details.get("character_key")}'
+                    if details.get('character_key')
+                    else f'Character ID: {character_id}'
+                ),
                 body_lines=tuple(body_lines),
-                details_lines=_build_character_details(details, resolver),
+                details_lines=_build_character_details(character_id, details, resolver),
             )
         )
     return tuple(rows)
@@ -658,14 +761,18 @@ def _build_shell_rows(payload: dict, resolver: MetadataResolver) -> tuple[Invent
     return tuple(rows)
 
 
-def _build_echo_details(echo_id: object, details: dict) -> tuple[str, ...]:
-    lines = [f'Echo ID: {echo_id}']
+def _build_echo_details(echo_id: object, details: dict, resolver: MetadataResolver) -> tuple[str, ...]:
+    lines: list[str] = []
+
+    echo_key = details.get('echo_key')
+    if echo_key:
+        lines.append(f'Echo Key: {echo_key}')
+    lines.append(f'Echo ID: {echo_id}')
 
     for key, label in (
         ('level', 'Level'),
         ('tuneLv', 'Tune Level'),
         ('rarity', 'Rarity'),
-        ('sonata', 'Sonata'),
         ('_cost', 'Cost'),
         ('_equipped', 'Equipped'),
         ('_scanIndex', 'Scan Index'),
@@ -673,7 +780,16 @@ def _build_echo_details(echo_id: object, details: dict) -> tuple[str, ...]:
     ):
         value = details.get(key)
         if value is not None and value != '':
+            if key == '_equipped':
+                value = resolver.resolve_character(value)
             lines.append(f'{label}: {value}')
+
+    sonata_key = details.get('sonata_key')
+    if sonata_key:
+        lines.append(f'Sonata Key: {sonata_key}')
+    sonata_ref = sonata_key or details.get('sonata')
+    if sonata_ref:
+        lines.append(f'Sonata: {resolver.resolve_sonata(sonata_ref)}')
 
     stats = details.get('stats')
     if isinstance(stats, dict):
@@ -691,7 +807,12 @@ def _build_echo_details(echo_id: object, details: dict) -> tuple[str, ...]:
 
 
 def _build_weapon_details(entry: dict, rarity: object) -> tuple[str, ...]:
-    lines = [f'Weapon ID: {entry.get("id")}']
+    lines: list[str] = []
+
+    if entry.get('weapon_key'):
+        lines.append(f'Weapon Key: {entry.get("weapon_key")}')
+    if entry.get('id') is not None:
+        lines.append(f'Weapon ID: {entry.get("id")}')
 
     for label, value in (
         ('Level', entry.get('level')),
@@ -707,14 +828,22 @@ def _build_weapon_details(entry: dict, rarity: object) -> tuple[str, ...]:
 
 
 def _build_item_details(entry: dict) -> tuple[str, ...]:
-    lines = [f'Item ID: {entry.get("id")}']
+    lines: list[str] = []
+    if entry.get('item_key'):
+        lines.append(f'Item Key: {entry.get("item_key")}')
+    if entry.get('id') is not None:
+        lines.append(f'Item ID: {entry.get("id")}')
     if 'count' in entry:
         lines.append(f'Count: {entry.get("count")}')
     return tuple(lines)
 
 
-def _build_character_details(details: dict, resolver: MetadataResolver) -> tuple[str, ...]:
+def _build_character_details(character_id: object, details: dict, resolver: MetadataResolver) -> tuple[str, ...]:
     lines: list[str] = []
+
+    if details.get('character_key'):
+        lines.append(f'Character Key: {details.get("character_key")}')
+    lines.append(f'Character ID: {character_id}')
 
     for label, key in (
         ('Level', 'level'),
@@ -727,8 +856,11 @@ def _build_character_details(details: dict, resolver: MetadataResolver) -> tuple
 
     weapon = details.get('weapon')
     if isinstance(weapon, dict) and weapon:
-        weapon_name, _, weapon_rarity = resolver.resolve_weapon(weapon.get('id', ''))
+        weapon_ref = weapon.get('id', weapon.get('weapon_key', ''))
+        weapon_name, _, weapon_rarity = resolver.resolve_weapon(weapon_ref)
         lines.append(f'Weapon: {weapon_name}')
+        if weapon.get('weapon_key'):
+            lines.append(f'Weapon Key: {weapon.get("weapon_key")}')
         for label, value in (
             ('Weapon ID', weapon.get('id')),
             ('Weapon Level', weapon.get('level')),

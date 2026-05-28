@@ -18,14 +18,15 @@ Implemented so far:
 - Non-English updater runs bootstrap the English canonical catalog first so canonical keys remain English-derived.
 - The inventory viewer metadata resolver already prefers generated catalog plus locale data.
 - OCR/runtime consumers for echo names, equipped-character names, and sonata filter matching already use generated locale data.
-- Shared compatibility globals in `scraping.data` now rebuild themselves directly from generated catalog plus locale data, without reading legacy `data/<lang>/*.json` compatibility files.
+- Shared compatibility globals in `scraping.data` now rebuild themselves directly from generated catalog plus locale data and no longer read legacy `data/<lang>/*.json` compatibility files from disk.
 - Runtime callers have been migrated to cache-specific compatibility getters, so they no longer depend on updater-emitted legacy compatibility bundles.
 - The updater no longer emits legacy compatibility files under `data/<lang>/` for items, weapons, characters, echoes, achievements, stats, defined text, or sonatas.
 - Raw updater inputs and updater state now live under `data/raw/<lang>/` instead of reusing `data/<lang>/`.
+- Runtime code and tooling no longer treat `data/<lang>/*.json` compatibility files as a supported on-disk contract.
 
 Still incomplete:
 
-- Export schemas still need a deliberate cleanup pass so canonical keys are explicit and unambiguous.
+- Export schema cleanup has started additively, but more result payloads still need the same explicit canonical-key treatment.
 - OCR coverage is still only partially localized; more menu text and region-specific checks need to stop assuming English text.
 
 ## Current Mismatch
@@ -267,8 +268,8 @@ Current status:
 
 - `ui.inventory_models` already resolves display names from generated catalog plus locale data.
 - Some OCR and navigation helpers already use generated locale packs directly.
-- `scraping.data` now acts as a compatibility shim over generated outputs when legacy files are absent.
-- The remaining gap is consistency: not every consumer has been routed through the same shared abstraction yet.
+- `scraping.data` now acts as a compatibility shim over generated outputs only; it no longer reads legacy compatibility files.
+- The remaining gap is consolidation: runtime code still exposes transitional compatibility getters and mutable globals instead of a single resolver surface.
 
 ### UI usage
 
@@ -300,7 +301,7 @@ This is especially important for:
 
 ### Phase 1: generated data contract
 
-Status: mostly complete
+Status: complete
 
 - Keep `data/catalog/` as the canonical generated contract.
 - Keep `data/locale/<lang>/` plus locale lookup indexes as the localized generated contract.
@@ -310,29 +311,34 @@ Status: mostly complete
 
 ### Phase 2: runtime resolver
 
-Status: in progress
+Status: mostly complete
 
 - Consolidate on a single resolver or shared helper surface that merges catalog plus locale data.
 - Keep the inventory viewer on generated metadata and use it as the pattern for other consumers.
 - Continue switching OCR helper code and navigation helpers to generated locale data.
 - Keep legacy globals or shims only as adapters over the new data model.
-- Remove remaining direct reads of `data/<lang>/*.json` from runtime code and tools.
+- Keep direct disk reads of `data/<lang>/*.json` removed from runtime code and tools.
+- Reduce or eliminate the remaining `scraping.data` compatibility surface once export cleanup makes the old lookup shapes unnecessary.
 
 ### Phase 3: export cleanup
 
-Status: not started in a coordinated way
+Status: started, additive first slice landed
 
 - Update assemblers and exporters to persist canonical keys only.
 - Add explicit `*_key` fields where current names are ambiguous.
+- Echo exports now include explicit `echo_key` and `sonata_key` fields while preserving the current id-keyed outer shape.
+- Character exports now include explicit `character_key` and nested `weapon_key` fields while preserving the current id-keyed outer shape.
+- The inventory viewer now renders those key-bearing payloads and resolves localized sonata and equipped-character labels from generated locale data.
 - Stop relying on localized labels in result payloads.
 - Add round-trip tests proving a non-English game locale still exports English canonical identifiers.
 
 ### Phase 4: compatibility cleanup
 
-Status: blocked on phase 2 and phase 3 completion
+Status: partially complete, blocked on phase 3 completion
 
-- Remove consumers of the old `normalized localized name -> id` files.
-- Deprecate or delete the old generated lookup shape.
+- Keep deleted on-disk `data/<lang>/*.json` compatibility files from being reintroduced.
+- Remove the remaining in-memory consumers of the old `normalized localized name -> id` lookup shape.
+- Deprecate or delete the remaining compatibility getters and mutable globals once export and runtime callers no longer need them.
 
 ## OCR Roadmap
 
@@ -366,6 +372,7 @@ Minimum coverage for this migration:
 Coverage already in place:
 
 - updater tests for generated-output bootstrapping and English-first canonical catalog creation
+- updater tests for migrating raw source caches into `data/raw/<lang>/`
 - inventory-model tests for generated localized metadata resolution
 - OCR and navigation tests for generated locale consumers and localized sonata matching
 - shared-loader tests that verify generated fallback behavior when compatibility files are missing
@@ -385,4 +392,4 @@ These choices keep the plan coherent and reduce future churn.
 - Keep English display strings in `data/locale/en/`, not in the catalog.
 - Materialize lookup JSONs instead of building them ad hoc at runtime so tests can assert the exact output.
 - Prefer explicit `*_key` export fields when a schema is already being touched.
-- Treat the current `data/<lang>/*.json` name-to-id files as temporary compatibility artifacts, not as the long-term contract.
+- Do not recreate on-disk `data/<lang>/*.json` name-to-id files; keep any remaining compatibility only as in-memory adapters over generated data.
