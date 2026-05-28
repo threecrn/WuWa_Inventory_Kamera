@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import numpy as np
 import wuwa_inventory_kamera.scraping.service.assemblers.item_assembler as item_assembler_module
 import wuwa_inventory_kamera.scraping.data as scraping_data
+import wuwa_inventory_kamera.scraping.processing.echoes_processor as echoes_processor_module
 import wuwa_inventory_kamera.scraping.processing.stats_extractor as stats_extractor_module
 import wuwa_inventory_kamera.scraping.scanning.achievement_workflow as achievement_workflow_module
 import wuwa_inventory_kamera.game.navigation as navigation_module
@@ -51,6 +52,34 @@ def test_cache_specific_getter_only_loads_requested_file(tmp_path, monkeypatch, 
         if record.getMessage().startswith('Loading file:')
     ]
     assert loading_lines == [f'Loading file: {Path("data") / "en" / "echoStats.json"}']
+
+
+def test_echoes_processor_get_data_only_loads_echo_name_and_sonata_files(tmp_path, monkeypatch, caplog) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_json(tmp_path / 'data' / 'en' / 'echoes.json', {'vanguardjunrock': 310000010})
+    _write_json(tmp_path / 'data' / 'en' / 'sonataName.json', ['moonlitclouds'])
+    _write_json(tmp_path / 'data' / 'en' / 'echoStats.json', {'critrate': 'cr%'})
+
+    reloaded_data = importlib.reload(scraping_data)
+    reloaded_processor = importlib.reload(echoes_processor_module)
+
+    caplog.set_level(logging.INFO)
+
+    echoes_lookup, sonata_keys = reloaded_processor._get_data()
+
+    assert echoes_lookup == {'vanguardjunrock': 310000010}
+    assert sonata_keys == ['moonlitclouds']
+    assert reloaded_data.echoStats == {}
+
+    loading_lines = [
+        record.getMessage()
+        for record in caplog.records
+        if record.getMessage().startswith('Loading file:')
+    ]
+    assert loading_lines == [
+        f'Loading file: {Path("data") / "en" / "echoes.json"}',
+        f'Loading file: {Path("data") / "en" / "sonataName.json"}',
+    ]
 
 
 def test_stats_extractor_loads_echo_stats_on_demand(tmp_path, monkeypatch) -> None:

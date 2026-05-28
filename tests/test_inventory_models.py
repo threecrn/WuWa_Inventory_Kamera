@@ -55,6 +55,31 @@ def _patch_metadata(monkeypatch) -> None:
         'achievementsID',
         {'First Steps': 9001},
     )
+    monkeypatch.setattr(
+        inventory_models.scraping_data,
+        'getItemsID',
+        lambda _language_code=None: inventory_models.scraping_data.itemsID,
+    )
+    monkeypatch.setattr(
+        inventory_models.scraping_data,
+        'getWeaponsID',
+        lambda _language_code=None: inventory_models.scraping_data.weaponsID,
+    )
+    monkeypatch.setattr(
+        inventory_models.scraping_data,
+        'getCharactersID',
+        lambda _language_code=None: inventory_models.scraping_data.charactersID,
+    )
+    monkeypatch.setattr(
+        inventory_models.scraping_data,
+        'getEchoesID',
+        lambda _language_code=None: inventory_models.scraping_data.echoesID,
+    )
+    monkeypatch.setattr(
+        inventory_models.scraping_data,
+        'getAchievementsID',
+        lambda _language_code=None: inventory_models.scraping_data.achievementsID,
+    )
 
 
 def test_load_inventory_document_normalizes_echo_export() -> None:

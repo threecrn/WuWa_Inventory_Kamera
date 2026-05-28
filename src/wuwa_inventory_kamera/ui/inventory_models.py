@@ -95,14 +95,13 @@ class MetadataResolver:
 
     def __init__(self) -> None:
         language_code = _resolve_game_language_code()
-        scraping_data.ensureDataLoaded(language_code)
 
-        self._items_by_id = self._build_info_lookup(scraping_data.itemsID)
+        self._items_by_id = self._build_info_lookup(scraping_data.getItemsID(language_code))
         self._items_by_id.update(
             self._build_generated_info_lookup('items.json', language_code=language_code, fields=('image',))
         )
 
-        self._weapons_by_id = self._build_info_lookup(scraping_data.weaponsID)
+        self._weapons_by_id = self._build_info_lookup(scraping_data.getWeaponsID(language_code))
         self._weapons_by_id.update(
             self._build_generated_info_lookup(
                 'weapons.json',
@@ -111,17 +110,17 @@ class MetadataResolver:
             )
         )
 
-        self._characters_by_id = self._build_name_lookup(scraping_data.charactersID, prettify=True)
+        self._characters_by_id = self._build_name_lookup(scraping_data.getCharactersID(language_code), prettify=True)
         self._characters_by_id.update(
             self._build_generated_name_lookup('characters.json', language_code=language_code)
         )
 
-        self._echoes_by_id = self._build_name_lookup(scraping_data.echoesID, prettify=True)
+        self._echoes_by_id = self._build_name_lookup(scraping_data.getEchoesID(language_code), prettify=True)
         self._echoes_by_id.update(
             self._build_generated_name_lookup('echoes.json', language_code=language_code)
         )
 
-        self._achievements_by_id = self._build_name_lookup(scraping_data.achievementsID, prettify=False)
+        self._achievements_by_id = self._build_name_lookup(scraping_data.getAchievementsID(language_code), prettify=False)
         self._achievements_by_id.update(
             self._build_generated_name_lookup('achievements.json', language_code=language_code)
         )

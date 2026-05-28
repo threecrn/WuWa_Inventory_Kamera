@@ -50,7 +50,6 @@ from .stats_extractor import (
     RapidOcrStatsExtractor,
     StatsExtractor,
 )
-from ..data import ensureDataLoaded, echoesID, echoStats, sonataName
 from ..utils.common import (
     convertToBlackWhite,
     darken_background_preserve_edges_ndarray,
@@ -99,9 +98,16 @@ def _get_sonata_icon_matcher():
     return _sonata_icon_matcher
 
 
+def _get_data() -> tuple[dict, list[str]]:
+    from ..data import getEchoesID, getSonataName
+
+    return getEchoesID(), getSonataName()
+
+
 def _extractSonataFromIcon(
     full_screenshot: np.ndarray,
     echoes_info,
+    sonata_keys: list[str],
     scan_index: int,
     level: int,
 ) -> str | None:
@@ -139,7 +145,7 @@ def _extractSonataFromIcon(
 
     matcher = _get_sonata_icon_matcher()
     matched = matcher.match_to_sonata_key(
-        sonata_icon, sonataName,
+        sonata_icon, sonata_keys,
         cx=sonata_icon_cx,
         cy=sonata_icon_cy,
         r=sonata_icon_r,
@@ -219,6 +225,7 @@ def _buildEcho(
     sonata: str,
     rarity: int,
     stats: dict,
+    echoes_lookup: dict,
 ) -> dict:
     """
     Fuzzy-match *name* to a known echo ID and assemble the output dict.
@@ -237,11 +244,11 @@ def _buildEcho(
         ``{ echo_id: { 'level': ..., 'tuneLv': ..., 'sonata': ...,
                        'rarity': ..., 'stats': ... } }``
     """
-    matches = getMatches(name, echoesID, 1, 0.9)
+    matches = getMatches(name, echoes_lookup, 1, 0.9)
     logger.debug("Name fuzzy match: %r → %s", name, matches)
     if matches:
         name = matches[0]
-    echo_id = str(echoesID.get(name, name))
+    echo_id = str(echoes_lookup.get(name, name))
     return {
         echo_id: {
             'level': level,
@@ -383,6 +390,7 @@ def _processRawScan(
 
     try:
         image = scan.full_screenshot
+        echoes_lookup, sonata_keys = _get_data()
 
         echo_card = image[
             screenInfo.echoes.echoCard.y : screenInfo.echoes.echoCard.y + screenInfo.echoes.echoCard.h,
@@ -422,8 +430,8 @@ def _processRawScan(
         # The fuzzy fallback catches things like inserted punctuation, extra
         # letters, or character substitutions that OCR commonly introduces
         # (e.g. "nightmare:mourning.jaix" → "nightmare:mourningaix").
-        if name not in echoesID:
-            close = getMatches(name, echoesID, n=1, cutoff=0.75)
+        if name not in echoes_lookup:
+            close = getMatches(name, echoes_lookup, n=1, cutoff=0.75)
             if close:
                 logger.info(
                     "Scan %d — fuzzy-resolved OCR artefact %r → %r",
@@ -491,10 +499,10 @@ def _processRawScan(
         # --- Stats + sonata ---
         tune_lv, stats, stats_trace = _extractStats(image, screenInfo, _cache, scan.index, extractor=extractor)
 
-        sonata = _extractSonataFromIcon(image, screenInfo.echoes, scan.index, level)
+        sonata = _extractSonataFromIcon(image, screenInfo.echoes, sonata_keys, scan.index, level)
         sonata_raw = sonata or ''
 
-        if sonata not in sonataName:
+        if sonata not in sonata_keys:
             logger.warning(
                 "Scan %d — sonata icon matching failed: no known set name found in %r | image: %s",
                 scan.index, sonata_raw[:120],
@@ -506,12 +514,12 @@ def _processRawScan(
                 _writeDebugCrops(scan, screenInfo, echo_card, debug_dir, ocr_trace)
             return None
 
-        echo = _buildEcho(name, level, tune_lv, sonata, rarity, stats)
+        echo = _buildEcho(name, level, tune_lv, sonata, rarity, stats, echoes_lookup)
 
         # --- Scan metadata ---
         echo_data = next(iter(echo.values()))
         echo_data['_scanIndex'] = scan.index
-        monster_id = echoesID.get(name)
+        monster_id = echoes_lookup.get(name)
         cost_from_id: int | None = None
         if monster_id is not None:
             echo_data['_monsterId'] = monster_id
@@ -673,8 +681,6 @@ def echoProcessor(
     list[dict]
         Parsed echo dicts in the same order as the input *scans* list.
     """
-    ensureDataLoaded()
-
     if raw_base is None:
         raw_base = Path(app_config.exportFolder) / session_id / "raw"
 
