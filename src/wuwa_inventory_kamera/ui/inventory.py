@@ -2,85 +2,94 @@
 wuwa_inventory_kamera.ui.inventory
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Inventory viewer — load / save / edit JSON inventory files.
+Inventory viewer — load and inspect JSON result files.
 """
 from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap, QIntValidator
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QWidget, QFileDialog, QGridLayout,
+    QWidget, QFileDialog, QGridLayout, QLayout,
     QVBoxLayout,
 )
 
 from qfluentwidgets import FluentIcon as FIF
 from qfluentwidgets import (
     SettingCardGroup, ScrollArea, CardWidget,
-    StrongBodyLabel, BodyLabel, LineEdit,
+    StrongBodyLabel, BodyLabel,
 )
 
 from .custom_widgets import MultiplePushSettingCard
 from .config import cfg
 from ..config.app_config import basePATH
-from ..scraping.utils.common import itemsID
+from .inventory_models import InventoryDocument, InventoryRow, InventorySection, load_inventory_document
 
 logger = logging.getLogger('InventoryInterface')
 
 
-class ItemCard(CardWidget):
-    """An item with image, name, and editable quantity."""
+class ResultCard(CardWidget):
+    """Text-first result card with optional thumbnail."""
 
-    def __init__(self, image_path, name, quantity, parent=None):
+    def __init__(self, row: InventoryRow, parent=None):
         super().__init__(parent)
-        self.itemName = name
-        self.quantity = quantity
+        self.row = row
 
         self.imageLabel = BodyLabel(self)
-        self.nameLabel = StrongBodyLabel(
-            name if len(name) < 19 else name[:16] + '...', self,
-        )
-        self.quantityLineEdit = LineEdit(self)
+        self.titleLabel = StrongBodyLabel(row.title, self)
+        self.subtitleLabel = BodyLabel(row.subtitle, self)
+        self.bodyLabels = [BodyLabel(line, self) for line in row.body_lines]
 
-        self.setupQuantityLineEdit(quantity)
-        self.setupImage(image_path)
+        self.setupImage(row.image_path)
         self.setupLayout()
 
-    def setupQuantityLineEdit(self, quantity):
-        self.quantityLineEdit.setText(str(quantity))
-        self.quantityLineEdit.setValidator(QIntValidator(0, 999999999, self))
-        self.quantityLineEdit.setAlignment(Qt.AlignCenter)
+    def setupImage(self, image_path: str | None):
+        if not image_path:
+            self.imageLabel.hide()
+            return
 
-    def setupImage(self, image_path):
-        pixmap = QPixmap(image_path)
-        scaled_pixmap = pixmap.scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        pixmap = QPixmap(str(basePATH / 'assets' / Path(image_path)))
+        if pixmap.isNull():
+            self.imageLabel.hide()
+            return
+
+        scaled_pixmap = pixmap.scaled(
+            64,
+            64,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
         self.imageLabel.setPixmap(scaled_pixmap)
         self.imageLabel.setFixedSize(64, 64)
-        self.imageLabel.setAlignment(Qt.AlignCenter)
+        self.imageLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.imageLabel.show()
 
     def setupLayout(self):
         vBoxLayout = QVBoxLayout(self)
-        vBoxLayout.addWidget(self.imageLabel, alignment=Qt.AlignCenter)
-        vBoxLayout.addWidget(self.nameLabel, alignment=Qt.AlignCenter)
-        vBoxLayout.addWidget(self.quantityLineEdit, alignment=Qt.AlignCenter)
-        vBoxLayout.setSpacing(5)
-        vBoxLayout.setContentsMargins(5, 5, 5, 5)
-        self.setToolTip(self.itemName)
+        if not self.imageLabel.isHidden():
+            vBoxLayout.addWidget(self.imageLabel, alignment=Qt.AlignmentFlag.AlignCenter)
 
-    def getItemName(self):
-        return self.itemName
+        self.titleLabel.setWordWrap(True)
+        vBoxLayout.addWidget(self.titleLabel)
 
-    def getQuantity(self):
-        try:
-            return int(self.quantityLineEdit.text())
-        except ValueError:
-            return 0
+        if self.row.subtitle:
+            self.subtitleLabel.setWordWrap(True)
+            vBoxLayout.addWidget(self.subtitleLabel)
+
+        for label in self.bodyLabels:
+            label.setWordWrap(True)
+            vBoxLayout.addWidget(label)
+
+        vBoxLayout.setSpacing(6)
+        vBoxLayout.setContentsMargins(10, 10, 10, 10)
+        self.setToolTip(self.row.title)
 
 
 class InventoryInterface(ScrollArea):
-    """Scrollable inventory item grid."""
+    """Scrollable result grid."""
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
@@ -97,14 +106,14 @@ class InventoryInterface(ScrollArea):
 
         self.inventoryGroup = SettingCardGroup(self.tr("Inventory"), self.scrollWidget)
         self.inventoryFileCard = MultiplePushSettingCard(
-            [self.tr('Load file'), self.tr('Save file')],
+            [self.tr('Open file')],
             FIF.DOWNLOAD,
-            self.tr("Inventory file"),
+            self.tr("Result file"),
             parent=self.inventoryGroup,
         )
 
-        self.gridWidget = QWidget(self)
-        self.gridLayout = QGridLayout(self.gridWidget)
+        self.contentWidget = QWidget(self)
+        self.contentLayout = QVBoxLayout(self.contentWidget)
 
         self.__initWidget()
 
@@ -119,9 +128,18 @@ class InventoryInterface(ScrollArea):
         self.mainLayout.setSpacing(28)
         self.mainLayout.setContentsMargins(60, 10, 60, 0)
         self.mainLayout.addWidget(self.inventoryGroup)
-        self.mainLayout.addWidget(self.gridWidget)
+        self.mainLayout.addWidget(self.contentWidget)
         self.mainLayout.addStretch(1)
-        self.gridLayout.setSpacing(10)
+        self.contentLayout.setSpacing(16)
+        self.contentLayout.setContentsMargins(0, 0, 0, 0)
+
+        self.__renderDocument(
+            InventoryDocument(
+                kind='empty',
+                title='',
+                message_lines=('Open a scan result JSON file to inspect it here.',),
+            )
+        )
 
     def __connectSignalToSlot(self):
         self.inventoryFileCard.buttonClicked.connect(self.__onInventoryFileCardClicked)
@@ -129,8 +147,6 @@ class InventoryInterface(ScrollArea):
     def __onInventoryFileCardClicked(self, index):
         if index == 0:
             self.__loadInventoryFile()
-        elif index == 1:
-            self.__saveInventoryFile()
 
     def __loadInventoryFile(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -144,42 +160,69 @@ class InventoryInterface(ScrollArea):
             with open(file_path, 'r', encoding='utf-8') as file:
                 try:
                     data = json.load(file)
-                    self.__populateGrid(data)
+                    self.__renderDocument(load_inventory_document(file_path, data))
                 except json.JSONDecodeError as e:
                     logger.error("Error loading JSON file: %s", e, exc_info=True)
+                    self.__renderDocument(
+                        InventoryDocument(
+                            kind='error',
+                            title=Path(file_path).name,
+                            message_lines=(
+                                'The selected file could not be parsed as JSON.',
+                                str(e),
+                            ),
+                        )
+                    )
 
-    def __saveInventoryFile(self):
-        file_path = self.inventoryFileCard.getContent()
-        if file_path:
-            inventory_data = {}
-            for i in range(self.gridLayout.count()):
-                widget = self.gridLayout.itemAt(i).widget()
-                if isinstance(widget, ItemCard):
-                    item_name = widget.getItemName()
-                    quantity = widget.getQuantity()
-                    item_id = itemsID.get(item_name, {}).get('id', None)
-                    if item_id is not None:
-                        inventory_data[item_id] = quantity
+    def __renderDocument(self, document: InventoryDocument):
+        self.__clearLayout(self.contentLayout)
 
-            with open(file_path, 'w', encoding='utf-8') as file:
-                json.dump(inventory_data, file, ensure_ascii=False, indent=4)
+        for message in document.message_lines:
+            label = BodyLabel(message, self.contentWidget)
+            label.setWordWrap(True)
+            self.contentLayout.addWidget(label)
 
-    def __populateGrid(self, inventory_file):
-        columns = 6
-        for i in reversed(range(self.gridLayout.count())):
-            widget = self.gridLayout.itemAt(i).widget()
-            if widget:
-                widget.setParent(None)
+        if document.sections:
+            if document.message_lines:
+                self.contentLayout.addSpacing(8)
 
-        for index, item_id in enumerate(inventory_file):
-            image, name = self._getItemInfoByID(item_id)
-            card = ItemCard(
-                str(basePATH / 'assets' / image), name, inventory_file[item_id],
-            )
-            self.gridLayout.addWidget(card, index // columns, index % columns)
+            for section in document.sections:
+                self.__addSection(section)
+        elif not document.message_lines:
+            label = BodyLabel('No supported results were found in this file.', self.contentWidget)
+            label.setWordWrap(True)
+            self.contentLayout.addWidget(label)
 
-    def _getItemInfoByID(self, item_id: int):
-        for _, info in itemsID.items():
-            if info['id'] == int(item_id):
-                return info['image'], info['name']
-        return 'None', 'None'
+        self.contentLayout.addStretch(1)
+
+    def __addSection(self, section: InventorySection):
+        title = StrongBodyLabel(f'{section.title} ({len(section.rows)})', self.contentWidget)
+        self.contentLayout.addWidget(title)
+
+        sectionWidget = QWidget(self.contentWidget)
+        sectionGrid = QGridLayout(sectionWidget)
+        sectionGrid.setContentsMargins(0, 0, 0, 0)
+        sectionGrid.setSpacing(10)
+
+        columns = 3
+        for index, row in enumerate(section.rows):
+            card = ResultCard(row, sectionWidget)
+            sectionGrid.addWidget(card, index // columns, index % columns)
+
+        self.contentLayout.addWidget(sectionWidget)
+
+    def __clearLayout(self, layout: QLayout):
+        while layout.count():
+            item = layout.takeAt(0)
+            if item is None:
+                continue
+
+            widget = item.widget()
+            child_layout = item.layout()
+
+            if child_layout is not None:
+                self.__clearLayout(child_layout)
+                child_layout.deleteLater()
+
+            if widget is not None:
+                widget.deleteLater()

@@ -4,7 +4,7 @@
 
 Repurpose the app's `Inventory` tab into a real inspector for scan result JSON files.
 
-The current tab is not a general result viewer. It is a legacy item-count editor that only works for `inventory_wuwainventorykamera.json` style files. The app now produces several different result formats, so the UI needs a schema-aware, mostly read-only viewer instead of a single editable item grid.
+The current tab is not a general result viewer. It is a legacy item-count view that only works for `inventory_wuwainventorykamera.json` style files. The app now produces several different result formats, so the UI needs a schema-aware, read-only viewer instead of a single quantity grid.
 
 ## Current State
 
@@ -12,19 +12,19 @@ The current tab is not a general result viewer. It is a legacy item-count editor
 
 - `src/wuwa_inventory_kamera/ui/main_window.py` always exposes an `Inventory` tab.
 - `src/wuwa_inventory_kamera/ui/inventory.py` provides that tab.
-- The tab can load and save a `.json` file, but it assumes the JSON is a dict of `item_id -> quantity`.
+- The tab can load a `.json` file, but it still assumes the JSON is a dict of `item_id -> quantity`.
 - For display metadata it only consults `itemsID` from `src/wuwa_inventory_kamera/scraping/data.py`.
-- It builds cards with an image, a display name, and an editable quantity field.
+- It builds cards with an image, a display name, and a quantity label.
 
 ### What the current implementation actually supports
 
-The current implementation matches the legacy manual inventory flow from `src/wuwa_inventory_kamera/ui/home.py`:
+The current implementation still matches the legacy inventory export shape that older sessions may contain:
 
 - `inventory_wuwainventorykamera.json`
 - shape: `{ "2": 12345, "10800": 3 }`
 - display metadata source: `data/<lang>/items.json`
 
-That legacy file is still written when the manual correction path updates inventory counts.
+The app no longer produces that file, and the viewer does not need to support it.
 
 ### What it does not support
 
@@ -35,7 +35,7 @@ The rest of the app now writes heterogeneous scan outputs:
 | `echoes_wuwainventorykamera.json` | `list[dict[str, dict]]` | UI save flow and `wuwa-reprocess` |
 | `weapons_wuwainventorykamera.json` | `list[dict]` | UI save flow and `wuwa-reprocess` |
 | `characters_wuwainventorykamera.json` | `dict[str, dict]` | UI save flow and `wuwa-reprocess` |
-| `inventory_wuwainventorykamera.json` | `dict[str, int]` | Legacy manual correction path |
+| `inventory_wuwainventorykamera.json` | `dict[str, int]` | Unsupported legacy export |
 | `scan_result.json` | session-level dict with multiple sections | `wuwa-scan` CLI |
 
 The current `Inventory` tab does not detect which schema was loaded, and it does not present the non-legacy files meaningfully.
@@ -48,7 +48,7 @@ The current `Inventory` tab does not detect which schema was loaded, and it does
 - Character exports are keyed by character id and contain nested `weapon`, `skills`, and `chain` data.
 - CLI session exports can also include `achievements` and `shell` results.
 
-If one of those files is opened in the current tab, the UI still tries to treat each top-level key as an item id from `items.json`, and the Save action rewrites the file back into the legacy `item_id -> quantity` shape. That makes the current tab unsafe as a general scan-result viewer.
+If one of those files is opened in the current tab, the UI still tries to treat each top-level key as an item id from `items.json`. That means non-legacy files are still displayed incorrectly, even though the write-back corruption path is gone.
 
 ## Data And Asset Inventory
 
@@ -86,9 +86,11 @@ Make the `Inventory` tab a read-only inspector for saved scan results.
 
 That is the safest first step because:
 
-- the current save-back path only makes sense for the legacy manual inventory file
+- legacy inventory is now a compatibility input, not an active editing workflow
 - exported scan results are structured records, not a single editable quantity map
 - editing support would require schema-specific validation per result type
+
+Manual editing is out of scope for this viewer plan, including legacy inventory quantity correction inside this tab.
 
 ### Inputs the viewer should support
 
@@ -107,7 +109,6 @@ For session-folder loading, prefer this order:
 
 ### Result types to support in the first full implementation
 
-- legacy manual inventory counts
 - echoes exports
 - weapons exports
 - dev items exports
@@ -149,12 +150,12 @@ Suggested normalized concepts:
 
 Suggested document kinds:
 
-- `legacy_inventory`
 - `echoes_export`
 - `weapons_export`
 - `items_export`
 - `characters_export`
 - `scan_session`
+- `unsupported_legacy`
 - `unknown`
 
 ## 2. Replace the current single-grid widget with a real viewer
@@ -162,7 +163,7 @@ Suggested document kinds:
 Recommended layout:
 
 - top toolbar: Open File, Open Session Folder, Reload, Open Containing Folder
-- left pane: section list (`Echoes`, `Weapons`, `Dev Items`, `Resources`, `Characters`, `Achievements`, `Shell`, `Legacy Inventory`)
+- left pane: section list (`Echoes`, `Weapons`, `Dev Items`, `Resources`, `Characters`, `Achievements`, `Shell`)
 - center pane: result table or card list for the selected section
 - right pane: detail view for the selected record
 
@@ -177,17 +178,17 @@ Suggested viewer behavior:
 
 Adapters should convert each source format into display rows.
 
-### Legacy inventory adapter
+### Unsupported legacy inventory
 
 Input:
 
 - `dict[item_id, quantity]`
 
-Display columns:
+Behavior:
 
-- item name
-- quantity
-- item id
+- detect it explicitly
+- show a clear unsupported message
+- do not try to coerce it into the new viewer model
 
 ### Echo adapter
 
@@ -297,7 +298,7 @@ The current `ItemCard.setupImage()` path assumes the file exists. The full viewe
 - keep text readable when no image exists
 - log missing assets once per path instead of spamming
 
-This should apply to all result types, including legacy inventory.
+This should apply to all supported result types.
 
 ## Asset Strategy
 
@@ -348,13 +349,13 @@ Selection criteria:
 
 1. Define the tab as a result viewer first, not an editor.
 2. Decide whether `scan_result.json` is a first-class input in the UI.
-3. Decide whether the legacy manual inventory editor remains inside this tab or moves behind a dedicated legacy mode.
+3. Remove the legacy manual inventory editor from the app.
 
 ### Milestone 1: replace the unsafe legacy-only loader
 
 1. Add schema detection.
 2. Add typed adapters for the existing export formats.
-3. Remove or disable Save for non-legacy documents.
+3. Remove Save and inline quantity editing from the tab.
 4. Add explicit unknown-format and malformed-file messages.
 
 Exit criteria:
@@ -385,14 +386,6 @@ Exit criteria:
 
 - the viewer can show thumbnails for the result types where metadata/assets exist
 - missing assets degrade cleanly
-
-### Milestone 4: optional editing decisions
-
-Only after the viewer is stable:
-
-1. decide whether legacy inventory quantity editing still belongs in this tab
-2. if yes, keep editing limited to the legacy inventory document kind
-3. do not add generic JSON write-back for complex result exports without schema validation
 
 ## Testing Plan
 
@@ -437,7 +430,7 @@ Those tests are a good starting point for JSON fixtures, but they do not current
 2. Should `scan_result.json` become the canonical viewer input, with standalone exports treated as convenience files?
 3. Should characters and echoes get richer metadata by expanding `characters.json` and `echoes.json`, or by adding separate metadata files?
 4. Which asset source is acceptable for character and echo thumbnails?
-5. Is the legacy quantity editor still worth keeping once a proper result viewer exists?
+5. Should legacy inventory files remain supported as read-only compatibility inputs once the viewer handles all current export formats?
 
 ## Recommended Next Step
 
@@ -445,6 +438,6 @@ Implement Milestone 1 first:
 
 - add schema detection
 - normalize the existing export formats
-- make the Inventory tab read-only except for the legacy inventory document kind
+- keep the Inventory tab read-only with no write-back path
 
 That delivers immediate value, removes the current corruption risk, and keeps the asset-source decision decoupled from the first usable viewer.

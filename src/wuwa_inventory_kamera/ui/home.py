@@ -2,7 +2,7 @@
 wuwa_inventory_kamera.ui.home
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Home interface — scanner control panel + manual recognition UI.
+Home interface — scanner control panel + result-viewer guidance.
 
 The V2 scan path uses :class:`SessionOrchestrator` running on a
 ``QThread`` instead of the removed V1 scraper pipeline.
@@ -14,7 +14,6 @@ import logging
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal, QThread
-from PySide6.QtGui import QPixmap, QImage
 from PySide6.QtWidgets import (
     QHBoxLayout, QVBoxLayout, QFrame,
     QFileDialog, QWidget,
@@ -22,14 +21,13 @@ from PySide6.QtWidgets import (
 from qfluentwidgets import FluentIcon as FIF
 from qfluentwidgets import (
     PushButton, PrimaryPushButton, CheckBox,
-    BodyLabel, LineEdit, SpinBox,
+    BodyLabel, SpinBox,
     InfoBar, InfoBarPosition,
-    ListWidget, PixmapLabel,
     ProgressBar,
 )
 
 from .config import cfg
-from ..scraping.utils.common import itemsID, savingScraped
+from ..scraping.utils.common import savingScraped
 
 logger = logging.getLogger('HomeInterface')
 
@@ -122,16 +120,11 @@ class ScanThread(QThread):
 # ---------------------------------------------------------------------------
 
 class HomeInterface(QWidget):
-    """Main widget with Control Panel on the left and item recognition on the right."""
-
-    updateUISignal = Signal()
+    """Main widget with scan controls on the left and guidance on the right."""
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setObjectName("homeUI")
-        self._manual_inventory_items: dict[int, int] = {}
-        self._manual_failed_items: list[dict] = []
-        self._manual_session_id: str = ''
 
         self.lControlPanel = LControlPanel(self)
         self.lControlPanel.signalNotifier.connect(self.showNotification)
@@ -147,135 +140,21 @@ class HomeInterface(QWidget):
         self.hBoxLayout.addWidget(self.lControlPanel, 0)
         self.hBoxLayout.addLayout(self.rightSide, 1)
 
-        self.updateUISignal.connect(self.itemsManualRecognition)
-        self.itemsManualRecognition()
+        self._initViewerGuidance()
 
-    def set_manual_recognition_state(
-        self,
-        *,
-        inventory_items: dict[int, int] | None = None,
-        failed_items: list[dict] | None = None,
-        session_id: str = '',
-    ) -> None:
-        self._manual_inventory_items = dict(inventory_items or {})
-        self._manual_failed_items = list(failed_items or [])
-        self._manual_session_id = session_id
-        self.updateUISignal.emit()
+    def _initViewerGuidance(self) -> None:
+        container = QVBoxLayout(self.rightWidget)
+        container.setContentsMargins(0, 0, 0, 0)
 
-    def clear_manual_recognition_state(self) -> None:
-        self.set_manual_recognition_state()
+        guidance = BodyLabel(
+            'Scan results are read-only.\n\n'
+            'Use the Inventory tab to open exported JSON files and inspect the scan output.\n\n'
+            'Manual inventory correction has been removed from the app scope.'
+        )
+        guidance.setWordWrap(True)
 
-    def _current_failed_item(self) -> dict | None:
-        if not self._manual_failed_items:
-            return None
-        return self._manual_failed_items[0]
-
-    # ------------------------------------------------------------------
-    # Manual recognition for failed items
-    # ------------------------------------------------------------------
-
-    def itemsManualRecognition(self):
-        if self.rightWidget.layout():
-            QWidget().setLayout(self.rightWidget.layout())
-
-        container = QVBoxLayout()
-        failed_item = self._current_failed_item()
-        if failed_item is not None:
-            container.setContentsMargins(0, 0, 0, 0)
-            container.addWidget(BodyLabel('Recognition failed, manual update:'))
-
-            mainLayout = QHBoxLayout()
-
-            image_label = PixmapLabel()
-            try:
-                image = QImage(failed_item['image'])
-            except Exception:
-                image = QImage('')
-            pixmap = QPixmap.fromImage(image)
-            image_label.setPixmap(pixmap)
-            image_label.setScaledContents(True)
-            image_label.setFixedSize(279, 407)
-            mainLayout.addWidget(image_label)
-
-            middle_layout = QVBoxLayout()
-            middle_layout.addStretch(1)
-
-            owned_layout = QVBoxLayout()
-            owned_label = BodyLabel("Owned")
-            self.owned_spinbox = SpinBox()
-            self.owned_spinbox.setRange(1, 9999)
-            self.owned_spinbox.setValue(failed_item['owned'])
-            owned_layout.addWidget(owned_label)
-            owned_layout.addWidget(self.owned_spinbox)
-            middle_layout.addLayout(owned_layout)
-
-            skip_button = PushButton("Skip")
-            change_button = PushButton("Update")
-            skip_button.clicked.connect(self.onSkipButtonClicked)
-            change_button.clicked.connect(self.onChangeButtonClicked)
-            middle_layout.addWidget(skip_button)
-            middle_layout.addWidget(change_button)
-            middle_layout.addStretch(1)
-            mainLayout.addLayout(middle_layout)
-
-            right_layout = QVBoxLayout()
-            self.search_bar = LineEdit()
-            self.search_bar.setPlaceholderText("Search...")
-            self.search_bar.textChanged.connect(self.filter_list)
-
-            self.list_widget = ListWidget()
-            self.list_widget.addItems(
-                [itemsID[item]['name'] for item in sorted(itemsID)]
-            )
-
-            right_layout.addWidget(self.search_bar)
-            right_layout.addWidget(self.list_widget)
-
-            mainLayout.addLayout(right_layout)
-            mainLayout.setStretch(0, 1)
-            mainLayout.setStretch(1, 1)
-            mainLayout.setStretch(2, 3)
-
-            container.addLayout(mainLayout)
-        else:
-            container.addWidget(BodyLabel(''))
-        container.setStretch(0, 1)
-
-        self.rightWidget.setLayout(container)
-        self.rightWidget.setVisible(True)
-        self.rightWidget.update()
-
-    def onSkipButtonClicked(self):
-        failed_item = self._current_failed_item()
-        if failed_item is not None:
-            Path(failed_item['image']).unlink(missing_ok=True)
-            self._manual_failed_items.pop(0)
-            self.updateUISignal.emit()
-
-    def onChangeButtonClicked(self):
-        selected_item = self.list_widget.currentItem()
-        if selected_item:
-            item_id = itemsID.get(selected_item.text().lower().replace(' ', ''))['id']
-            self._manual_inventory_items[item_id] = self.owned_spinbox.value()
-            savingScraped(
-                {'inventory_wuwainventorykamera.json': (self._manual_inventory_items, dict)},
-                START_DATE=self._manual_session_id,
-            )
-
-            if self._manual_failed_items:
-                self._manual_failed_items.pop(0)
-
-            self.updateUISignal.emit()
-        else:
-            self.showNotification(
-                'warning', 'Warning',
-                'Select the item name from the list on the right side.',
-            )
-
-    def filter_list(self, text):
-        for i in range(self.list_widget.count()):
-            item = self.list_widget.item(i)
-            item.setHidden(text.lower() not in item.text().lower())
+        container.addWidget(guidance)
+        container.addStretch(1)
 
     # ------------------------------------------------------------------
     # Notifications
@@ -298,9 +177,6 @@ class HomeInterface(QWidget):
             duration=-1,
             parent=self,
         )
-
-        if _type == 'failed':
-            self.updateUISignal.emit()
 
 
 # ---------------------------------------------------------------------------
