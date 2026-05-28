@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QWidget, QFileDialog, QGridLayout, QHBoxLayout, QLayout,
     QVBoxLayout, QComboBox,
@@ -46,6 +46,7 @@ class ResultCard(CardWidget):
     def __init__(self, row: InventoryRow, parent=None):
         super().__init__(parent)
         self.row = row
+        self._selected = False
 
         self.imageLabel = BodyLabel(self)
         self.titleLabel = StrongBodyLabel(row.title, self)
@@ -101,6 +102,27 @@ class ResultCard(CardWidget):
             self.clicked.emit()
         super().mouseReleaseEvent(e)
 
+    def setSelected(self, selected: bool):
+        if selected == self._selected:
+            return
+
+        self._selected = selected
+        self.update()
+
+    def paintEvent(self, e):
+        super().paintEvent(e)
+        if not self._selected:
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        pen = QPen(QColor(0, 120, 212, 230))
+        pen.setWidth(1)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(self.rect().adjusted(1, 1, -2, -2), 8, 8)
+        painter.end()
+
 
 class InventoryInterface(ScrollArea):
     """Scrollable result grid."""
@@ -112,6 +134,10 @@ class InventoryInterface(ScrollArea):
         self._currentSearchText = ''
         self._searchBox: LineEdit | None = None
         self._resultsLayout: QVBoxLayout | None = None
+        self._resultCards: list[ResultCard] = []
+        self._detailsCard: CardWidget | None = None
+        self._detailsLayout: QVBoxLayout | None = None
+        self._visibleRows: tuple[InventoryRow, ...] = ()
         self._currentDocument = InventoryDocument(kind='empty', title='', message_lines=())
         self._currentSourcePath: Path | None = None
         self._currentSourceKind: str | None = None
@@ -244,6 +270,10 @@ class InventoryInterface(ScrollArea):
 
         self._searchBox = None
         self._resultsLayout = None
+        self._resultCards = []
+        self._detailsCard = None
+        self._detailsLayout = None
+        self._visibleRows = ()
         self.__clearLayout(self.contentLayout)
 
         if document.title:
@@ -328,32 +358,40 @@ class InventoryInterface(ScrollArea):
 
         document = self._currentDocument
         if not document.sections:
+            self._resultCards = []
+            self._detailsCard = None
+            self._detailsLayout = None
+            self._visibleRows = ()
             self.__clearLayout(self._resultsLayout)
             return
 
         selected_index = min(self._currentSectionIndex, max(len(document.sections) - 1, 0))
         self._currentSectionIndex = selected_index
         filtered_section = filter_section_rows(document.sections[selected_index], self._currentSearchText)
+        self._visibleRows = filtered_section.rows
         selected_row_index = min(self._currentRowIndex, max(len(filtered_section.rows) - 1, 0))
         self._currentRowIndex = selected_row_index
 
         self.__clearLayout(self._resultsLayout)
+        self._resultCards = []
+        self._detailsCard = None
+        self._detailsLayout = None
         self.__addSection(
             self._resultsLayout,
             filtered_section,
             show_title=len(document.sections) == 1,
-            selected_row_index=selected_row_index,
         )
 
-        if filtered_section.rows:
-            self.__addDetailsPane(self._resultsLayout, filtered_section.rows[selected_row_index])
+        if self._visibleRows:
+            self.__addDetailsPane(self._resultsLayout)
+            self.__applyRowSelection(selected_row_index)
 
-        if self._currentSearchText and not filtered_section.rows:
+        if self._currentSearchText and not self._visibleRows:
             label = BodyLabel('No rows match the current search.', self.contentWidget)
             label.setWordWrap(True)
             self._resultsLayout.addWidget(label)
 
-    def __addSection(self, layout: QVBoxLayout, section: InventorySection, *, show_title: bool, selected_row_index: int):
+    def __addSection(self, layout: QVBoxLayout, section: InventorySection, *, show_title: bool):
         if show_title:
             title = StrongBodyLabel(f'{section.title} ({len(section.rows)})', self.contentWidget)
             layout.addWidget(title)
@@ -366,21 +404,29 @@ class InventoryInterface(ScrollArea):
         columns = 3
         for index, row in enumerate(section.rows):
             card = ResultCard(row, sectionWidget)
-            if index == selected_row_index:
-                card.setStyleSheet('ResultCard { border: 1px solid rgba(0, 120, 212, 0.9); }')
             card.clicked.connect(lambda idx=index: self.__onRowSelected(idx))
+            self._resultCards.append(card)
             sectionGrid.addWidget(card, index // columns, index % columns)
 
         layout.addWidget(sectionWidget)
 
     def __onRowSelected(self, index: int):
-        if index < 0 or index == self._currentRowIndex:
+        if index < 0 or index == self._currentRowIndex or index >= len(self._visibleRows):
             return
 
         self._currentRowIndex = index
-        self.__renderCurrentSectionContent()
+        self.__applyRowSelection(index)
 
-    def __addDetailsPane(self, layout: QVBoxLayout, row: InventoryRow):
+    def __applyRowSelection(self, selected_row_index: int):
+        if not self._visibleRows:
+            return
+
+        for index, card in enumerate(self._resultCards):
+            card.setSelected(index == selected_row_index)
+
+        self.__updateDetailsPane(self._visibleRows[selected_row_index])
+
+    def __addDetailsPane(self, layout: QVBoxLayout):
         detailsCard = CardWidget(self.contentWidget)
         detailsLayout = QVBoxLayout(detailsCard)
         detailsLayout.setContentsMargins(12, 12, 12, 12)
@@ -389,14 +435,35 @@ class InventoryInterface(ScrollArea):
         detailsTitle = StrongBodyLabel('Details', detailsCard)
         detailsLayout.addWidget(detailsTitle)
 
+        self._detailsCard = detailsCard
+        self._detailsLayout = detailsLayout
+        layout.addWidget(detailsCard)
+
+    def __updateDetailsPane(self, row: InventoryRow):
+        if self._detailsCard is None or self._detailsLayout is None:
+            return
+
+        while self._detailsLayout.count() > 1:
+            item = self._detailsLayout.takeAt(1)
+            if item is None:
+                continue
+
+            widget = item.widget()
+            child_layout = item.layout()
+
+            if child_layout is not None:
+                self.__clearLayout(child_layout)
+                child_layout.deleteLater()
+
+            if widget is not None:
+                widget.deleteLater()
+
         for line in row.details_lines or (row.subtitle, *row.body_lines):
             if not line:
                 continue
-            label = BodyLabel(line, detailsCard)
+            label = BodyLabel(line, self._detailsCard)
             label.setWordWrap(True)
-            detailsLayout.addWidget(label)
-
-        layout.addWidget(detailsCard)
+            self._detailsLayout.addWidget(label)
 
     def __clearLayout(self, layout: QLayout):
         while layout.count():
