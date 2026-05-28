@@ -647,6 +647,9 @@ def test_character_workflow_resets_to_overview_before_next_character(monkeypatch
         def scroll(self, *_args, **_kwargs) -> None:
             pass
 
+        def scroll(self, *_args, **_kwargs) -> None:
+            pass
+
     nav = SimpleNamespace(
         layout=layout,
         ctrl=_RecordedCtrl(),
@@ -758,6 +761,9 @@ def test_character_workflow_waits_longer_before_first_chain_capture(monkeypatch)
 
         def click(self, x: int, y: int, wait: float | None = None) -> None:
             click_calls.append((x, y, wait))
+
+        def scroll(self, *_args, **_kwargs) -> None:
+            pass
 
     nav = SimpleNamespace(
         layout=layout,

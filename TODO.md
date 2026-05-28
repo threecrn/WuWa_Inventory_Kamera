@@ -39,7 +39,11 @@
 
 ## Backlog
 
+- [x] Investigate failing tests
 - [ ] Recognize and handle the "Discard echo" popup notice when opening the inventory
+- [ ] Do something about the inventory page of the app: implement it or remove it?
+  - [x] Make a plan for how to implement a viewer for the different result type jsons
+    - See `docs/INVENTORY_VIEWER_PLAN.md`.
 - [ ] Localization: multi-language support for sonata names, achievement names, character names, etc.
   - [ ] separate canonical names for echoes, characters, etc from English localized strings
   - [ ] directory layout and strategy for managing multi-language data

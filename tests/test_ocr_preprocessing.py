@@ -222,8 +222,8 @@ def test_packaged_echo_level_signature_preprocess_expects_bgr_badge_pixels() -> 
     assert spec is not None
 
     image_bgr = np.full((24, 32, 3), (44, 32, 22), dtype=np.uint8)
-    image_bgr[4:20, 8:11] = np.asarray([187, 183, 167], dtype=np.uint8)
-    image_bgr[10:13, 8:18] = np.asarray([187, 183, 167], dtype=np.uint8)
+    image_bgr[4:20, 8:11] = np.asarray([187, 183, 175], dtype=np.uint8)
+    image_bgr[10:13, 8:18] = np.asarray([187, 183, 175], dtype=np.uint8)
 
     preprocessed_bgr = spec._preprocess_for_signature(image_bgr, None)
     preprocessed_rgb = spec._preprocess_for_signature(

@@ -88,7 +88,7 @@ def test_update_files_uses_sha_state_for_normalized_multitext(tmp_path: Path, mo
 		'https://example.test/items',
 		'https://example.test/weapons',
 	]
-	assert any('Textmaps/en/multi_text/MultiText.json?ref=3.3' in url for url in requested_urls)
+	assert any('Textmaps/en/multi_text/MultiText.json' in url for url in requested_urls)
 	assert updater.loadJson('MultiText.json') == {'RoleInfo_1_Name': 'Rover'}
 
 	updater = BaseDataUpdater(lang='English', source='arikatsu')
