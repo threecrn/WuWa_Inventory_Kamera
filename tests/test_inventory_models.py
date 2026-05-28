@@ -143,6 +143,42 @@ def test_load_inventory_document_normalizes_item_export_from_filename() -> None:
     assert row.body_lines == ('Count: 3',)
 
 
+def test_load_inventory_document_normalizes_keyed_weapon_export() -> None:
+    payload = [
+        {
+            'id': 21010074,
+            'weapon_key': 'emeraldofgenesis',
+            'level': 90,
+            'maxLevel': 90,
+            'rank': 1,
+            '_equipped': 'shorekeeper',
+        }
+    ]
+
+    document = inventory_models.load_inventory_document('weapons_wuwainventorykamera.json', payload)
+
+    row = document.sections[0].rows[0]
+    assert row.title == 'Emerald of Genesis'
+    assert row.subtitle == 'Weapon Key: emeraldofgenesis'
+    assert 'Lv. 90 | Max 90 | Rank 1 | Rarity 5' in row.body_lines
+    assert 'Equipped: Shorekeeper' in row.body_lines
+    assert 'Weapon Key: emeraldofgenesis' in row.details_lines
+    assert 'Weapon ID: 21010074' in row.details_lines
+
+
+def test_load_inventory_document_normalizes_keyed_item_export() -> None:
+    payload = [{'id': 10800, 'item_key': 'resonancepotion', 'count': 3}]
+
+    document = inventory_models.load_inventory_document('devItems_wuwainventorykamera.json', payload)
+
+    row = document.sections[0].rows[0]
+    assert row.title == 'Resonance Potion'
+    assert row.subtitle == 'Item Key: resonancepotion'
+    assert row.body_lines == ('Count: 3',)
+    assert 'Item Key: resonancepotion' in row.details_lines
+    assert 'Item ID: 10800' in row.details_lines
+
+
 def test_load_inventory_document_normalizes_character_export() -> None:
     payload = {
         '1105': {

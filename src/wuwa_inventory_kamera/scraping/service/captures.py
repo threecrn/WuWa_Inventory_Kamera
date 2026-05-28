@@ -106,6 +106,7 @@ class ItemResult:
     name:    str
     item_id: str | None   # key into itemsID; None = unrecognised
     count:   int
+    item_key: str | None = None
 
 
 # ---------------------------------------------------------------------------

@@ -79,5 +79,6 @@ class ItemAssembler:
             index=idx,
             name=name_text,
             item_id=item_id,
+            item_key=name_text if item_id is not None else None,
             count=count,
         )

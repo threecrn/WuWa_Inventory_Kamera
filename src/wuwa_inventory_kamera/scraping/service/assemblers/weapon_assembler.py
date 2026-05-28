@@ -101,6 +101,7 @@ class WeaponAssembler:
             close = get_close_matches(name_text, candidates, n=1, cutoff=0.8)
             if close:
                 logger.info('Weapon %d — fuzzy-resolved %r → %r', idx, name_text, close[0])
+                name_text = close[0]
                 lookup_id = candidates[close[0]]
             else:
                 logger.warning('Weapon %d — name %r not recognised, rejecting.', idx, name_text)
@@ -124,7 +125,13 @@ class WeaponAssembler:
             rank_text = tokens_to_string(rank_tokens, divisor='').strip() if rank_tokens else '1'
             m_rank = _RANK_RE.search(rank_text)
             rank = int(m_rank.group()) if m_rank else 1
-            data: dict = {'id': lookup_id, 'level': level, 'maxLevel': max_lv, 'rank': rank}
+            data: dict = {
+                'id': lookup_id,
+                'weapon_key': name_text,
+                'level': level,
+                'maxLevel': max_lv,
+                'rank': rank,
+            }
             equipped_character = parse_equipped_character(equipped_tokens)
             if equipped_character is not None:
                 data['_equipped'] = equipped_character
@@ -133,6 +140,6 @@ class WeaponAssembler:
                 quantity = int(re.sub(r'[^\d]', '', value_text))
             except ValueError:
                 quantity = 0
-            data = {'id': lookup_id, 'count': quantity}
+            data = {'id': lookup_id, 'item_key': name_text, 'count': quantity}
 
         return WeaponResult(index=idx, is_weapon=is_weapon, data=data)

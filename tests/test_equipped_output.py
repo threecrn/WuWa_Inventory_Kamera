@@ -6,11 +6,13 @@ import numpy as np
 
 import wuwa_inventory_kamera.scraping.service.assemblers.echo_assembler as echo_assembler_module
 import wuwa_inventory_kamera.scraping.service.assemblers._equipped as equipped_module
+import wuwa_inventory_kamera.scraping.service.assemblers.item_assembler as item_assembler_module
 import wuwa_inventory_kamera.scraping.service.assemblers.weapon_assembler as weapon_assembler_module
 from wuwa_inventory_kamera.scraping.service.assemblers.echo_assembler import EchoAssembler
 from wuwa_inventory_kamera.scraping.service.assemblers._equipped import parse_equipped_character
+from wuwa_inventory_kamera.scraping.service.assemblers.item_assembler import ItemAssembler
 from wuwa_inventory_kamera.scraping.service.assemblers.weapon_assembler import WeaponAssembler
-from wuwa_inventory_kamera.scraping.service.captures import EchoCapture, WeaponCapture
+from wuwa_inventory_kamera.scraping.service.captures import EchoCapture, ItemCapture, WeaponCapture
 
 
 def _token(text: str):
@@ -36,11 +38,57 @@ def test_weapon_assembler_adds_equipped_character(monkeypatch) -> None:
 
     assert result.data == {
         'id': 'weapon-id',
+        'weapon_key': 'commandoofconviction',
         'level': 40,
         'maxLevel': 90,
         'rank': 3,
         '_equipped': 'camellya',
     }
+
+
+def test_weapon_assembler_adds_item_key_for_item_tabs(monkeypatch) -> None:
+    monkeypatch.setattr(
+        weapon_assembler_module,
+        '_get_data',
+        lambda: ({}, {'resonancepotion': 'item-id'}),
+    )
+
+    image = np.zeros((1, 1, 3), dtype=np.uint8)
+    assembler = WeaponAssembler()
+    result = assembler.assemble(
+        WeaponCapture(index=4, name=image, value=image, rank=None),
+        [_token('Resonance'), _token('Potion')],
+        [_token('3')],
+        None,
+    )
+
+    assert result.data == {
+        'id': 'item-id',
+        'item_key': 'resonancepotion',
+        'count': 3,
+    }
+
+
+def test_item_assembler_returns_item_key_when_recognized(monkeypatch) -> None:
+    monkeypatch.setattr(
+        item_assembler_module,
+        '_get_data',
+        lambda: {'resonancepotion': 'item-id'},
+    )
+
+    assembler = ItemAssembler()
+    result = assembler.assemble(
+        ItemCapture(index=5, info=np.zeros((1, 1, 3), dtype=np.uint8)),
+        [
+            ([[0, 0], [1, 0], [1, 1], [0, 1]], 'Resonance', 1.0),
+            ([[2, 0], [3, 0], [3, 1], [2, 1]], 'Potion', 1.0),
+            ([[0, 20], [1, 20], [1, 21], [0, 21]], '3', 1.0),
+        ],
+    )
+
+    assert result.item_id == 'item-id'
+    assert result.item_key == 'resonancepotion'
+    assert result.count == 3
 
 
 def test_echo_assembler_adds_equipped_character(monkeypatch) -> None:
