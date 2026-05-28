@@ -93,3 +93,38 @@ def test_runtime_echo_name_allowed_chars_uses_selected_language_file(
     assert '兵' in allowed
     assert 'é' in allowed
     assert 'É' in allowed
+
+
+def test_runtime_echo_name_allowed_chars_prefers_generated_locale_lookup(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    data_dir = tmp_path / 'data'
+    (data_dir / 'locale' / 'ja' / 'lookup').mkdir(parents=True)
+    (data_dir / 'ja').mkdir(parents=True)
+    (data_dir / 'languages.json').write_text(
+        '{"English": "en", "日本語": "ja"}',
+        encoding='utf-8',
+    )
+    (data_dir / 'locale' / 'ja' / 'lookup' / 'echoes.json').write_text(
+        '{"鐘鳴の亀守": "bellbornegeochelone", "jué": "scaraberrantnightmare"}',
+        encoding='utf-8',
+    )
+    (data_dir / 'ja' / 'echoes.json').write_text(
+        '{"legacy": 1}',
+        encoding='utf-8',
+    )
+
+    monkeypatch.setattr(ocr_service_module, 'basePATH', tmp_path)
+    monkeypatch.setattr(ocr_service_module.app_config, 'gameLanguage', '日本語')
+    monkeypatch.setattr(ocr_service_module, '_ECHO_NAME_RUNTIME_ALLOWED_CACHE_KEY', None)
+    monkeypatch.setattr(ocr_service_module, '_ECHO_NAME_RUNTIME_ALLOWED_CACHE_VALUE', None)
+
+    allowed = ocr_service_module._runtime_echo_name_allowed_chars()
+
+    assert allowed is not None
+    assert '鐘' in allowed
+    assert '亀' in allowed
+    assert 'é' in allowed
+    assert 'É' in allowed
+    assert 'l' not in allowed

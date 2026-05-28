@@ -90,7 +90,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _ECHO_NAME_FUZZY_CUTOFF = 0.75
-_ECHO_NAME_RUNTIME_ALLOWED_CACHE_KEY: tuple[str, int, int] | None = None
+_ECHO_NAME_RUNTIME_ALLOWED_CACHE_KEY: tuple[str, str, int, int] | None = None
 _ECHO_NAME_RUNTIME_ALLOWED_CACHE_VALUE: str | None = None
 
 
@@ -120,7 +120,7 @@ def _allowed_chars_from_names(names: list[str]) -> str | None:
 def _resolve_game_language_code() -> str:
     """Return the selected in-game language code (e.g. ``en``, ``ja``)."""
     selected = str(getattr(app_config, 'gameLanguage', 'English') or 'English')
-    if (basePATH / 'data' / selected).is_dir():
+    if (basePATH / 'data' / 'locale' / selected).is_dir() or (basePATH / 'data' / selected).is_dir():
         return selected
 
     languages_path = basePATH / 'data' / 'languages.json'
@@ -139,33 +139,68 @@ def _resolve_game_language_code() -> str:
     return 'en'
 
 
+def _echo_names_from_payload(payload: object) -> list[str]:
+    if not isinstance(payload, dict):
+        return []
+
+    names: list[str] = []
+    for key, value in payload.items():
+        if isinstance(value, dict):
+            display_name = value.get('display_name')
+            if isinstance(display_name, str) and display_name:
+                names.append(display_name)
+
+            normalized = value.get('normalized')
+            if isinstance(normalized, str) and normalized:
+                names.append(normalized)
+
+            aliases = value.get('aliases')
+            if isinstance(aliases, list):
+                for alias in aliases:
+                    if isinstance(alias, str) and alias:
+                        names.append(alias)
+            continue
+
+        if isinstance(key, str):
+            names.append(key)
+
+    return names
+
+
 def _runtime_echo_name_allowed_chars() -> str | None:
     """Compute a localized allowlist for ``echoes.echoName`` at runtime."""
     global _ECHO_NAME_RUNTIME_ALLOWED_CACHE_KEY
     global _ECHO_NAME_RUNTIME_ALLOWED_CACHE_VALUE
 
     language_code = _resolve_game_language_code()
-    echoes_path = basePATH / 'data' / language_code / 'echoes.json'
 
-    try:
-        stat = echoes_path.stat()
-        cache_key = (language_code, stat.st_mtime_ns, stat.st_size)
-        if cache_key == _ECHO_NAME_RUNTIME_ALLOWED_CACHE_KEY:
-            return _ECHO_NAME_RUNTIME_ALLOWED_CACHE_VALUE
+    candidate_paths = (
+        basePATH / 'data' / 'locale' / language_code / 'lookup' / 'echoes.json',
+        basePATH / 'data' / 'locale' / language_code / 'echoes.json',
+        basePATH / 'data' / language_code / 'echoes.json',
+    )
 
-        with open(echoes_path, 'r', encoding='utf-8') as f:
-            payload = json.load(f)
+    last_exc: Exception | None = None
+    for echoes_path in candidate_paths:
+        try:
+            stat = echoes_path.stat()
+            cache_key = (language_code, str(echoes_path), stat.st_mtime_ns, stat.st_size)
+            if cache_key == _ECHO_NAME_RUNTIME_ALLOWED_CACHE_KEY:
+                return _ECHO_NAME_RUNTIME_ALLOWED_CACHE_VALUE
 
-        if isinstance(payload, dict):
-            allowed_chars = _allowed_chars_from_names(
-                [name for name in payload.keys() if isinstance(name, str)]
-            )
+            with open(echoes_path, 'r', encoding='utf-8') as f:
+                payload = json.load(f)
+
+            allowed_chars = _allowed_chars_from_names(_echo_names_from_payload(payload))
             if allowed_chars:
                 _ECHO_NAME_RUNTIME_ALLOWED_CACHE_KEY = cache_key
                 _ECHO_NAME_RUNTIME_ALLOWED_CACHE_VALUE = allowed_chars
                 return allowed_chars
-    except Exception as exc:
-        logger.debug('Echo-name runtime allowlist fallback: %s', exc)
+        except Exception as exc:
+            last_exc = exc
+
+    if last_exc is not None:
+        logger.debug('Echo-name runtime allowlist fallback: %s', last_exc)
 
     # Fallback for tests/CLI flows where localized files may not be present.
     from ..data import echoesID

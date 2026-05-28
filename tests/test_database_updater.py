@@ -144,3 +144,188 @@ def test_update_items_overwrites_existing_outputs(tmp_path: Path, monkeypatch) -
 	assert 'stale' not in items
 	assert 'trainingbroadblade' in weapons
 	assert 'stale' not in weapons
+
+
+def test_update_items_writes_catalog_and_locale_outputs(tmp_path: Path, monkeypatch) -> None:
+	_prepare_workspace(tmp_path, monkeypatch)
+	_write_json(
+		tmp_path / 'data' / 'en' / 'MultiText.json',
+		{
+			'ItemInfo_1_Name': 'Shell Credit',
+			'WeaponConf_1_WeaponName': 'Training Broadblade',
+		},
+	)
+	_write_json(
+		tmp_path / 'data' / 'en' / 'ItemInfo.json',
+		[
+			{
+				'Id': 1,
+				'Name': 'ItemInfo_1_Name',
+				'Icon': '/Game/Aki/UI/UIResources/Common/Image/IconA/T_IconA_AccountExp_UI.T_IconA_AccountExp_UI',
+			},
+		],
+	)
+	_write_json(
+		tmp_path / 'data' / 'en' / 'WeaponConf.json',
+		[
+			{
+				'WeaponName': 'WeaponConf_1_WeaponName',
+				'ModelId': 101,
+				'QualityId': 4,
+				'Icon': '/Game/Aki/UI/UIResources/Common/Image/IconWeapon/T_Weapon_UI.T_Weapon_UI',
+			},
+		],
+	)
+
+	updater = BaseDataUpdater(lang='English')
+	updater.updateItems()
+
+	item_catalog = json.loads((tmp_path / 'data' / 'catalog' / 'items.json').read_text(encoding='utf-8'))
+	weapon_catalog = json.loads((tmp_path / 'data' / 'catalog' / 'weapons.json').read_text(encoding='utf-8'))
+	item_locale = json.loads((tmp_path / 'data' / 'locale' / 'en' / 'items.json').read_text(encoding='utf-8'))
+	weapon_locale = json.loads((tmp_path / 'data' / 'locale' / 'en' / 'weapons.json').read_text(encoding='utf-8'))
+	item_lookup = json.loads((tmp_path / 'data' / 'locale' / 'en' / 'lookup' / 'items.json').read_text(encoding='utf-8'))
+	weapon_lookup = json.loads((tmp_path / 'data' / 'locale' / 'en' / 'lookup' / 'weapons.json').read_text(encoding='utf-8'))
+
+	assert item_catalog == {
+		'shellcredit': {
+			'id': 1,
+			'text_key': 'ItemInfo_1_Name',
+			'image': 'IconA/T_IconA_AccountExp_UI.png',
+		},
+	}
+	assert weapon_catalog == {
+		'trainingbroadblade': {
+			'id': 101,
+			'text_key': 'WeaponConf_1_WeaponName',
+			'rarity': 4,
+			'image': 'IconWeapon/T_Weapon_UI.png',
+		},
+	}
+	assert item_locale == {
+		'shellcredit': {
+			'display_name': 'Shell Credit',
+			'normalized': 'shellcredit',
+			'aliases': ['shellcredit'],
+		},
+	}
+	assert weapon_locale == {
+		'trainingbroadblade': {
+			'display_name': 'Training Broadblade',
+			'normalized': 'trainingbroadblade',
+			'aliases': ['trainingbroadblade'],
+		},
+	}
+	assert item_lookup == {'shellcredit': 'shellcredit'}
+	assert weapon_lookup == {'trainingbroadblade': 'trainingbroadblade'}
+
+
+def test_non_english_echo_update_uses_catalog_keys_for_locale_outputs(tmp_path: Path, monkeypatch) -> None:
+	_prepare_workspace(tmp_path, monkeypatch)
+	_write_json(tmp_path / 'data' / 'languages.json', {'English': 'en', 'Japanese': 'ja'})
+	_write_json(
+		tmp_path / 'data' / 'en' / 'MultiText.json',
+		{'MonsterInfo_310000010_Name': 'Vanguard Junrock'},
+	)
+	_write_json(
+		tmp_path / 'data' / 'ja' / 'MultiText.json',
+		{'MonsterInfo_310000010_Name': '先鋒岩塊'},
+	)
+
+	english_updater = BaseDataUpdater(lang='English')
+	english_updater.updateEcho()
+
+	localized_updater = BaseDataUpdater(lang='Japanese')
+	localized_updater.updateEcho()
+
+	echo_catalog = json.loads((tmp_path / 'data' / 'catalog' / 'echoes.json').read_text(encoding='utf-8'))
+	ja_locale = json.loads((tmp_path / 'data' / 'locale' / 'ja' / 'echoes.json').read_text(encoding='utf-8'))
+	ja_lookup = json.loads((tmp_path / 'data' / 'locale' / 'ja' / 'lookup' / 'echoes.json').read_text(encoding='utf-8'))
+
+	assert echo_catalog == {
+		'vanguardjunrock': {
+			'id': 310000010,
+			'text_key': 'MonsterInfo_310000010_Name',
+		},
+	}
+	assert ja_locale == {
+		'vanguardjunrock': {
+			'display_name': '先鋒岩塊',
+			'normalized': '先鋒岩塊',
+			'aliases': ['先鋒岩塊'],
+		},
+	}
+	assert ja_lookup == {'先鋒岩塊': 'vanguardjunrock'}
+
+
+def test_update_stats_and_defined_text_write_locale_outputs(tmp_path: Path, monkeypatch) -> None:
+	_prepare_workspace(tmp_path, monkeypatch)
+	_write_json(tmp_path / 'data' / 'languages.json', {'English': 'en', 'Japanese': 'ja'})
+	_write_json(
+		tmp_path / 'data' / 'en' / 'MultiText.json',
+		{
+			'PropertyIndex_10003_Name': 'HP',
+			'PrefabTextItem_1547656443_Text': 'Terminal',
+			'PrefabTextItem_128820487_Text': 'Claim',
+			'PrefabTextItem_3963945691_Text': 'Activated',
+		},
+	)
+	_write_json(
+		tmp_path / 'data' / 'ja' / 'MultiText.json',
+		{
+			'PropertyIndex_10003_Name': '体力',
+			'PrefabTextItem_1547656443_Text': '端末',
+			'PrefabTextItem_128820487_Text': '受取',
+			'PrefabTextItem_3963945691_Text': '発動済み',
+		},
+	)
+
+	english_updater = BaseDataUpdater(lang='English')
+	english_updater.updateEchoStats()
+	english_updater.updateDefinedText()
+
+	localized_updater = BaseDataUpdater(lang='Japanese')
+	localized_updater.updateEchoStats()
+	localized_updater.updateDefinedText()
+
+	stats_catalog = json.loads((tmp_path / 'data' / 'catalog' / 'stats.json').read_text(encoding='utf-8'))
+	ja_stats = json.loads((tmp_path / 'data' / 'locale' / 'ja' / 'stats.json').read_text(encoding='utf-8'))
+	ja_stats_lookup = json.loads((tmp_path / 'data' / 'locale' / 'ja' / 'lookup' / 'stats.json').read_text(encoding='utf-8'))
+	ja_defined = json.loads((tmp_path / 'data' / 'locale' / 'ja' / 'definedText.json').read_text(encoding='utf-8'))
+	ja_defined_lookup = json.loads((tmp_path / 'data' / 'locale' / 'ja' / 'lookup' / 'definedText.json').read_text(encoding='utf-8'))
+
+	assert stats_catalog == {
+		'hp': {
+			'text_key': 'PropertyIndex_10003_Name',
+		},
+	}
+	assert ja_stats == {
+		'hp': {
+			'display_name': '体力',
+			'normalized': '体力',
+			'aliases': ['体力'],
+		},
+	}
+	assert ja_stats_lookup == {'体力': 'hp'}
+	assert ja_defined == {
+		'PrefabTextItem_1547656443_Text': {
+			'display_text': '端末',
+			'normalized': '端末',
+			'aliases': ['端末'],
+		},
+		'PrefabTextItem_128820487_Text': {
+			'display_text': '受取',
+			'normalized': '受取',
+			'aliases': ['受取'],
+		},
+		'PrefabTextItem_3963945691_Text': {
+			'display_text': '発動済み',
+			'normalized': '発動済み',
+			'aliases': ['発動済み'],
+		},
+	}
+	assert ja_defined_lookup == {
+		'端末': 'PrefabTextItem_1547656443_Text',
+		'受取': 'PrefabTextItem_128820487_Text',
+		'発動済み': 'PrefabTextItem_3963945691_Text',
+	}

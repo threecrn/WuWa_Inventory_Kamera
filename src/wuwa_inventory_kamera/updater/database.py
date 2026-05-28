@@ -91,6 +91,7 @@ class BaseDataUpdater:
 		self.state = self._loadUpdaterState()
 		self.updated = False
 		self._update_failed = False
+		self._catalog_text_key_cache: dict[str, dict[str, str]] = {}
 
 	def _getSource(self, preferred: Optional[str] = None) -> str:
 		source = (preferred or self.DEFAULT_SOURCE).strip().lower()
@@ -126,8 +127,211 @@ class BaseDataUpdater:
 		except Exception as e:
 			logger.error('Failed to save updater state: %s', e)
 
+	def _dataRoot(self) -> Path:
+		return Path('data')
+
+	def _compatDir(self, lang: Optional[str] = None) -> Path:
+		return self._dataRoot() / (lang or self.lang)
+
+	def _catalogDir(self) -> Path:
+		return self._dataRoot() / 'catalog'
+
+	def _localeDir(self, lang: Optional[str] = None) -> Path:
+		return self._dataRoot() / 'locale' / (lang or self.lang)
+
+	def _localeLookupDir(self, lang: Optional[str] = None) -> Path:
+		return self._localeDir(lang) / 'lookup'
+
+	def _isCanonicalLanguage(self) -> bool:
+		return self.lang == 'en'
+
 	def _stateMatchesSource(self, state: dict[str, Any]) -> bool:
 		return state.get('source') == self.source and state.get('ref', '') == (self.ref or '')
+
+	def _normalizeText(self, text: str, *, remove_chars: str = ' ') -> str:
+		normalized = text.strip().lower()
+		if remove_chars:
+			normalized = normalized.translate(str.maketrans('', '', remove_chars))
+		return normalized
+
+	def _loadJsonPath(self, path: Path, filename: Optional[str] = None) -> Any:
+		try:
+			with open(path, 'r', encoding='utf-8') as f:
+				return self._normalizeJson(filename or path.name, json.load(f))
+		except (FileNotFoundError, json.JSONDecodeError):
+			return {}
+
+	def _saveJsonPath(self, data: Any, path: Path, filename: Optional[str] = None) -> None:
+		try:
+			path.parent.mkdir(parents=True, exist_ok=True)
+			with open(path, 'w', encoding='utf-8') as f:
+				json.dump(data, f, indent=4, ensure_ascii=False)
+		except Exception as e:
+			logger.error('Failed to save %s: %s', filename or path.name, e)
+
+	def _loadInfoText(self) -> dict[str, str]:
+		info_text = self.loadJson('MultiText.json')
+		if not isinstance(info_text, dict) or not info_text:
+			logger.error('MultiText.json not found or empty')
+			return {}
+		return {
+			str(key): value
+			for key, value in info_text.items()
+			if isinstance(key, str) and isinstance(value, str)
+		}
+
+	def _buildLocaleRecord(self, display_name: str, *, normalized: str) -> dict[str, Any]:
+		aliases: list[str] = []
+		for alias in (normalized,):
+			if alias and alias not in aliases:
+				aliases.append(alias)
+		return {
+			'display_name': display_name,
+			'normalized': normalized,
+			'aliases': aliases,
+		}
+
+	def _buildLookupEntries(self, entries: dict[str, dict[str, Any]], *, label: str) -> dict[str, str]:
+		lookup: dict[str, str] = {}
+		for canonical_key, record in entries.items():
+			if not isinstance(record, dict):
+				continue
+			candidates: list[str] = []
+			normalized = record.get('normalized')
+			if isinstance(normalized, str) and normalized:
+				candidates.append(normalized)
+			aliases = record.get('aliases')
+			if isinstance(aliases, list):
+				for alias in aliases:
+					if isinstance(alias, str) and alias and alias not in candidates:
+						candidates.append(alias)
+			for candidate in candidates:
+				owner = lookup.get(candidate)
+				if owner is not None and owner != canonical_key:
+					logger.warning(
+						'Collision in %s lookup for %r: %s vs %s',
+						label,
+						candidate,
+						owner,
+						canonical_key,
+					)
+					continue
+				lookup[candidate] = canonical_key
+		return lookup
+
+	def _saveCatalogEntries(self, filename: str, entries: dict[str, dict[str, Any]]) -> None:
+		self._saveJsonPath(entries, self._catalogDir() / filename, filename)
+		self._catalog_text_key_cache[filename] = {
+			info['text_key']: canonical_key
+			for canonical_key, info in entries.items()
+			if isinstance(info, dict) and isinstance(info.get('text_key'), str)
+		}
+
+	def _saveLocaleEntries(self, filename: str, entries: dict[str, dict[str, Any]]) -> None:
+		self._saveJsonPath(entries, self._localeDir() / filename, filename)
+		self._saveJsonPath(
+			self._buildLookupEntries(entries, label=filename),
+			self._localeLookupDir() / filename,
+			f'lookup/{filename}',
+		)
+
+	def _catalogKeyByTextKey(self, filename: str) -> dict[str, str]:
+		cached = self._catalog_text_key_cache.get(filename)
+		if cached is not None:
+			return cached
+
+		entries = self._loadJsonPath(self._catalogDir() / filename, filename)
+		mapping = {
+			info['text_key']: canonical_key
+			for canonical_key, info in entries.items()
+			if isinstance(info, dict) and isinstance(info.get('text_key'), str)
+		} if isinstance(entries, dict) else {}
+		self._catalog_text_key_cache[filename] = mapping
+		return mapping
+
+	def _resolveCanonicalKeyFromTextKey(
+		self,
+		catalog_filename: str,
+		text_key: str,
+		english_key: Optional[str],
+	) -> Optional[str]:
+		if self._isCanonicalLanguage():
+			return english_key
+
+		canonical_key = self._catalogKeyByTextKey(catalog_filename).get(text_key)
+		if canonical_key is None:
+			logger.warning(
+				'Skipping %s locale entry for %s because no canonical catalog entry exists',
+				catalog_filename,
+				text_key,
+			)
+		return canonical_key
+
+	def _updatePatternCategory(
+		self,
+		*,
+		compat_filename: str,
+		catalog_filename: str,
+		locale_filename: str,
+		pattern: str,
+		compat_key_builder,
+		canonical_key_builder,
+		normalized_builder,
+	) -> dict:
+		logger.info('Generating %s...', compat_filename)
+		try:
+			info_text = self._loadInfoText()
+			if not info_text:
+				return {}
+
+			compiled_pattern = re.compile(pattern)
+			compat_data: dict[str, int] = {}
+			catalog_data: dict[str, dict[str, Any]] = {}
+			locale_data: dict[str, dict[str, Any]] = {}
+
+			for text_key, display_name in info_text.items():
+				match = compiled_pattern.match(text_key)
+				if match is None:
+					continue
+
+				compat_key = compat_key_builder(display_name, match)
+				if compat_key is None:
+					continue
+
+				identifier = int(match.group(1))
+				compat_data[compat_key] = identifier
+
+				english_key = canonical_key_builder(display_name, match)
+				canonical_key = self._resolveCanonicalKeyFromTextKey(
+					catalog_filename,
+					text_key,
+					english_key,
+				)
+				if canonical_key is None:
+					continue
+
+				if self._isCanonicalLanguage():
+					catalog_data[canonical_key] = {
+						'id': identifier,
+						'text_key': text_key,
+					}
+
+				locale_data[canonical_key] = self._buildLocaleRecord(
+					display_name,
+					normalized=normalized_builder(display_name, match),
+				)
+
+			self.saveJson(compat_data, compat_filename)
+			if self._isCanonicalLanguage():
+				self._saveCatalogEntries(catalog_filename, catalog_data)
+			if self._isCanonicalLanguage() or locale_data:
+				self._saveLocaleEntries(locale_filename, locale_data)
+
+			logger.info('Generated %s with %d entries', compat_filename, len(compat_data))
+			return compat_data
+		except Exception as e:
+			logger.error('Failed to generate %s: %s', compat_filename, e, exc_info=True)
+			return {}
 
 	def _normalizeJson(self, filename: str, data: Any) -> Any:
 		if filename != 'MultiText.json' or not isinstance(data, list):
@@ -180,9 +384,9 @@ class BaseDataUpdater:
 
 	def makeFolder(self, lang=None) -> None:
 		if lang:
-			dir = (Path('data') / lang)
+			dir = self._compatDir(lang)
 		else:
-			dir = Path('data')
+			dir = self._dataRoot()
 		dir.mkdir(parents=True, exist_ok=True)
 
 	def _getLanguageName(self, code: str) -> str:
@@ -238,20 +442,15 @@ class BaseDataUpdater:
 	# ------------------------------------------------------------------
 
 	def loadJson(self, filename: str) -> Any:
-		dir = Path('data') / self.lang if filename != 'languages.json' else Path('data')
-		try:
-			with open(dir / filename, 'r', encoding='utf-8') as f:
-				return self._normalizeJson(filename, json.load(f))
-		except (FileNotFoundError, json.JSONDecodeError):
-			return {}
+		if filename == 'languages.json':
+			return self._loadJsonPath(self._dataRoot() / filename, filename)
+		return self._loadJsonPath(self._compatDir() / filename, filename)
 
 	def saveJson(self, data: Any, filename: str) -> None:
-		dir = Path('data') / self.lang if filename != 'languages.json' else Path('data')
-		try:
-			with open(dir / filename, 'w', encoding='utf-8') as f:
-				json.dump(data, f, indent=4, ensure_ascii=False)
-		except Exception as e:
-			logger.error('Failed to save %s: %s', filename, e)
+		if filename == 'languages.json':
+			self._saveJsonPath(data, self._dataRoot() / filename, filename)
+			return
+		self._saveJsonPath(data, self._compatDir() / filename, filename)
 
 	# ------------------------------------------------------------------
 	# Update steps
@@ -319,7 +518,7 @@ class BaseDataUpdater:
 		"""Generate items.json and weapons.json from downloaded data."""
 		logger.info('Generating items.json and weapons.json...')
 		try:
-			infoText = self.loadJson('MultiText.json')
+			infoText = self._loadInfoText()
 			itemInfo = self.loadJson('ItemInfo.json')
 			weaponInfo = self.loadJson('WeaponConf.json')
 
@@ -327,26 +526,75 @@ class BaseDataUpdater:
 				logger.error('Missing required data files for item generation')
 				return
 
-			items = {
-				infoText[item['Name']].lower().replace(' ', ''): {
+			items: dict[str, dict[str, Any]] = {}
+			item_catalog: dict[str, dict[str, Any]] = {}
+			item_locale: dict[str, dict[str, Any]] = {}
+			for item in itemInfo:
+				text_key = item.get('Name')
+				if not isinstance(text_key, str) or text_key not in infoText:
+					continue
+
+				display_name = infoText[text_key]
+				compat_key = self._normalizeText(display_name)
+				image = item['Icon'].split('/Image/')[1].rsplit('.', 1)[0] + '.png'
+				items[compat_key] = {
 					'id': item['Id'],
-					'name': infoText[item['Name']],
-					'image': item['Icon'].split('/Image/')[1].rsplit('.', 1)[0] + '.png',
+					'name': display_name,
+					'image': image,
 				}
-				for item in itemInfo if item['Name'] in infoText
-			}
-			weapons = {
-				infoText[weapon['WeaponName']].lower().replace(' ', ''): {
+
+				canonical_key = self._resolveCanonicalKeyFromTextKey('items.json', text_key, compat_key)
+				if canonical_key is None:
+					continue
+
+				if self._isCanonicalLanguage():
+					item_catalog[canonical_key] = {
+						'id': item['Id'],
+						'text_key': text_key,
+						'image': image,
+					}
+				item_locale[canonical_key] = self._buildLocaleRecord(display_name, normalized=compat_key)
+
+			weapons: dict[str, dict[str, Any]] = {}
+			weapon_catalog: dict[str, dict[str, Any]] = {}
+			weapon_locale: dict[str, dict[str, Any]] = {}
+			for weapon in weaponInfo:
+				text_key = weapon.get('WeaponName')
+				if not isinstance(text_key, str) or text_key not in infoText:
+					continue
+
+				display_name = infoText[text_key]
+				compat_key = self._normalizeText(display_name)
+				image = weapon['Icon'].split('/Image/')[1].rsplit('.', 1)[0] + '.png'
+				weapons[compat_key] = {
 					'id': weapon['ModelId'],
-					'name': infoText[weapon['WeaponName']],
+					'name': display_name,
 					'rarity': weapon['QualityId'],
-					'image': weapon['Icon'].split('/Image/')[1].rsplit('.', 1)[0] + '.png',
+					'image': image,
 				}
-				for weapon in weaponInfo if weapon['WeaponName'] in infoText
-			}
+
+				canonical_key = self._resolveCanonicalKeyFromTextKey('weapons.json', text_key, compat_key)
+				if canonical_key is None:
+					continue
+
+				if self._isCanonicalLanguage():
+					weapon_catalog[canonical_key] = {
+						'id': weapon['ModelId'],
+						'text_key': text_key,
+						'rarity': weapon['QualityId'],
+						'image': image,
+					}
+				weapon_locale[canonical_key] = self._buildLocaleRecord(display_name, normalized=compat_key)
 
 			self.saveJson(items, 'items.json')
 			self.saveJson(weapons, 'weapons.json')
+			if self._isCanonicalLanguage():
+				self._saveCatalogEntries('items.json', item_catalog)
+				self._saveCatalogEntries('weapons.json', weapon_catalog)
+			if self._isCanonicalLanguage() or item_locale:
+				self._saveLocaleEntries('items.json', item_locale)
+			if self._isCanonicalLanguage() or weapon_locale:
+				self._saveLocaleEntries('weapons.json', weapon_locale)
 			logger.info('Generated items.json (%d items) and weapons.json (%d weapons)', len(items), len(weapons))
 			self._afterUpdateItems(items, weapons)
 
@@ -378,26 +626,38 @@ class BaseDataUpdater:
 			return {}
 
 	def updateCharacters(self) -> None:
-		data = self.updateJsonFromPattern(
-			'characters.json',
-			r'^RoleInfo_(\d+)_Name$',
-			lambda text, match: text.lower().replace(' ', '') if int(match.group(1)) < 5000 else None,
+		data = self._updatePatternCategory(
+			compat_filename='characters.json',
+			catalog_filename='characters.json',
+			locale_filename='characters.json',
+			pattern=r'^RoleInfo_(\d+)_Name$',
+			compat_key_builder=lambda text, match: self._normalizeText(text) if int(match.group(1)) < 5000 else None,
+			canonical_key_builder=lambda text, match: self._normalizeText(text) if int(match.group(1)) < 5000 else None,
+			normalized_builder=lambda text, _: self._normalizeText(text),
 		)
 		self._afterUpdateCharacters(data)
 
 	def updateEcho(self) -> None:
-		data = self.updateJsonFromPattern(
-			'echoes.json',
-			r'^MonsterInfo_(\d+)_Name$',
-			lambda text, match: text.lower().replace(' ', '') if int(match.group(1)) < 350000000 else None,
+		data = self._updatePatternCategory(
+			compat_filename='echoes.json',
+			catalog_filename='echoes.json',
+			locale_filename='echoes.json',
+			pattern=r'^MonsterInfo_(\d+)_Name$',
+			compat_key_builder=lambda text, match: self._normalizeText(text) if int(match.group(1)) < 350000000 else None,
+			canonical_key_builder=lambda text, match: self._normalizeText(text) if int(match.group(1)) < 350000000 else None,
+			normalized_builder=lambda text, _: self._normalizeText(text),
 		)
 		self._afterUpdateEchoes(data)
 
 	def updateAchievements(self) -> None:
-		data = self.updateJsonFromPattern(
-			'achievements.json',
-			r'^Achievement_(\d+)_Name$',
-			lambda text, _: text,
+		data = self._updatePatternCategory(
+			compat_filename='achievements.json',
+			catalog_filename='achievements.json',
+			locale_filename='achievements.json',
+			pattern=r'^Achievement_(\d+)_Name$',
+			compat_key_builder=lambda text, _: text,
+			canonical_key_builder=lambda text, _: self._normalizeText(text),
+			normalized_builder=lambda text, _: self._normalizeText(text),
 		)
 		self._afterUpdateAchievements(data)
 
@@ -423,26 +683,42 @@ class BaseDataUpdater:
 		}
 		logger.info('Generating echoStats.json...')
 		try:
-			infoText = self.loadJson('MultiText.json')
+			infoText = self._loadInfoText()
 			if not infoText:
-				logger.error('MultiText.json not found or empty')
 				return
 
-			stats = {
-				infoText[key].lower().replace(' ', '').replace('.', ''): value
-				for key, value in statsKey.items() if key in infoText
-			}
+			stats: dict[str, str] = {}
+			catalog_data: dict[str, dict[str, Any]] = {}
+			locale_data: dict[str, dict[str, Any]] = {}
+			for text_key, canonical_key in statsKey.items():
+				if text_key not in infoText:
+					continue
+				display_name = infoText[text_key]
+				normalized = self._normalizeText(display_name, remove_chars=' .')
+				stats[normalized] = canonical_key
+				if self._isCanonicalLanguage():
+					catalog_data[canonical_key] = {'text_key': text_key}
+				locale_data[canonical_key] = self._buildLocaleRecord(display_name, normalized=normalized)
+
 			self.saveJson(stats, 'echoStats.json')
+			if self._isCanonicalLanguage():
+				self._saveCatalogEntries('stats.json', catalog_data)
+			if self._isCanonicalLanguage() or locale_data:
+				self._saveLocaleEntries('stats.json', locale_data)
 			logger.info('Generated echoStats.json with %d entries', len(stats))
 			self._afterUpdateEchoStats(stats)
 		except Exception as e:
 			logger.error('Failed to generate echoStats.json: %s', e, exc_info=True)
 
 	def updateSonata(self) -> None:
-		data = self.updateJsonFromPattern(
-			'sonataName.json',
-			r'^PhantomFetter_(\d+)_Name$',
-			lambda text, _: text.lower().replace(' ', ''),
+		data = self._updatePatternCategory(
+			compat_filename='sonataName.json',
+			catalog_filename='sonatas.json',
+			locale_filename='sonatas.json',
+			pattern=r'^PhantomFetter_(\d+)_Name$',
+			compat_key_builder=lambda text, _: self._normalizeText(text),
+			canonical_key_builder=lambda text, _: self._normalizeText(text),
+			normalized_builder=lambda text, _: self._normalizeText(text),
 		)
 		self._afterUpdateSonata(data)
 
@@ -454,16 +730,27 @@ class BaseDataUpdater:
 		]
 		logger.info('Generating definedText.json...')
 		try:
-			infoText = self.loadJson('MultiText.json')
+			infoText = self._loadInfoText()
 			if not infoText:
-				logger.error('MultiText.json not found or empty')
 				return
 
-			stats = {
-				key: infoText[key].lower().replace(' ', '').replace('-', '').strip()
-				for key in textKey if key in infoText
-			}
+			stats: dict[str, str] = {}
+			locale_data: dict[str, dict[str, Any]] = {}
+			for key in textKey:
+				if key not in infoText:
+					continue
+				display_text = infoText[key]
+				normalized = self._normalizeText(display_text, remove_chars=' -')
+				stats[key] = normalized
+				locale_data[key] = {
+					'display_text': display_text,
+					'normalized': normalized,
+					'aliases': [normalized] if normalized else [],
+				}
+
 			self.saveJson(stats, 'definedText.json')
+			if self._isCanonicalLanguage() or locale_data:
+				self._saveLocaleEntries('definedText.json', locale_data)
 			logger.info('Generated definedText.json')
 			self._afterUpdateDefinedText(stats)
 		except Exception as e:

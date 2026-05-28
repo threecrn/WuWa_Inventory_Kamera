@@ -7,6 +7,11 @@ import pytest
 import wuwa_inventory_kamera.ui.inventory_models as inventory_models
 
 
+def _write_json(path, payload) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+
+
 @pytest.fixture(autouse=True)
 def _patch_metadata(monkeypatch) -> None:
     monkeypatch.setattr(
@@ -199,6 +204,86 @@ def test_filter_section_rows_matches_title_subtitle_and_body() -> None:
     assert [row.title for row in by_title.rows] == ['Emerald of Genesis']
     assert [row.title for row in by_subtitle.rows] == ['Static Mist']
     assert [row.title for row in by_body.rows] == ['Emerald of Genesis']
+
+
+def test_metadata_resolver_prefers_generated_localized_metadata(tmp_path, monkeypatch) -> None:
+    _write_json(tmp_path / 'data' / 'languages.json', {'English': 'en', 'Japanese': 'ja'})
+    _write_json(
+        tmp_path / 'data' / 'catalog' / 'items.json',
+        {'shellcredit': {'id': 2, 'text_key': 'ItemInfo_2_Name', 'image': 'IconA/shell.png'}},
+    )
+    _write_json(
+        tmp_path / 'data' / 'catalog' / 'weapons.json',
+        {
+            'emeraldofgenesis': {
+                'id': 21010074,
+                'text_key': 'WeaponConf_21010074_WeaponName',
+                'rarity': 5,
+                'image': 'IconWeapon/emerald.png',
+            }
+        },
+    )
+    _write_json(
+        tmp_path / 'data' / 'catalog' / 'characters.json',
+        {'shorekeeper': {'id': 1105, 'text_key': 'RoleInfo_1105_Name'}},
+    )
+    _write_json(
+        tmp_path / 'data' / 'catalog' / 'echoes.json',
+        {'bellbornegeochelone': {'id': 310000010, 'text_key': 'MonsterInfo_310000010_Name'}},
+    )
+    _write_json(
+        tmp_path / 'data' / 'catalog' / 'achievements.json',
+        {'firststeps': {'id': 9001, 'text_key': 'Achievement_9001_Name'}},
+    )
+    _write_json(
+        tmp_path / 'data' / 'locale' / 'ja' / 'items.json',
+        {'shellcredit': {'display_name': 'シェルクレジット', 'normalized': 'シェルクレジット', 'aliases': ['シェルクレジット']}},
+    )
+    _write_json(
+        tmp_path / 'data' / 'locale' / 'ja' / 'weapons.json',
+        {
+            'emeraldofgenesis': {
+                'display_name': '翠緑の残光',
+                'normalized': '翠緑の残光',
+                'aliases': ['翠緑の残光'],
+            }
+        },
+    )
+    _write_json(
+        tmp_path / 'data' / 'locale' / 'ja' / 'characters.json',
+        {'shorekeeper': {'display_name': 'ショアキーパー', 'normalized': 'ショアキーパー', 'aliases': ['ショアキーパー']}},
+    )
+    _write_json(
+        tmp_path / 'data' / 'locale' / 'ja' / 'echoes.json',
+        {
+            'bellbornegeochelone': {
+                'display_name': '鐘鳴の亀守',
+                'normalized': '鐘鳴の亀守',
+                'aliases': ['鐘鳴の亀守'],
+            }
+        },
+    )
+    _write_json(
+        tmp_path / 'data' / 'locale' / 'ja' / 'achievements.json',
+        {'firststeps': {'display_name': '最初の一歩', 'normalized': '最初の一歩', 'aliases': ['最初の一歩']}},
+    )
+
+    monkeypatch.setattr(inventory_models, 'basePATH', tmp_path)
+    monkeypatch.setattr(inventory_models.app_config, 'gameLanguage', 'Japanese')
+
+    resolver = inventory_models.MetadataResolver()
+
+    item_name, item_image = resolver.resolve_item(2)
+    weapon_name, weapon_image, rarity = resolver.resolve_weapon(21010074)
+
+    assert item_name == 'シェルクレジット'
+    assert item_image == 'IconA/shell.png'
+    assert weapon_name == '翠緑の残光'
+    assert weapon_image == 'IconWeapon/emerald.png'
+    assert rarity == 5
+    assert resolver.resolve_character(1105) == 'ショアキーパー'
+    assert resolver.resolve_echo(310000010) == '鐘鳴の亀守'
+    assert resolver.resolve_achievement(9001) == '最初の一歩'
 
 
 def test_load_inventory_session_prefers_scan_result(tmp_path) -> None:

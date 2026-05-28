@@ -10,6 +10,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..config.app_config import app_config, basePATH
 from ..scraping import data as scraping_data
 
 _SESSION_SCAN_RESULT = 'scan_result.json'
@@ -65,15 +66,78 @@ class InventoryDocument:
     message_lines: tuple[str, ...] = field(default_factory=tuple)
 
 
+def _load_json_file(path: Path) -> object | None:
+    try:
+        return json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _resolve_game_language_code() -> str:
+    selected = str(getattr(app_config, 'gameLanguage', 'English') or 'English')
+
+    if (basePATH / 'data' / 'locale' / selected).is_dir() or (basePATH / 'data' / selected).is_dir():
+        return selected
+
+    payload = _load_json_file(basePATH / 'data' / 'languages.json')
+    if isinstance(payload, dict):
+        mapped = payload.get(selected)
+        if isinstance(mapped, str) and mapped:
+            return mapped
+        if selected in payload.values():
+            return selected
+
+    return 'en'
+
+
+def _load_generated_catalog(filename: str) -> dict[str, dict]:
+    payload = _load_json_file(basePATH / 'data' / 'catalog' / filename)
+    return payload if isinstance(payload, dict) else {}
+
+
+def _load_generated_locale(filename: str, language_code: str) -> dict[str, dict]:
+    candidates = (language_code,) if language_code == 'en' else (language_code, 'en')
+    for code in candidates:
+        payload = _load_json_file(basePATH / 'data' / 'locale' / code / filename)
+        if isinstance(payload, dict) and payload:
+            return payload
+    return {}
+
+
 class MetadataResolver:
     """Resolve ids into display labels and optional image paths."""
 
     def __init__(self) -> None:
+        language_code = _resolve_game_language_code()
+
         self._items_by_id = self._build_info_lookup(scraping_data.itemsID)
+        self._items_by_id.update(
+            self._build_generated_info_lookup('items.json', language_code=language_code, fields=('image',))
+        )
+
         self._weapons_by_id = self._build_info_lookup(scraping_data.weaponsID)
+        self._weapons_by_id.update(
+            self._build_generated_info_lookup(
+                'weapons.json',
+                language_code=language_code,
+                fields=('image', 'rarity'),
+            )
+        )
+
         self._characters_by_id = self._build_name_lookup(scraping_data.charactersID, prettify=True)
+        self._characters_by_id.update(
+            self._build_generated_name_lookup('characters.json', language_code=language_code)
+        )
+
         self._echoes_by_id = self._build_name_lookup(scraping_data.echoesID, prettify=True)
+        self._echoes_by_id.update(
+            self._build_generated_name_lookup('echoes.json', language_code=language_code)
+        )
+
         self._achievements_by_id = self._build_name_lookup(scraping_data.achievementsID, prettify=False)
+        self._achievements_by_id.update(
+            self._build_generated_name_lookup('achievements.json', language_code=language_code)
+        )
 
     @staticmethod
     def _build_info_lookup(mapping: dict) -> dict[str, dict]:
@@ -91,6 +155,67 @@ class MetadataResolver:
                 continue
             display_name = MetadataResolver._prettify_name(name) if prettify else str(name)
             result[str(identifier)] = display_name
+        return result
+
+    @staticmethod
+    def _extract_display_text(payload: object) -> str | None:
+        if not isinstance(payload, dict):
+            return None
+        value = payload.get('display_name')
+        if isinstance(value, str) and value:
+            return value
+        value = payload.get('display_text')
+        if isinstance(value, str) and value:
+            return value
+        value = payload.get('name')
+        if isinstance(value, str) and value:
+            return value
+        return None
+
+    @classmethod
+    def _build_generated_info_lookup(
+        cls,
+        catalog_filename: str,
+        *,
+        language_code: str,
+        fields: tuple[str, ...],
+    ) -> dict[str, dict]:
+        catalog = _load_generated_catalog(catalog_filename)
+        locale = _load_generated_locale(catalog_filename, language_code)
+        if not catalog or not locale:
+            return {}
+
+        result: dict[str, dict] = {}
+        for canonical_key, info in catalog.items():
+            if not isinstance(info, dict) or 'id' not in info:
+                continue
+            display_name = cls._extract_display_text(locale.get(canonical_key))
+            if not display_name:
+                continue
+
+            record = {'name': display_name}
+            for field in fields:
+                value = info.get(field)
+                if value is not None:
+                    record[field] = value
+            result[str(info['id'])] = record
+        return result
+
+    @classmethod
+    def _build_generated_name_lookup(cls, catalog_filename: str, *, language_code: str) -> dict[str, str]:
+        catalog = _load_generated_catalog(catalog_filename)
+        locale = _load_generated_locale(catalog_filename, language_code)
+        if not catalog or not locale:
+            return {}
+
+        result: dict[str, str] = {}
+        for canonical_key, info in catalog.items():
+            if not isinstance(info, dict) or 'id' not in info:
+                continue
+            display_name = cls._extract_display_text(locale.get(canonical_key))
+            if not display_name:
+                continue
+            result[str(info['id'])] = display_name
         return result
 
     @staticmethod
