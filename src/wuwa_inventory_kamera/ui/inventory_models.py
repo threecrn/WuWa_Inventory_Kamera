@@ -95,6 +95,7 @@ class MetadataResolver:
 
     def __init__(self) -> None:
         language_code = _resolve_game_language_code()
+        scraping_data.ensureDataLoaded(language_code)
 
         self._items_by_id = self._build_info_lookup(scraping_data.itemsID)
         self._items_by_id.update(

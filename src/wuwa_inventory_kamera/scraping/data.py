@@ -24,6 +24,7 @@ achievementsID: dict = {}
 echoStats: dict = {}
 definedText: dict = {}
 sonataName: list = []
+_loaded_language: str | None = None
 
 
 def _load_json(path: pathlib.Path, default):
@@ -214,6 +215,7 @@ def loadData(language: str | None = None) -> None:
 
     global itemsID, charactersID, weaponsID, echoesID, achievementsID
     global echoStats, definedText, sonataName
+    global _loaded_language
 
     itemsID.clear()
     itemsID.update(_load('items.json', generated=lambda: _build_generated_items(data_root, language)))
@@ -272,8 +274,16 @@ def loadData(language: str | None = None) -> None:
     sonataName.clear()
     sonataName.extend(_load('sonataName.json', default=[], generated=lambda: _build_generated_sonata_keys(data_root)))
 
+    _loaded_language = language
     logging.info('Data loaded: %d definedText entries', len(definedText))
 
 
-# Load defaults at import time (same behaviour as the legacy scraping.data module)
-loadData('en')
+def ensureDataLoaded(language: str | None = None) -> None:
+    """Load scraping lookup caches on demand.
+
+    When *language* is omitted, the legacy compatibility caches keep their
+    existing English-default behavior.
+    """
+    requested_language = language or 'en'
+    if _loaded_language != requested_language:
+        loadData(requested_language)

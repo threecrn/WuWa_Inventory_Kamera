@@ -1,14 +1,27 @@
 from __future__ import annotations
 
+import importlib
 import json
 from pathlib import Path
 
+import wuwa_inventory_kamera.scraping.service.assemblers.item_assembler as item_assembler_module
 import wuwa_inventory_kamera.scraping.data as scraping_data
 
 
 def _write_json(path: Path, data) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+
+
+def test_scraping_data_does_not_preload_until_requested(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_json(tmp_path / 'data' / 'en' / 'items.json', {'shellcredit': {'id': 1}})
+
+    reloaded = importlib.reload(scraping_data)
+
+    assert reloaded.itemsID == {}
+
+    assert item_assembler_module._get_data() == {'shellcredit': {'id': 1}}
 
 
 def test_load_data_falls_back_to_generated_outputs_when_compat_missing(tmp_path, monkeypatch) -> None:

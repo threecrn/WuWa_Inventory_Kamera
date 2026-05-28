@@ -38,7 +38,9 @@ _ASCENSION_LEVELS = (20, 40, 50, 60, 70, 80, 90)
 
 
 def _get_data():
-    from ...data import charactersID, weaponsID, definedText
+    from ...data import ensureDataLoaded, charactersID, weaponsID, definedText
+
+    ensureDataLoaded()
     return charactersID, weaponsID, definedText
 
 

@@ -29,7 +29,9 @@ logger = logging.getLogger(__name__)
 
 
 def _get_defined_text() -> dict:
-    from ...data import definedText
+    from ...data import ensureDataLoaded, definedText
+
+    ensureDataLoaded()
     return definedText
 
 

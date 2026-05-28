@@ -192,7 +192,9 @@ def _runtime_echo_name_allowed_chars() -> str | None:
         logger.debug('Echo-name runtime allowlist fallback: %s', last_exc)
 
     # Fallback for tests/CLI flows where localized files may not be present.
-    from ..data import echoesID
+    from ..data import ensureDataLoaded, echoesID
+
+    ensureDataLoaded(language_code)
 
     return _allowed_chars_from_names(
         [name for name in echoesID.keys() if isinstance(name, str)]
@@ -278,7 +280,9 @@ def _is_plausible_echo_name_results(
         return False
 
     # Keep this lazy so OcrService startup stays lightweight.
-    from ..data import echoesID
+    from ..data import ensureDataLoaded, echoesID
+
+    ensureDataLoaded()
 
     if not echoesID:
         # If data failed to load, avoid blocking OCR strategies.

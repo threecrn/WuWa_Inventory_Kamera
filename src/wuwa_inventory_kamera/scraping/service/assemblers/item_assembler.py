@@ -26,7 +26,9 @@ _DIGITS_RE = re.compile(r'\d[\d,]*')
 
 
 def _get_data():
-    from ...data import itemsID
+    from ...data import ensureDataLoaded, itemsID
+
+    ensureDataLoaded()
     return itemsID
 
 

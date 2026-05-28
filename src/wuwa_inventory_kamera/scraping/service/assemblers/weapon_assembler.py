@@ -33,7 +33,9 @@ _RANK_RE  = re.compile(r'\d')
 
 
 def _get_data():
-    from ...data import weaponsID, itemsID
+    from ...data import ensureDataLoaded, weaponsID, itemsID
+
+    ensureDataLoaded()
     return weaponsID, itemsID
 
 

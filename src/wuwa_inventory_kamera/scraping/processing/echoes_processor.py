@@ -50,7 +50,7 @@ from .stats_extractor import (
     RapidOcrStatsExtractor,
     StatsExtractor,
 )
-from ..data import echoesID, echoStats, sonataName
+from ..data import ensureDataLoaded, echoesID, echoStats, sonataName
 from ..utils.common import (
     convertToBlackWhite,
     darken_background_preserve_edges_ndarray,
@@ -673,6 +673,8 @@ def echoProcessor(
     list[dict]
         Parsed echo dicts in the same order as the input *scans* list.
     """
+    ensureDataLoaded()
+
     if raw_base is None:
         raw_base = Path(app_config.exportFolder) / session_id / "raw"
 
