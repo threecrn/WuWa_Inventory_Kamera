@@ -115,6 +115,8 @@ Current implementation target for Milestone 1:
 - otherwise aggregate the known standalone exports into one read-only document view
 - use a simple section selector when one document exposes multiple result sections
 - keep quick `Reload` and `Open folder` actions on the active source
+- filter the active section with a simple text search
+- show a lightweight details pane for the selected row
 
 ### Result types to support in the first full implementation
 

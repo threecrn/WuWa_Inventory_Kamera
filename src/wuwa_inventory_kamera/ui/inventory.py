@@ -10,7 +10,7 @@ import logging
 import os
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QWidget, QFileDialog, QGridLayout, QHBoxLayout, QLayout,
@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 from qfluentwidgets import FluentIcon as FIF
 from qfluentwidgets import (
     SettingCardGroup, ScrollArea, CardWidget,
-    StrongBodyLabel, BodyLabel,
+    StrongBodyLabel, BodyLabel, LineEdit,
 )
 
 from .custom_widgets import MultiplePushSettingCard
@@ -30,6 +30,7 @@ from .inventory_models import (
     InventoryDocument,
     InventoryRow,
     InventorySection,
+    filter_section_rows,
     load_inventory_file,
     load_inventory_session,
 )
@@ -39,6 +40,8 @@ logger = logging.getLogger('InventoryInterface')
 
 class ResultCard(CardWidget):
     """Text-first result card with optional thumbnail."""
+
+    clicked = Signal()
 
     def __init__(self, row: InventoryRow, parent=None):
         super().__init__(parent)
@@ -93,6 +96,11 @@ class ResultCard(CardWidget):
         vBoxLayout.setContentsMargins(10, 10, 10, 10)
         self.setToolTip(self.row.title)
 
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mouseReleaseEvent(e)
+
 
 class InventoryInterface(ScrollArea):
     """Scrollable result grid."""
@@ -100,6 +108,10 @@ class InventoryInterface(ScrollArea):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self._currentSectionIndex = 0
+        self._currentRowIndex = 0
+        self._currentSearchText = ''
+        self._searchBox: LineEdit | None = None
+        self._resultsLayout: QVBoxLayout | None = None
         self._currentDocument = InventoryDocument(kind='empty', title='', message_lines=())
         self._currentSourcePath: Path | None = None
         self._currentSourceKind: str | None = None
@@ -220,6 +232,8 @@ class InventoryInterface(ScrollArea):
     def __setDocument(self, document: InventoryDocument):
         self._currentDocument = document
         self._currentSectionIndex = 0
+        self._currentRowIndex = 0
+        self._currentSearchText = ''
         self.__renderCurrentDocument()
 
     def __renderCurrentDocument(self):
@@ -228,6 +242,8 @@ class InventoryInterface(ScrollArea):
         selected_index = min(self._currentSectionIndex, max(section_count - 1, 0))
         self._currentSectionIndex = selected_index
 
+        self._searchBox = None
+        self._resultsLayout = None
         self.__clearLayout(self.contentLayout)
 
         if document.title:
@@ -246,7 +262,16 @@ class InventoryInterface(ScrollArea):
             if len(document.sections) > 1:
                 self.__addSectionSelector(document.sections, selected_index)
 
-            self.__addSection(document.sections[selected_index], show_title=len(document.sections) == 1)
+            self.__addSearchBox()
+
+            resultsWidget = QWidget(self.contentWidget)
+            resultsLayout = QVBoxLayout(resultsWidget)
+            resultsLayout.setContentsMargins(0, 0, 0, 0)
+            resultsLayout.setSpacing(16)
+            self._resultsLayout = resultsLayout
+            self.contentLayout.addWidget(resultsWidget)
+
+            self.__renderCurrentSectionContent()
         elif not document.message_lines:
             label = BodyLabel('No supported results were found in this file.', self.contentWidget)
             label.setWordWrap(True)
@@ -277,12 +302,61 @@ class InventoryInterface(ScrollArea):
             return
 
         self._currentSectionIndex = index
-        self.__renderCurrentDocument()
+        self._currentRowIndex = 0
+        self.__renderCurrentSectionContent()
 
-    def __addSection(self, section: InventorySection, *, show_title: bool):
+    def __addSearchBox(self) -> LineEdit:
+        searchBox = LineEdit(self.contentWidget)
+        searchBox.setPlaceholderText('Search current section')
+        searchBox.setText(self._currentSearchText)
+        searchBox.textChanged.connect(self.__onSearchChanged)
+        self.contentLayout.addWidget(searchBox)
+        self._searchBox = searchBox
+        return searchBox
+
+    def __onSearchChanged(self, text: str):
+        if text == self._currentSearchText:
+            return
+
+        self._currentSearchText = text
+        self._currentRowIndex = 0
+        self.__renderCurrentSectionContent()
+
+    def __renderCurrentSectionContent(self):
+        if self._resultsLayout is None:
+            return
+
+        document = self._currentDocument
+        if not document.sections:
+            self.__clearLayout(self._resultsLayout)
+            return
+
+        selected_index = min(self._currentSectionIndex, max(len(document.sections) - 1, 0))
+        self._currentSectionIndex = selected_index
+        filtered_section = filter_section_rows(document.sections[selected_index], self._currentSearchText)
+        selected_row_index = min(self._currentRowIndex, max(len(filtered_section.rows) - 1, 0))
+        self._currentRowIndex = selected_row_index
+
+        self.__clearLayout(self._resultsLayout)
+        self.__addSection(
+            self._resultsLayout,
+            filtered_section,
+            show_title=len(document.sections) == 1,
+            selected_row_index=selected_row_index,
+        )
+
+        if filtered_section.rows:
+            self.__addDetailsPane(self._resultsLayout, filtered_section.rows[selected_row_index])
+
+        if self._currentSearchText and not filtered_section.rows:
+            label = BodyLabel('No rows match the current search.', self.contentWidget)
+            label.setWordWrap(True)
+            self._resultsLayout.addWidget(label)
+
+    def __addSection(self, layout: QVBoxLayout, section: InventorySection, *, show_title: bool, selected_row_index: int):
         if show_title:
             title = StrongBodyLabel(f'{section.title} ({len(section.rows)})', self.contentWidget)
-            self.contentLayout.addWidget(title)
+            layout.addWidget(title)
 
         sectionWidget = QWidget(self.contentWidget)
         sectionGrid = QGridLayout(sectionWidget)
@@ -292,9 +366,37 @@ class InventoryInterface(ScrollArea):
         columns = 3
         for index, row in enumerate(section.rows):
             card = ResultCard(row, sectionWidget)
+            if index == selected_row_index:
+                card.setStyleSheet('ResultCard { border: 1px solid rgba(0, 120, 212, 0.9); }')
+            card.clicked.connect(lambda idx=index: self.__onRowSelected(idx))
             sectionGrid.addWidget(card, index // columns, index % columns)
 
-        self.contentLayout.addWidget(sectionWidget)
+        layout.addWidget(sectionWidget)
+
+    def __onRowSelected(self, index: int):
+        if index < 0 or index == self._currentRowIndex:
+            return
+
+        self._currentRowIndex = index
+        self.__renderCurrentSectionContent()
+
+    def __addDetailsPane(self, layout: QVBoxLayout, row: InventoryRow):
+        detailsCard = CardWidget(self.contentWidget)
+        detailsLayout = QVBoxLayout(detailsCard)
+        detailsLayout.setContentsMargins(12, 12, 12, 12)
+        detailsLayout.setSpacing(6)
+
+        detailsTitle = StrongBodyLabel('Details', detailsCard)
+        detailsLayout.addWidget(detailsTitle)
+
+        for line in row.details_lines or (row.subtitle, *row.body_lines):
+            if not line:
+                continue
+            label = BodyLabel(line, detailsCard)
+            label.setWordWrap(True)
+            detailsLayout.addWidget(label)
+
+        layout.addWidget(detailsCard)
 
     def __clearLayout(self, layout: QLayout):
         while layout.count():

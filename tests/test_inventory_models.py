@@ -77,6 +77,9 @@ def test_load_inventory_document_normalizes_echo_export() -> None:
     assert 'Equipped: Shorekeeper' in row.body_lines
     assert 'Main: Healing Bonus 26.4%' in row.body_lines
     assert 'Substats: 2' in row.body_lines
+    assert 'Echo ID: 310000010' in row.details_lines
+    assert 'Main Stat: Healing Bonus 26.4%' in row.details_lines
+    assert 'Substat: Crit Rate 8.4%' in row.details_lines
 
 
 def test_load_inventory_document_normalizes_weapon_export() -> None:
@@ -124,6 +127,9 @@ def test_load_inventory_document_normalizes_character_export() -> None:
     assert 'Lv. 90 | Ascension 6 | Chain 2' in row.body_lines
     assert 'Weapon: Emerald of Genesis | Lv. 90 | Rank 1' in row.body_lines
     assert 'Skills: 2 entries' in row.body_lines
+    assert 'Weapon: Emerald of Genesis' in row.details_lines
+    assert 'Skill normal: 10' in row.details_lines
+    assert 'Skill skill: 10' in row.details_lines
 
 
 def test_load_inventory_document_normalizes_scan_session_sections() -> None:
@@ -153,6 +159,46 @@ def test_load_inventory_document_rejects_legacy_inventory() -> None:
     assert document.kind == 'unsupported_legacy'
     assert document.sections == ()
     assert document.message_lines[0] == 'Legacy inventory files are no longer supported.'
+
+
+def test_filter_section_rows_returns_all_rows_for_blank_query() -> None:
+    section = inventory_models.InventorySection(
+        title='Echoes',
+        rows=(
+            inventory_models.InventoryRow(title='Bell Borne Geochelone', subtitle='Echo ID: 310000010'),
+            inventory_models.InventoryRow(title='Tempest Mephis', subtitle='Echo ID: 320000001'),
+        ),
+    )
+
+    filtered = inventory_models.filter_section_rows(section, '   ')
+
+    assert filtered == section
+
+
+def test_filter_section_rows_matches_title_subtitle_and_body() -> None:
+    section = inventory_models.InventorySection(
+        title='Weapons',
+        rows=(
+            inventory_models.InventoryRow(
+                title='Emerald of Genesis',
+                subtitle='Weapon ID: 21010074',
+                body_lines=('Lv. 90 | Max 90 | Rank 1 | Rarity 5', 'Equipped: Shorekeeper'),
+            ),
+            inventory_models.InventoryRow(
+                title='Static Mist',
+                subtitle='Weapon ID: 21010015',
+                body_lines=('Lv. 80 | Max 80 | Rank 2 | Rarity 5',),
+            ),
+        ),
+    )
+
+    by_title = inventory_models.filter_section_rows(section, 'emerald')
+    by_subtitle = inventory_models.filter_section_rows(section, '21010015')
+    by_body = inventory_models.filter_section_rows(section, 'shorekeeper')
+
+    assert [row.title for row in by_title.rows] == ['Emerald of Genesis']
+    assert [row.title for row in by_subtitle.rows] == ['Static Mist']
+    assert [row.title for row in by_body.rows] == ['Emerald of Genesis']
 
 
 def test_load_inventory_session_prefers_scan_result(tmp_path) -> None:

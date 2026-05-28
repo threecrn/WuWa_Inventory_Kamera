@@ -29,6 +29,7 @@ class InventoryRow:
     title: str
     subtitle: str = ''
     body_lines: tuple[str, ...] = field(default_factory=tuple)
+    details_lines: tuple[str, ...] = field(default_factory=tuple)
     image_path: str | None = None
 
 
@@ -38,6 +39,20 @@ class InventorySection:
 
     title: str
     rows: tuple[InventoryRow, ...] = field(default_factory=tuple)
+
+
+def filter_section_rows(section: InventorySection, query: str) -> InventorySection:
+    """Return *section* with rows filtered by a case-insensitive text query."""
+    normalized_query = query.strip().lower()
+    if not normalized_query:
+        return section
+
+    rows = tuple(
+        row
+        for row in section.rows
+        if _row_matches_query(row, normalized_query)
+    )
+    return InventorySection(title=section.title, rows=rows)
 
 
 @dataclass(frozen=True)
@@ -120,6 +135,11 @@ class MetadataResolver:
         if isinstance(image_path, str) and image_path:
             return image_path
         return None
+
+
+def _row_matches_query(row: InventoryRow, query: str) -> bool:
+    searchable = ' '.join((row.title, row.subtitle, *row.body_lines, *row.details_lines)).lower()
+    return query in searchable
 
 
 def detect_document_kind(file_path: str, payload: object) -> str:
@@ -398,6 +418,7 @@ def _build_echo_rows(payload: list, resolver: MetadataResolver) -> tuple[Invento
                 title=resolver.resolve_echo(echo_id),
                 subtitle=f'Echo ID: {echo_id}',
                 body_lines=tuple(body_lines),
+                details_lines=_build_echo_details(echo_id, details),
             )
         )
     return tuple(rows)
@@ -429,6 +450,7 @@ def _build_weapon_rows(payload: list, resolver: MetadataResolver) -> tuple[Inven
                 title=weapon_name,
                 subtitle=f'Weapon ID: {entry.get("id")}',
                 body_lines=tuple(body_lines),
+                details_lines=_build_weapon_details(entry, rarity),
                 image_path=image_path,
             )
         )
@@ -448,6 +470,7 @@ def _build_item_rows(payload: list, resolver: MetadataResolver) -> tuple[Invento
                 title=item_name,
                 subtitle=f'Item ID: {entry.get("id")}',
                 body_lines=body_lines,
+                details_lines=_build_item_details(entry),
                 image_path=image_path,
             )
         )
@@ -489,6 +512,7 @@ def _build_character_rows(payload: dict, resolver: MetadataResolver) -> tuple[In
                 title=resolver.resolve_character(character_id),
                 subtitle=f'Character ID: {character_id}',
                 body_lines=tuple(body_lines),
+                details_lines=_build_character_details(details, resolver),
             )
         )
     return tuple(rows)
@@ -501,6 +525,7 @@ def _build_achievement_rows(payload: list, resolver: MetadataResolver) -> tuple[
             InventoryRow(
                 title=resolver.resolve_achievement(achievement_id),
                 subtitle=f'Achievement ID: {achievement_id}',
+                details_lines=(f'Achievement ID: {achievement_id}',),
             )
         )
     return tuple(rows)
@@ -515,10 +540,100 @@ def _build_shell_rows(payload: dict, resolver: MetadataResolver) -> tuple[Invent
                 title=item_name,
                 subtitle=f'Item ID: {item_id}',
                 body_lines=(f'Count: {amount}',),
+                details_lines=(f'Item ID: {item_id}', f'Count: {amount}'),
                 image_path=image_path,
             )
         )
     return tuple(rows)
+
+
+def _build_echo_details(echo_id: object, details: dict) -> tuple[str, ...]:
+    lines = [f'Echo ID: {echo_id}']
+
+    for key, label in (
+        ('level', 'Level'),
+        ('tuneLv', 'Tune Level'),
+        ('rarity', 'Rarity'),
+        ('sonata', 'Sonata'),
+        ('_cost', 'Cost'),
+        ('_equipped', 'Equipped'),
+        ('_scanIndex', 'Scan Index'),
+        ('_monsterId', 'Monster ID'),
+    ):
+        value = details.get(key)
+        if value is not None and value != '':
+            lines.append(f'{label}: {value}')
+
+    stats = details.get('stats')
+    if isinstance(stats, dict):
+        main_stats = stats.get('main')
+        if isinstance(main_stats, dict):
+            for stat_name, stat_value in main_stats.items():
+                lines.append(f'Main Stat: {stat_name} {stat_value}')
+
+        sub_stats = stats.get('sub')
+        if isinstance(sub_stats, dict):
+            for stat_name, stat_value in sub_stats.items():
+                lines.append(f'Substat: {stat_name} {stat_value}')
+
+    return tuple(lines)
+
+
+def _build_weapon_details(entry: dict, rarity: object) -> tuple[str, ...]:
+    lines = [f'Weapon ID: {entry.get("id")}']
+
+    for label, value in (
+        ('Level', entry.get('level')),
+        ('Max Level', entry.get('maxLevel')),
+        ('Rank', entry.get('rank')),
+        ('Rarity', rarity),
+        ('Equipped', entry.get('_equipped')),
+    ):
+        if value is not None and value != '':
+            lines.append(f'{label}: {value}')
+
+    return tuple(lines)
+
+
+def _build_item_details(entry: dict) -> tuple[str, ...]:
+    lines = [f'Item ID: {entry.get("id")}']
+    if 'count' in entry:
+        lines.append(f'Count: {entry.get("count")}')
+    return tuple(lines)
+
+
+def _build_character_details(details: dict, resolver: MetadataResolver) -> tuple[str, ...]:
+    lines: list[str] = []
+
+    for label, key in (
+        ('Level', 'level'),
+        ('Ascension', 'ascension'),
+        ('Chain', 'chain'),
+    ):
+        value = details.get(key)
+        if value is not None:
+            lines.append(f'{label}: {value}')
+
+    weapon = details.get('weapon')
+    if isinstance(weapon, dict) and weapon:
+        weapon_name, _, weapon_rarity = resolver.resolve_weapon(weapon.get('id', ''))
+        lines.append(f'Weapon: {weapon_name}')
+        for label, value in (
+            ('Weapon ID', weapon.get('id')),
+            ('Weapon Level', weapon.get('level')),
+            ('Weapon Ascension', weapon.get('ascension')),
+            ('Weapon Rank', weapon.get('rank')),
+            ('Weapon Rarity', weapon_rarity),
+        ):
+            if value is not None and value != '':
+                lines.append(f'{label}: {value}')
+
+    skills = details.get('skills')
+    if isinstance(skills, dict):
+        for skill_name, skill_level in skills.items():
+            lines.append(f'Skill {skill_name}: {skill_level}')
+
+    return tuple(lines)
 
 
 def _item_section_title(file_name: str) -> str:
