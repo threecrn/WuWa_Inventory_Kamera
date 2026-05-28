@@ -29,7 +29,7 @@ Implemented so far:
 Still incomplete:
 
 - Export schema cleanup has started additively, but more result payloads still need the same explicit canonical-key treatment.
-- The export plan still needs an explicit compatibility policy for third-party consumers and a threshold for when a v2 format becomes justified.
+- The export plan still needs concrete contract tests for third-party compatibility and a more operational v2 decision checklist.
 - OCR coverage is still only partially localized; more menu text and region-specific checks need to stop assuming English text.
 
 ## Current Mismatch
@@ -238,6 +238,16 @@ Recommended trigger conditions for v2:
 - current compatibility fields begin to dominate payload size or maintenance cost
 - downstream consumers would benefit from an explicit schema identifier and cleaner canonical-key-first structure
 
+Recommended v2 decision checklist:
+
+- Can the change be expressed by adding new fields while preserving all existing v1 fields?
+- Can existing numeric id object keys and join fields remain unchanged in v1?
+- Can a current third-party v1 consumer safely ignore the new data and continue working?
+- Would implementing the change in v1 require ambiguous duplicate fields or contradictory semantics?
+- Would continuing to extend v1 make documentation, maintenance, or testing meaningfully harder than carrying a separate v2?
+
+If the answer is "no" to one of the first three questions, or "yes" to one of the last two, prefer defining a versioned v2 contract instead of forcing the change into v1.
+
 Recommended v2 shape decisions:
 
 - include an explicit schema version field such as `export_version: 2`
@@ -353,12 +363,14 @@ Status: mostly complete
 
 ### Phase 3: export cleanup
 
-Status: started, additive first slice landed
+Status: started, additive v1 slices landed
 
 - Keep the current export family backward compatible while adding explicit canonical-key fields.
 - Add explicit `*_key` fields where current names are ambiguous.
 - Echo exports now include explicit `echo_key` and `sonata_key` fields while preserving the current id-keyed outer shape.
 - Character exports now include explicit `character_key` and nested `weapon_key` fields while preserving the current id-keyed outer shape.
+- Weapon exports now include explicit `weapon_key` fields while preserving legacy `id`, `level`, `maxLevel`, and `rank` fields.
+- `devItems` and `resources` exports now include explicit `item_key` fields while preserving legacy `id` and `count` fields.
 - The inventory viewer now renders those key-bearing payloads and resolves localized sonata and equipped-character labels from generated locale data.
 - Stop adding new reliance on localized labels in result payloads.
 - Add round-trip tests proving a non-English game locale still exports English canonical identifiers.
@@ -401,6 +413,9 @@ Minimum coverage for this migration:
 - UI tests that show localized labels instead of prettified slugs
 - OCR tests that resolve a localized token back to the same canonical key exported in English mode
 - round-trip tests where a non-English game locale still produces result JSONs with English canonical identifiers
+- v1 contract tests for each `*_wuwainventorykamera.json` family that assert legacy fields remain present and legacy numeric-id keying remains unchanged
+- parser-compatibility tests that simulate a minimal third-party v1 consumer and verify additive `*_key` fields do not break it
+- if v2 is introduced, writer tests that prove v1 and v2 are emitted or selected intentionally rather than by silent schema drift
 
 Coverage already in place:
 
@@ -414,6 +429,8 @@ Notable remaining gaps:
 
 - alias-collision validation coverage inside non-English locale generation
 - end-to-end export tests that assert explicit canonical `*_key` fields
+- explicit v1 contract tests for weapons, items, echoes, and characters exports as consumed by downstream tools
+- a written v2 naming and selection rule if a second export family is introduced
 - broader OCR/menu-text validation outside the currently migrated name-matching flows
 
 ## Recommended Decisions
@@ -425,4 +442,6 @@ These choices keep the plan coherent and reduce future churn.
 - Keep English display strings in `data/locale/en/`, not in the catalog.
 - Materialize lookup JSONs instead of building them ad hoc at runtime so tests can assert the exact output.
 - Prefer explicit `*_key` export fields when a schema is already being touched.
+- Treat the current `*_wuwainventorykamera.json` filenames and shapes as the v1 public contract; do not make silent breaking changes there.
+- If a v2 export family is needed, give it explicit filenames or an explicit versioned session envelope instead of mutating v1 in place.
 - Do not recreate on-disk `data/<lang>/*.json` name-to-id files; keep any remaining compatibility only as in-memory adapters over generated data.
