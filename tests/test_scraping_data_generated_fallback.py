@@ -3,9 +3,14 @@ from __future__ import annotations
 import importlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
+import numpy as np
 import wuwa_inventory_kamera.scraping.service.assemblers.item_assembler as item_assembler_module
 import wuwa_inventory_kamera.scraping.data as scraping_data
+import wuwa_inventory_kamera.scraping.processing.stats_extractor as stats_extractor_module
+import wuwa_inventory_kamera.scraping.scanning.achievement_workflow as achievement_workflow_module
+import wuwa_inventory_kamera.game.navigation as navigation_module
 
 
 def _write_json(path: Path, data) -> None:
@@ -22,6 +27,108 @@ def test_scraping_data_does_not_preload_until_requested(tmp_path, monkeypatch) -
     assert reloaded.itemsID == {}
 
     assert item_assembler_module._get_data() == {'shellcredit': {'id': 1}}
+
+
+def test_stats_extractor_loads_echo_stats_on_demand(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_json(tmp_path / 'data' / 'en' / 'echoStats.json', {'critrate': 'cr%'})
+
+    reloaded_data = importlib.reload(scraping_data)
+    reloaded_stats = importlib.reload(stats_extractor_module)
+
+    assert reloaded_data.echoStats == {}
+
+    assert reloaded_stats._matchStats(['crit', 'rate']) == ['critrate']
+    assert reloaded_data.echoStats == {'critrate': 'cr%'}
+
+
+def test_navigation_main_menu_check_loads_defined_text_on_demand(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_json(
+        tmp_path / 'data' / 'en' / 'definedText.json',
+        {'PrefabTextItem_1547656443_Text': 'terminal localized'},
+    )
+
+    reloaded_data = importlib.reload(scraping_data)
+
+    monkeypatch.setattr(
+        navigation_module,
+        'capture_full',
+        lambda *_args, **_kwargs: np.zeros((12, 12, 3), dtype=np.uint8),
+    )
+    monkeypatch.setattr(navigation_module, '_nav_ocr', lambda *_args, **_kwargs: 'terminal localized')
+
+    navigator = navigation_module.GameNavigator.__new__(navigation_module.GameNavigator)
+    navigator.layout = SimpleNamespace(
+        width=12,
+        height=12,
+        monitor=1,
+        terminal=SimpleNamespace(x=0, y=0, w=12, h=12),
+    )
+    navigator.gw = object()
+
+    assert reloaded_data.definedText == {}
+    assert navigator.is_in_main_menu() is True
+    assert reloaded_data.definedText == {'PrefabTextItem_1547656443_Text': 'terminal localized'}
+
+
+def test_achievement_workflow_loads_achievements_on_demand(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_json(tmp_path / 'data' / 'en' / 'achievements.json', {'first step': 1})
+
+    reloaded_data = importlib.reload(scraping_data)
+    monkeypatch.setattr(
+        achievement_workflow_module,
+        'capture_region',
+        lambda *_args, **_kwargs: np.zeros((4, 4, 3), dtype=np.uint8),
+    )
+
+    pasted_names: list[str] = []
+
+    class _FakeCtrl:
+        def press_key(self, *_args, **_kwargs) -> None:
+            return None
+
+        def click(self, *_args, **_kwargs) -> None:
+            return None
+
+        def paste(self, text: str, **_kwargs) -> None:
+            pasted_names.append(text)
+
+    class _FakeFuture:
+        def result(self, timeout: int | None = None):
+            _ = timeout
+            return SimpleNamespace(completed=True)
+
+    class _FakeOcr:
+        def submit(self, capture):
+            assert capture.achievement_name == 'first step'
+            assert capture.achievement_id == 1
+            return _FakeFuture()
+
+    achievements_layout = SimpleNamespace(
+        achievementsButton=SimpleNamespace(x=0, y=0),
+        achievementsTab=SimpleNamespace(x=0, y=0),
+        searchBar=SimpleNamespace(x=0, y=0),
+        searchButton=SimpleNamespace(x=0, y=0),
+        status=SimpleNamespace(x=0, y=0, w=4, h=4),
+    )
+    nav = SimpleNamespace(
+        layout=SimpleNamespace(achievements=achievements_layout, width=1920, height=1080, monitor=1),
+        ctrl=_FakeCtrl(),
+        gw=object(),
+    )
+
+    workflow = achievement_workflow_module.AchievementWorkflow(
+        nav=nav,
+        ocr_service=_FakeOcr(),
+        session=object(),
+    )
+
+    assert reloaded_data.achievementsID == {}
+    assert workflow.run() == ['1']
+    assert pasted_names == ['first step']
+    assert reloaded_data.achievementsID == {'first step': 1}
 
 
 def test_load_data_falls_back_to_generated_outputs_when_compat_missing(tmp_path, monkeypatch) -> None:

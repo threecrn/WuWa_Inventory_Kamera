@@ -31,11 +31,17 @@ from collections import defaultdict
 
 import numpy as np
 
-from ..data import echoStats
 from ..utils.common import convertToBlackWhite, darken_background_preserve_edges_ndarray
 from ..ocr import imageToString
 
 logger = logging.getLogger(__name__)
+
+
+def _get_echo_stats() -> dict:
+    from ..data import ensureDataLoaded, echoStats
+
+    ensureDataLoaded()
+    return echoStats
 
 
 # ---------------------------------------------------------------------------
@@ -58,7 +64,7 @@ def _matchStats(text: list[str]) -> list[str]:
     they arrive as the single token ``'resonanceliberation dmgbonus'``; after
     space-stripping this matches ``'resonanceliberationdmgbonus'`` directly.
     """
-    valid = set(echoStats)
+    valid = set(_get_echo_stats())
     results: list[str] = []
     i = 0
     while i < len(text):
@@ -195,9 +201,10 @@ class StatsExtractor(abc.ABC):
 
         tune_lv = max(0, len(values) - 2)
         stats: dict = defaultdict(dict)
+        echo_stats = _get_echo_stats()
 
         for idx, (stat_name, stat_value) in enumerate(zip(names, values)):
-            stat_name = echoStats.get(stat_name, stat_name)
+            stat_name = echo_stats.get(stat_name, stat_name)
             bucket = 'main' if idx < 2 else 'sub'
             try:
                 if stat_value.endswith('%'):
@@ -261,8 +268,9 @@ class StatsExtractor(abc.ABC):
 
         tune_lv = max(0, len(values) - 2)
         stats: dict = defaultdict(dict)
+        echo_stats = _get_echo_stats()
         for idx, (stat_name, stat_value) in enumerate(zip(names, values)):
-            stat_name = echoStats.get(stat_name, stat_name)
+            stat_name = echo_stats.get(stat_name, stat_name)
             bucket = 'main' if idx < 2 else 'sub'
             try:
                 if stat_value.endswith('%'):

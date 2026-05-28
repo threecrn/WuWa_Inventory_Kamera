@@ -686,7 +686,10 @@ class GameNavigator:
         Quick OCR check to see if the game is showing the main terminal
         menu.
         """
-        from ..scraping.data import definedText
+        from ..scraping.data import ensureDataLoaded, definedText
+
+        ensureDataLoaded()
+
         full = capture_full(self.layout.width, self.layout.height, self.layout.monitor, gw=self.gw)
         terminal_roi = self.layout.terminal
         crop = full[
