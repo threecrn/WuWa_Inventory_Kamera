@@ -10,6 +10,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .. import localization_data as _localization_data
 from ..config.app_config import app_config, basePATH
 from ..scraping import data as scraping_data
 
@@ -67,41 +68,26 @@ class InventoryDocument:
 
 
 def _load_json_file(path: Path) -> object | None:
-    try:
-        return json.loads(path.read_text(encoding='utf-8'))
-    except (OSError, json.JSONDecodeError):
-        return None
+    return _localization_data.load_json_file(path)
 
 
 def _resolve_game_language_code() -> str:
-    selected = str(getattr(app_config, 'gameLanguage', 'English') or 'English')
-
-    if (basePATH / 'data' / 'locale' / selected).is_dir() or (basePATH / 'data' / selected).is_dir():
-        return selected
-
-    payload = _load_json_file(basePATH / 'data' / 'languages.json')
-    if isinstance(payload, dict):
-        mapped = payload.get(selected)
-        if isinstance(mapped, str) and mapped:
-            return mapped
-        if selected in payload.values():
-            return selected
-
-    return 'en'
+    return _localization_data.resolve_game_language_code(
+        base_path=basePATH,
+        selected_language=getattr(app_config, 'gameLanguage', 'English'),
+    )
 
 
 def _load_generated_catalog(filename: str) -> dict[str, dict]:
-    payload = _load_json_file(basePATH / 'data' / 'catalog' / filename)
-    return payload if isinstance(payload, dict) else {}
+    return _localization_data.load_generated_catalog(filename, base_path=basePATH)
 
 
 def _load_generated_locale(filename: str, language_code: str) -> dict[str, dict]:
-    candidates = (language_code,) if language_code == 'en' else (language_code, 'en')
-    for code in candidates:
-        payload = _load_json_file(basePATH / 'data' / 'locale' / code / filename)
-        if isinstance(payload, dict) and payload:
-            return payload
-    return {}
+    return _localization_data.load_generated_locale(
+        filename,
+        language_code,
+        base_path=basePATH,
+    )
 
 
 class MetadataResolver:

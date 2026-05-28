@@ -8,9 +8,28 @@
 - Make updater outputs explicit about which files are canonical and which are locale-specific.
 - Remove the current coupling where one JSON file simultaneously acts as identifier source, display source, and OCR lookup table.
 
+## Status On 2026-05-28
+
+The architecture described below is no longer only aspirational. The repository already has the new generated contract in place, and the remaining work is now mostly about finishing consumer migration and cleaning up exports.
+
+Implemented so far:
+
+- `BaseDataUpdater` generates `data/catalog/` and `data/locale/<lang>/` outputs and can bootstrap them when those generated files are missing.
+- Non-English updater runs bootstrap the English canonical catalog first so canonical keys remain English-derived.
+- The inventory viewer metadata resolver already prefers generated catalog plus locale data.
+- OCR/runtime consumers for echo names, equipped-character names, and sonata filter matching already prefer generated locale data with legacy fallback.
+- Shared compatibility globals in `scraping.data` can now rebuild themselves from generated catalog plus locale data when legacy `data/<lang>/*.json` files are missing.
+
+Still incomplete:
+
+- Some consumers still read legacy `data/<lang>/*.json` compatibility files directly instead of going through generated catalog plus locale helpers.
+- Export schemas still need a deliberate cleanup pass so canonical keys are explicit and unambiguous.
+- OCR coverage is still only partially localized; more menu text and region-specific checks need to stop assuming English text.
+- Legacy compatibility outputs still exist and are still part of the runtime fallback path.
+
 ## Current Mismatch
 
-Today the updater still generates several files as localized lookup dicts keyed by normalized display text:
+The main architectural split now exists, but several legacy compatibility files are still present as localized lookup dicts keyed by normalized display text:
 
 - `characters.json`
 - `echoes.json`
@@ -20,11 +39,11 @@ Today the updater still generates several files as localized lookup dicts keyed 
 
 That happens to work for English because the English normalized display string is also the identifier we want to keep in result JSONs. It breaks down for non-English support because the key space would then change with the chosen locale.
 
-The same mismatch now shows up in multiple places:
+The remaining mismatch now shows up in a smaller set of places:
 
-- The updater emits localized normalized-name keys instead of stable canonical keys.
-- The inventory viewer currently prettifies identifiers because it does not have a proper localized-display layer.
-- OCR helpers build allowlists from those localized-key files, so runtime matching is coupled to whichever locale-specific JSON shape happens to exist.
+- Legacy compatibility files still expose localized normalized-name keys instead of stable canonical keys.
+- Some runtime consumers still use those compatibility files directly instead of the generated catalog plus locale contract.
+- Export payloads still mix ids, canonical names, and display-oriented fields in ways that are not yet explicit.
 
 ## Recommended Model
 
@@ -60,7 +79,7 @@ For UI text such as `definedText`, keep the stable upstream text IDs as the keys
 
 ## Target Data Layout
 
-Preferred end state:
+Current generated layout target:
 
 ```text
 data/
@@ -98,7 +117,10 @@ data/
             ...
 ```
 
-If moving raw files into `data/raw/` creates too much churn, phase 1 can keep the current raw-file locations and introduce only `data/catalog/` and `data/locale/`.
+Current status:
+
+- `data/catalog/` and `data/locale/` are already implemented and should be treated as the generated source of truth.
+- Raw updater inputs still effectively live in the legacy per-language layout today; moving them into `data/raw/` is still optional later cleanup.
 
 ## File Contracts
 
@@ -241,13 +263,20 @@ The updater should fail loudly or emit a clear report when it sees:
 
 ## Runtime Consumption
 
-Introduce one runtime resolver or repository that loads the canonical catalog plus one locale pack and exposes three distinct views:
+Converge on one runtime resolver or repository that loads the canonical catalog plus one locale pack and exposes three distinct views:
 
 - canonical metadata for exports and joins
 - localized display strings for UI rendering
 - reverse lookups and alias lists for OCR matching
 
 That resolver can sit behind existing modules during migration, but those modules should stop treating one flat `name -> id` dict as the only game-data shape.
+
+Current status:
+
+- `ui.inventory_models` already resolves display names from generated catalog plus locale data.
+- Some OCR and navigation helpers already use generated locale packs directly.
+- `scraping.data` now acts as a compatibility shim over generated outputs when legacy files are absent.
+- The remaining gap is consistency: not every consumer has been routed through the same shared abstraction yet.
 
 ### UI usage
 
@@ -277,27 +306,38 @@ This is especially important for:
 
 ## Migration Plan
 
-### Phase 1: updater-first
+### Phase 1: generated data contract
 
-- Add `data/catalog/` outputs.
-- Add `data/locale/<lang>/` outputs.
-- Keep existing `data/<lang>/*.json` lookup files as compatibility artifacts for now.
-- Add tests that confirm canonical keys stay identical across `en` and at least one non-English locale.
+Status: mostly complete
+
+- Keep `data/catalog/` as the canonical generated contract.
+- Keep `data/locale/<lang>/` plus locale lookup indexes as the localized generated contract.
+- Continue keeping `data/<lang>/*.json` lookup files only as compatibility artifacts for now.
+- Preserve tests that confirm canonical keys stay identical across `en` and at least one non-English locale.
+- Preserve updater bootstrapping so `wuwa-app` and `cli/update_data.py` can regenerate missing generated outputs from already-downloaded sources.
 
 ### Phase 2: runtime resolver
 
-- Add a single resolver that merges catalog plus locale pack.
-- Switch UI consumers first.
-- Switch OCR helper code next.
+Status: in progress
+
+- Consolidate on a single resolver or shared helper surface that merges catalog plus locale data.
+- Keep the inventory viewer on generated metadata and use it as the pattern for other consumers.
+- Continue switching OCR helper code and navigation helpers to generated locale data.
 - Keep legacy globals or shims only as adapters over the new data model.
+- Remove remaining direct reads of `data/<lang>/*.json` from runtime code and tools.
 
 ### Phase 3: export cleanup
+
+Status: not started in a coordinated way
 
 - Update assemblers and exporters to persist canonical keys only.
 - Add explicit `*_key` fields where current names are ambiguous.
 - Stop relying on localized labels in result payloads.
+- Add round-trip tests proving a non-English game locale still exports English canonical identifiers.
 
 ### Phase 4: compatibility cleanup
+
+Status: blocked on phase 2 and phase 3 completion
 
 - Remove consumers of the old `normalized localized name -> id` files.
 - Deprecate or delete the old generated lookup shape.
@@ -331,6 +371,19 @@ Minimum coverage for this migration:
 - UI tests that show localized labels instead of prettified slugs
 - OCR tests that resolve a localized token back to the same canonical key exported in English mode
 - round-trip tests where a non-English game locale still produces result JSONs with English canonical identifiers
+
+Coverage already in place:
+
+- updater tests for generated-output bootstrapping and English-first canonical catalog creation
+- inventory-model tests for generated localized metadata resolution
+- OCR and navigation tests for generated locale consumers and localized sonata matching
+- shared-loader tests that verify generated fallback behavior when compatibility files are missing
+
+Notable remaining gaps:
+
+- alias-collision validation coverage inside non-English locale generation
+- end-to-end export tests that assert explicit canonical `*_key` fields
+- broader OCR/menu-text validation outside the currently migrated name-matching flows
 
 ## Recommended Decisions
 

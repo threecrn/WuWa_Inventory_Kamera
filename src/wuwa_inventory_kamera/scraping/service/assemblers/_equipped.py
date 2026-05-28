@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
 import logging
 import re
 from difflib import get_close_matches
 
+from .... import localization_data as _localization_data
 from ....config.app_config import app_config, basePATH
 from ...ocr import tokens_to_string
 from ...ocr._types import OcrResult
@@ -22,24 +22,10 @@ _CHARACTER_NAMES_CACHE_VALUE: dict[str, str] | None = None
 
 
 def _resolve_game_language_code() -> str:
-    selected = str(getattr(app_config, 'gameLanguage', 'English') or 'English')
-    if (basePATH / 'data' / selected).is_dir():
-        return selected
-
-    languages_path = basePATH / 'data' / 'languages.json'
-    try:
-        with open(languages_path, 'r', encoding='utf-8') as f:
-            mapping = json.load(f)
-        if isinstance(mapping, dict):
-            mapped = mapping.get(selected)
-            if isinstance(mapped, str) and mapped:
-                return mapped
-            if selected in mapping.values():
-                return selected
-    except Exception:
-        pass
-
-    return 'en'
+    return _localization_data.resolve_game_language_code(
+        base_path=basePATH,
+        selected_language=getattr(app_config, 'gameLanguage', 'English'),
+    )
 
 
 def _runtime_character_names() -> tuple[str, ...]:
@@ -47,9 +33,11 @@ def _runtime_character_names() -> tuple[str, ...]:
     global _CHARACTER_NAMES_CACHE_VALUE
 
     language_code = _resolve_game_language_code()
-    candidate_paths = (
-        basePATH / 'data' / 'locale' / language_code / 'characters.json',
-        basePATH / 'data' / language_code / 'characters.json',
+    candidate_paths = _localization_data.iter_locale_data_paths(
+        'characters.json',
+        language_code,
+        base_path=basePATH,
+        include_legacy=True,
     )
 
     last_exc: Exception | None = None
@@ -60,14 +48,15 @@ def _runtime_character_names() -> tuple[str, ...]:
             if cache_key == _CHARACTER_NAMES_CACHE_KEY and _CHARACTER_NAMES_CACHE_VALUE is not None:
                 return tuple(_CHARACTER_NAMES_CACHE_VALUE.keys())
 
-            with open(characters_path, 'r', encoding='utf-8') as f:
-                payload = json.load(f)
+            payload = _localization_data.load_json_file(characters_path)
+            if payload is None:
+                continue
 
             if not isinstance(payload, dict):
                 continue
 
             names_by_normalized: dict[str, str] = {}
-            if characters_path.parent.name == 'locale':
+            if any(isinstance(entry, dict) for entry in payload.values()):
                 for canonical_key, entry in payload.items():
                     if not isinstance(canonical_key, str) or not canonical_key or not isinstance(entry, dict):
                         continue

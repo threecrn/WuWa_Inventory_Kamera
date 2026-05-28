@@ -42,7 +42,6 @@ from __future__ import annotations
 
 import concurrent.futures
 import itertools
-import json
 import logging
 import queue
 import threading
@@ -53,6 +52,7 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
+from ... import localization_data as _localization_data
 from ...config.app_config import app_config, basePATH
 from ..ocr import tokens_to_lines
 from ..ocr._rapidocr import RapidOcrBackend
@@ -119,24 +119,10 @@ def _allowed_chars_from_names(names: list[str]) -> str | None:
 
 def _resolve_game_language_code() -> str:
     """Return the selected in-game language code (e.g. ``en``, ``ja``)."""
-    selected = str(getattr(app_config, 'gameLanguage', 'English') or 'English')
-    if (basePATH / 'data' / 'locale' / selected).is_dir() or (basePATH / 'data' / selected).is_dir():
-        return selected
-
-    languages_path = basePATH / 'data' / 'languages.json'
-    try:
-        with open(languages_path, 'r', encoding='utf-8') as f:
-            mapping = json.load(f)
-        if isinstance(mapping, dict):
-            mapped = mapping.get(selected)
-            if isinstance(mapped, str) and mapped:
-                return mapped
-            if selected in mapping.values():
-                return selected
-    except Exception:
-        pass
-
-    return 'en'
+    return _localization_data.resolve_game_language_code(
+        base_path=basePATH,
+        selected_language=getattr(app_config, 'gameLanguage', 'English'),
+    )
 
 
 def _echo_names_from_payload(payload: object) -> list[str]:
@@ -174,10 +160,12 @@ def _runtime_echo_name_allowed_chars() -> str | None:
 
     language_code = _resolve_game_language_code()
 
-    candidate_paths = (
-        basePATH / 'data' / 'locale' / language_code / 'lookup' / 'echoes.json',
-        basePATH / 'data' / 'locale' / language_code / 'echoes.json',
-        basePATH / 'data' / language_code / 'echoes.json',
+    candidate_paths = _localization_data.iter_locale_data_paths(
+        'echoes.json',
+        language_code,
+        base_path=basePATH,
+        include_lookup=True,
+        include_legacy=True,
     )
 
     last_exc: Exception | None = None
@@ -188,8 +176,9 @@ def _runtime_echo_name_allowed_chars() -> str | None:
             if cache_key == _ECHO_NAME_RUNTIME_ALLOWED_CACHE_KEY:
                 return _ECHO_NAME_RUNTIME_ALLOWED_CACHE_VALUE
 
-            with open(echoes_path, 'r', encoding='utf-8') as f:
-                payload = json.load(f)
+            payload = _localization_data.load_json_file(echoes_path)
+            if payload is None:
+                continue
 
             allowed_chars = _allowed_chars_from_names(_echo_names_from_payload(payload))
             if allowed_chars:

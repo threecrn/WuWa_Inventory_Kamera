@@ -161,3 +161,31 @@ def test_parse_equipped_character_prefers_generated_locale_character_data(
     monkeypatch.setattr(equipped_module, '_CHARACTER_NAMES_CACHE_VALUE', None)
 
     assert parse_equipped_character([_token('Equipped by luno')]) == 'iuno'
+
+
+def test_parse_equipped_character_matches_generated_localized_alias(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    data_dir = tmp_path / 'data'
+    (data_dir / 'locale' / 'ja').mkdir(parents=True)
+    (data_dir / 'languages.json').write_text(
+        '{"English": "en", "日本語": "ja"}',
+        encoding='utf-8',
+    )
+    (data_dir / 'locale' / 'ja' / 'characters.json').write_text(
+        (
+            '{'
+            '"iuno": {"display_name": "イウノ", "normalized": "イウノ", "aliases": ["イウノ"]},'
+            '"shorekeeper": {"display_name": "ショアキーパー", "normalized": "ショアキーパー", "aliases": ["ショアキーパー"]}'
+            '}'
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.setattr(equipped_module, 'basePATH', tmp_path)
+    monkeypatch.setattr(equipped_module.app_config, 'gameLanguage', '日本語')
+    monkeypatch.setattr(equipped_module, '_CHARACTER_NAMES_CACHE_KEY', None)
+    monkeypatch.setattr(equipped_module, '_CHARACTER_NAMES_CACHE_VALUE', None)
+
+    assert parse_equipped_character([_token('Equipped by イウノ')]) == 'iuno'

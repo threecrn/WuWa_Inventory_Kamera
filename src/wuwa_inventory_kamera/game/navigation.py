@@ -37,7 +37,6 @@ from __future__ import annotations
 
 import enum
 import functools
-import json
 import logging
 from pathlib import Path
 import string
@@ -45,6 +44,7 @@ import time
 
 import numpy as np
 
+from .. import localization_data as _localization_data
 from ..config.app_config import app_config, basePATH
 from .input_controller import InputController
 from .screen import (
@@ -124,32 +124,18 @@ def _nav_ocr(image: np.ndarray, allowed: str | None = None) -> str:
 
 
 def _load_json_file(path: Path) -> object | None:
-    try:
-        return json.loads(path.read_text(encoding='utf-8'))
-    except (OSError, json.JSONDecodeError):
-        return None
+    return _localization_data.load_json_file(path)
 
 
 def _resolve_game_language_code() -> str:
-    selected = str(getattr(app_config, 'gameLanguage', 'English') or 'English')
-    data_root = basePATH / 'data'
-
-    if (data_root / 'locale' / selected).is_dir() or (data_root / selected).is_dir():
-        return selected
-
-    payload = _load_json_file(data_root / 'languages.json')
-    if isinstance(payload, dict):
-        mapped = payload.get(selected)
-        if isinstance(mapped, str) and mapped:
-            return mapped
-        if selected in payload.values():
-            return selected
-
-    return 'en'
+    return _localization_data.resolve_game_language_code(
+        base_path=basePATH,
+        selected_language=getattr(app_config, 'gameLanguage', 'English'),
+    )
 
 
 def _load_sonata_catalog() -> dict[str, int]:
-    payload = _load_json_file(basePATH / 'data' / 'catalog' / 'sonatas.json')
+    payload = _localization_data.load_generated_catalog('sonatas.json', base_path=basePATH)
     if isinstance(payload, dict):
         catalog = {
             slug: info['id']
@@ -173,12 +159,11 @@ def _load_sonata_catalog() -> dict[str, int]:
 
 
 def _load_sonata_locale(language_code: str) -> dict[str, dict]:
-    candidates = (language_code,) if language_code == 'en' else (language_code, 'en')
-    for code in candidates:
-        payload = _load_json_file(basePATH / 'data' / 'locale' / code / 'sonatas.json')
-        if isinstance(payload, dict) and payload:
-            return payload
-    return {}
+    return _localization_data.load_generated_locale(
+        'sonatas.json',
+        language_code,
+        base_path=basePATH,
+    )
 
 
 def _sonata_text_candidates(sonata_slug: str, *, locale_data: dict[str, dict]) -> tuple[str, ...]:
