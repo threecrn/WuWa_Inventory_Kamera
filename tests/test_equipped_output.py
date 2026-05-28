@@ -189,7 +189,7 @@ def test_echo_build_output_includes_explicit_canonical_keys() -> None:
     }
 
 
-def test_echo_parse_stats_records_visual_stat_order() -> None:
+def test_echo_parse_stats_preserves_visual_stat_order_in_objects() -> None:
     tune_level, stats = EchoAssembler._parse_stats(
         [
             _token_at('Crit', 0, 0),
@@ -212,8 +212,8 @@ def test_echo_parse_stats_records_visual_stat_order() -> None:
     )
 
     assert tune_level == 3
-    assert stats['_mainOrder'] == ['cd%', 'atk']
-    assert stats['_subOrder'] == ['atk%', 'cr%', 'hp%']
+    assert list(stats['main'].items()) == [('cd%', 44.0), ('atk', 150)]
+    assert list(stats['sub'].items()) == [('atk%', 10.9), ('cr%', 6.9), ('hp%', 7.1)]
 
 
 def test_parse_equipped_character_fuzzy_matches_localized_character_name(

@@ -118,7 +118,7 @@ def test_load_inventory_document_normalizes_echo_export() -> None:
     assert 'Substat: Crit Rate 8.4%' in row.details_lines
 
 
-def test_load_inventory_document_uses_rolled_main_and_explicit_stat_order() -> None:
+def test_load_inventory_document_uses_rolled_main_and_object_stat_order() -> None:
     payload = [
         {
             '310000010': {
@@ -127,10 +127,8 @@ def test_load_inventory_document_uses_rolled_main_and_explicit_stat_order() -> N
                 'rarity': 5,
                 '_cost': 4,
                 'stats': {
-                    'main': {'ATK': '150', 'Healing Bonus': '26.4%'},
-                    '_mainOrder': ['Healing Bonus', 'ATK'],
-                    'sub': {'ATK%': '9.4%', 'Crit Rate': '8.4%', 'HP%': '7.1%'},
-                    '_subOrder': ['Crit Rate', 'ATK%', 'HP%'],
+                    'main': {'Healing Bonus': '26.4%', 'ATK': '150'},
+                    'sub': {'Crit Rate': '8.4%', 'ATK%': '9.4%', 'HP%': '7.1%'},
                 },
             }
         }

@@ -91,13 +91,10 @@ def _bbox_center(bbox) -> tuple[float, float]:
 def _build_stats_dict(names: list[str], values: list[str], echo_stats: dict) -> tuple[int, dict]:
     tune_lv = max(0, len(values) - 2)
     stats: dict = defaultdict(dict)
-    main_order: list[str] = []
-    sub_order: list[str] = []
 
     for idx, (stat_name, stat_value) in enumerate(zip(names, values)):
         display_name = echo_stats.get(stat_name, stat_name)
         bucket = 'main' if idx < 2 else 'sub'
-        order = main_order if bucket == 'main' else sub_order
 
         try:
             if isinstance(stat_value, str) and stat_value.endswith('%'):
@@ -111,12 +108,6 @@ def _build_stats_dict(names: list[str], values: list[str], echo_stats: dict) -> 
             parsed_value = stat_value
 
         stats[bucket][stat_key] = parsed_value
-        order.append(stat_key)
-
-    if main_order:
-        stats['_mainOrder'] = main_order
-    if sub_order:
-        stats['_subOrder'] = sub_order
 
     return tune_lv, dict(stats)
 

@@ -143,9 +143,13 @@ def _raw_session_counts(raw_dir: Path) -> dict[str, int]:
     return counts
 
 
-def _detect_raw_session_kind(raw_dir: Path) -> str | None:
+def _detect_raw_session_kinds(raw_dir: Path) -> list[str]:
     counts = _raw_session_counts(raw_dir)
-    present = [session_type for session_type, count in counts.items() if count > 0]
+    return [session_type for session_type, count in counts.items() if count > 0]
+
+
+def _detect_raw_session_kind(raw_dir: Path) -> str | None:
+    present = _detect_raw_session_kinds(raw_dir)
     if len(present) == 1:
         return present[0]
     return None
@@ -224,6 +228,7 @@ def _filter_scans(
     scan_ids: str | None,
     scan_id_range: str | None,
     scan_label: str,
+    require_non_empty: bool = True,
 ) -> list:
     if scan_ids:
         requested: set[int] = set()
@@ -245,8 +250,14 @@ def _filter_scans(
                 ', '.join(f'{index:04d}' for index in sorted(missing)),
             )
         if not scans:
-            logger.error('No scans remain after applying --scan-ids filter.')
-            sys.exit(1)
+            if require_non_empty:
+                logger.error('No scans remain after applying --scan-ids filter.')
+                sys.exit(1)
+            logger.info(
+                'Skipping %s scans: no scans remain after applying --scan-ids filter.',
+                scan_label,
+            )
+            return []
         logger.info(
             'Filtered to %d %s scan(s): %s',
             len(scans),
@@ -269,8 +280,14 @@ def _filter_scans(
             sys.exit(1)
         scans = [scan for scan in scans if start_id <= scan.index < end_id]
         if not scans:
-            logger.error('No scans remain after applying --scan-id-range filter.')
-            sys.exit(1)
+            if require_non_empty:
+                logger.error('No scans remain after applying --scan-id-range filter.')
+                sys.exit(1)
+            logger.info(
+                'Skipping %s scans: no scans remain after applying --scan-id-range filter.',
+                scan_label,
+            )
+            return []
         logger.info(
             'Filtered to %d %s scan(s) in range %d–%d.',
             len(scans),
@@ -361,6 +378,31 @@ def _run_character_service(
         ocr_cache_path=ocr_cache_path,
         raw_base=raw_dir,
     )
+
+
+def _resolve_session_filters(args, session_kind: str, app_config) -> tuple[int, int, int]:
+    if session_kind == 'weapons':
+        config_min_rarity = app_config.weaponsMinRarity if app_config else 1
+        config_min_level = app_config.weaponsMinLevel if app_config else 0
+        min_rarity = config_min_rarity if args.min_rarity is None else args.min_rarity
+        min_level = config_min_level if args.min_level is None else args.min_level
+        max_level = 90
+    elif session_kind == 'echoes':
+        config_min_rarity = app_config.echoMinRarity if app_config else 1
+        config_min_level = app_config.echoMinLevel if app_config else 0
+        min_rarity = config_min_rarity if args.min_rarity is None else args.min_rarity
+        min_level = config_min_level if args.min_level is None else args.min_level
+        max_level = 25
+    else:
+        if args.min_rarity is not None:
+            logger.warning('--min-rarity is ignored for character sessions.')
+        if args.min_level is not None:
+            logger.warning('--min-level is ignored for character sessions.')
+        min_rarity = 1
+        min_level = 0
+        max_level = 90
+
+    return min_rarity, min_level, max_level
 
 
 # ---------------------------------------------------------------------------
@@ -496,82 +538,37 @@ def main() -> None:
     raw_dir    = _resolve_raw_dir(args, export_folder)
     session_id = raw_dir.parent.name
     output_dir = Path(args.output_dir) if args.output_dir else raw_dir.parent
-    session_kind = _detect_raw_session_kind(raw_dir)
+    session_kinds = _detect_raw_session_kinds(raw_dir)
     session_counts = _raw_session_counts(raw_dir)
 
-    if session_kind is None:
+    if not session_kinds:
+        logger.error(
+            'No supported raw scans found in %s. Expected echo_XXXX/, weapon_XXXX/, or char_XXXX/ directories.',
+            raw_dir,
+        )
+        sys.exit(1)
+
+    if len(session_kinds) == 1:
+        session_kind = session_kinds[0]
+    else:
         present = [
             f'{count} {kind}'
             for kind, count in session_counts.items()
             if count > 0
         ]
-        if present:
-            logger.error(
-                'Ambiguous raw session type in %s: found %s. Expected a single supported session type.',
-                raw_dir,
-                ', '.join(present),
-            )
-        else:
-            logger.error(
-                'No supported raw scans found in %s. Expected echo_XXXX/, weapon_XXXX/, or char_XXXX/ directories.',
-                raw_dir,
-            )
-        sys.exit(1)
-
-    if session_kind == 'weapons':
-        config_min_rarity = app_config.weaponsMinRarity if app_config else 1
-        config_min_level = app_config.weaponsMinLevel if app_config else 0
-        min_rarity: int = config_min_rarity if args.min_rarity is None else args.min_rarity
-        min_level: int = config_min_level if args.min_level is None else args.min_level
-        max_level = 90
-    elif session_kind == 'echoes':
-        config_min_rarity = app_config.echoMinRarity if app_config else 1
-        config_min_level = app_config.echoMinLevel if app_config else 0
-        min_rarity = config_min_rarity if args.min_rarity is None else args.min_rarity
-        min_level = config_min_level if args.min_level is None else args.min_level
-        max_level = 25
-    else:
-        if args.min_rarity is not None:
-            logger.warning('--min-rarity is ignored for character sessions.')
-        if args.min_level is not None:
-            logger.warning('--min-level is ignored for character sessions.')
-        min_rarity = 1
-        min_level = 0
-        max_level = 90
-
-    scan_label = _RAW_SESSION_TYPES[session_kind]['item_label']
-
-    if session_kind != 'characters' and (min_level < 0 or min_level > max_level):
-        logger.error(
-            '--min-level must be between 0 and %d for %s sessions.',
-            max_level,
-            session_kind,
+        logger.info(
+            'Mixed raw session in %s: found %s. Reprocessing each supported session type separately.',
+            raw_dir,
+            ', '.join(present),
         )
-        sys.exit(1)
 
     logger.info('Session   : %s', session_id)
-    logger.info('Type      : %s', session_kind)
+    if len(session_kinds) == 1:
+        logger.info('Type      : %s', session_kinds[0])
+    else:
+        logger.info('Types     : %s', ', '.join(session_kinds))
     logger.info('Raw dir   : %s', raw_dir)
     logger.info('Output dir: %s', output_dir)
-    if session_kind == 'characters':
-        logger.info('Filters   : none (character sessions are unfiltered)')
-    else:
-        logger.info('Min rarity: %d', min_rarity)
-        logger.info('Min level : %d', min_level)
-
-    # ── Load raw scans ─────────────────────────────────────────────────────
-    scans = _load_session_scans(raw_dir, session_kind)
-    if not scans:
-        logger.error('No raw scans found in %s', raw_dir)
-        sys.exit(1)
-    logger.info('Loaded %d raw scan(s)', len(scans))
-
-    scans = _filter_scans(
-        scans,
-        scan_ids=args.scan_ids,
-        scan_id_range=args.scan_id_range,
-        scan_label=scan_label,
-    )
 
     # ── Process ────────────────────────────────────────────────────────────
     providers = _PROVIDER_MAP[args.provider] if args.provider else _auto_providers()
@@ -580,48 +577,114 @@ def main() -> None:
         providers,
         args.max_batch_size,
     )
-    if session_kind == 'weapons':
-        records = _run_weapon_service(
-            scans,
-            raw_dir,
-            providers=providers,
-            min_rarity=min_rarity,
-            min_level=min_level,
-            write_debug=args.write_debug,
-            max_batch_size=args.max_batch_size,
-            ocr_cache_path=ocr_cache_path,
-        )
-    elif session_kind == 'characters':
-        records = _run_character_service(
-            scans,
-            raw_dir,
-            providers=providers,
-            write_debug=args.write_debug,
-            max_batch_size=args.max_batch_size,
-            ocr_cache_path=ocr_cache_path,
-        )
-    else:
-        records = _run_echo_service(
-            scans,
-            raw_dir,
-            providers=providers,
-            min_rarity=min_rarity,
-            min_level=min_level,
-            write_debug=args.write_debug,
-            max_batch_size=args.max_batch_size,
-            ocr_cache_path=ocr_cache_path,
-        )
 
-    logger.info('Accepted %d / %d %s scan(s)', len(records), len(scans), scan_label)
+    results: list[tuple[str, int, int, Path]] = []
+    require_non_empty = len(session_kinds) == 1
 
-    # ── Write output ───────────────────────────────────────────────────────
-    out_path = _write_output(
-        records,
-        output_dir,
-        _RAW_SESSION_TYPES[session_kind]['output_filename'],
+    for session_kind in session_kinds:
+        min_rarity, min_level, max_level = _resolve_session_filters(args, session_kind, app_config)
+        scan_label = _RAW_SESSION_TYPES[session_kind]['item_label']
+
+        if session_kind != 'characters' and (min_level < 0 or min_level > max_level):
+            logger.error(
+                '--min-level must be between 0 and %d for %s sessions.',
+                max_level,
+                session_kind,
+            )
+            sys.exit(1)
+
+        if len(session_kinds) > 1:
+            logger.info(
+                'Type      : %s (%d raw director%s)',
+                session_kind,
+                session_counts[session_kind],
+                'y' if session_counts[session_kind] == 1 else 'ies',
+            )
+        if session_kind == 'characters':
+            logger.info('Filters   : none (character sessions are unfiltered)')
+        else:
+            logger.info('Min rarity: %d', min_rarity)
+            logger.info('Min level : %d', min_level)
+
+        scans = _load_session_scans(raw_dir, session_kind)
+        if not scans:
+            if require_non_empty:
+                logger.error('No raw scans found in %s', raw_dir)
+                sys.exit(1)
+            logger.warning('No raw %s scans found in %s; skipping.', scan_label, raw_dir)
+            continue
+
+        logger.info('Loaded %d raw %s scan(s)', len(scans), scan_label)
+
+        scans = _filter_scans(
+            scans,
+            scan_ids=args.scan_ids,
+            scan_id_range=args.scan_id_range,
+            scan_label=scan_label,
+            require_non_empty=require_non_empty,
+        )
+        if not scans:
+            continue
+
+        if session_kind == 'weapons':
+            records = _run_weapon_service(
+                scans,
+                raw_dir,
+                providers=providers,
+                min_rarity=min_rarity,
+                min_level=min_level,
+                write_debug=args.write_debug,
+                max_batch_size=args.max_batch_size,
+                ocr_cache_path=ocr_cache_path,
+            )
+        elif session_kind == 'characters':
+            records = _run_character_service(
+                scans,
+                raw_dir,
+                providers=providers,
+                write_debug=args.write_debug,
+                max_batch_size=args.max_batch_size,
+                ocr_cache_path=ocr_cache_path,
+            )
+        else:
+            records = _run_echo_service(
+                scans,
+                raw_dir,
+                providers=providers,
+                min_rarity=min_rarity,
+                min_level=min_level,
+                write_debug=args.write_debug,
+                max_batch_size=args.max_batch_size,
+                ocr_cache_path=ocr_cache_path,
+            )
+
+        logger.info('Accepted %d / %d %s scan(s)', len(records), len(scans), scan_label)
+
+        out_path = _write_output(
+            records,
+            output_dir,
+            _RAW_SESSION_TYPES[session_kind]['output_filename'],
+        )
+        logger.info('Saved → %s', out_path)
+        results.append((session_kind, len(records), len(scans), out_path))
+
+    if not results:
+        logger.error('No scans remain to process in %s after applying the requested filters.', raw_dir)
+        sys.exit(1)
+
+    if len(results) == 1:
+        session_kind, record_count, _scan_count, out_path = results[0]
+        scan_label = _RAW_SESSION_TYPES[session_kind]['item_label']
+        print(f'Done. {record_count} {scan_label}(s) written to {out_path}')
+        return
+
+    total_records = sum(record_count for _kind, record_count, _scan_count, _out_path in results)
+    print(
+        f'Done. {total_records} item(s) written across {len(results)} export files in {output_dir}'
     )
-    logger.info('Saved → %s', out_path)
-    print(f'Done. {len(records)} {scan_label}(s) written to {out_path}')
+    for session_kind, record_count, _scan_count, out_path in results:
+        scan_label = _RAW_SESSION_TYPES[session_kind]['item_label']
+        print(f'  {out_path.name}: {record_count} {scan_label}(s)')
 
 
 if __name__ == '__main__':

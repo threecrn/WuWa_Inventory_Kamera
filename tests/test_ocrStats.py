@@ -50,8 +50,6 @@ def test_extract_stats_assembles_main_and_sub_stats_from_extractor_output() -> N
     assert stats == {
         'main': {'cd%': 44.0, 'atk': 150},
         'sub': {'atk%': 10.9, 'cd%': 13.8, 'hp': 360, 'cr%': 6.9, 'hp%': 7.1},
-        '_mainOrder': ['cd%', 'atk'],
-        '_subOrder': ['atk%', 'cd%', 'hp', 'cr%', 'hp%'],
     }
     assert returned_trace == trace
     assert extractor.calls == [
@@ -66,6 +64,15 @@ def test_extract_stats_assembles_main_and_sub_stats_from_extractor_output() -> N
             ),
             7,
         )
+    ]
+
+    assert list(stats['main'].items()) == [('cd%', 44.0), ('atk', 150)]
+    assert list(stats['sub'].items()) == [
+        ('atk%', 10.9),
+        ('cd%', 13.8),
+        ('hp', 360),
+        ('cr%', 6.9),
+        ('hp%', 7.1),
     ]
 
 
