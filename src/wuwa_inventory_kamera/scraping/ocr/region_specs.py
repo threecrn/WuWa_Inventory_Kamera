@@ -1192,7 +1192,7 @@ def _parse_section(
     spec_keys = {
         "color_space", "text_color_ranges", "threshold_mode",
         "floor_value", "morphology", "allowed_chars", "cache_mode",
-        "sig_text_floor", "sig_max_spread", "sig_downscale",
+        "sig_text_floor", "sig_max_spread",
         "invert", "background_color_ranges",
         "rarity_source", "rarity_overrides", "fallback", "single_line",
         "signature", "pre_upscale", "pre_downscale",
@@ -1253,6 +1253,11 @@ def _build_spec(
     # Determine the source for OCR-side parameters.  In the split format the
     # "ocr" sub-dict owns them; in the legacy format they live at the top level.
     ocr_source: dict = data.get("ocr") if isinstance(data.get("ocr"), dict) else data  # type: ignore[assignment]
+
+    if "sig_downscale" in data or "sig_downscale" in ocr_source:
+        raise ValueError(
+            "sig_downscale has been removed; use [section.signature].post_downscale"
+        )
 
     for simple_key in (
         "color_space", "threshold_mode", "floor_value", "morphology",
@@ -1315,23 +1320,15 @@ def _build_spec(
 
     raw_signature = data.get("signature")
     signature_data: dict = raw_signature if isinstance(raw_signature, dict) else {}
-    legacy_sig_downscale = data.get("sig_downscale")
-    if signature_data or legacy_sig_downscale is not None:
-        signature = _build_signature_preprocess(
-            signature_data,
-            legacy_post_downscale=legacy_sig_downscale,
-        )
+    if signature_data:
+        signature = _build_signature_preprocess(signature_data)
         if signature is not None:
             kwargs["signature_preprocess"] = signature
 
     return OcrRegionSpec(**kwargs)
 
 
-def _build_signature_preprocess(
-    data: dict,
-    *,
-    legacy_post_downscale: list[int] | tuple[int, int] | None = None,
-) -> SignaturePreprocessSpec | None:
+def _build_signature_preprocess(data: dict) -> SignaturePreprocessSpec | None:
     kwargs: dict = {}
 
     for simple_key in (
@@ -1378,12 +1375,6 @@ def _build_signature_preprocess(
     ):
         if scale_key in data:
             kwargs[scale_key] = _parse_size(data[scale_key], key=scale_key)
-
-    if legacy_post_downscale is not None and "post_downscale" not in kwargs:
-        kwargs["post_downscale"] = _parse_size(
-            legacy_post_downscale,
-            key="sig_downscale",
-        )
 
     if not kwargs:
         return None

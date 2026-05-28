@@ -4,6 +4,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 
 from wuwa_inventory_kamera.scraping.ocr.region_specs import (
     OcrRegionSpec,
@@ -417,7 +418,7 @@ def test_load_specs_from_toml_parses_rarity_and_fallback_color_space(tmp_path: P
     assert stats_value.signature_preprocess.post_downscale == (32, 16)
 
 
-def test_load_specs_from_toml_maps_legacy_sig_downscale_to_signature_post_downscale(
+def test_load_specs_from_toml_rejects_legacy_sig_downscale_alias(
     tmp_path: Path,
 ) -> None:
     config_path = tmp_path / "ocr_region_specs.toml"
@@ -435,11 +436,8 @@ def test_load_specs_from_toml_maps_legacy_sig_downscale_to_signature_post_downsc
         encoding="utf-8",
     )
 
-    specs = load_specs_from_toml(str(config_path))
-
-    stats_value = specs["echoes.fullStatsValue"]
-    assert stats_value.signature_preprocess is not None
-    assert stats_value.signature_preprocess.post_downscale == (32, 16)
+    with pytest.raises(ValueError, match="sig_downscale"):
+        load_specs_from_toml(str(config_path))
 
 
 def test_ocr_cache_round_trip_with_region_spec(tmp_path: Path) -> None:

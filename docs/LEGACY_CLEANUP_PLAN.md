@@ -197,18 +197,15 @@ continue the color-aware rendering work and remove the "legacy path" wording.
 
 ---
 
-## L-3: `region_specs.py` still accepts the `sig_downscale` TOML alias
+## L-3: `sig_downscale` compatibility alias removed
 
-`_build_region_spec_from_dict()` still reads `sig_downscale` as a compatibility
-alias for `signature.post_downscale`.
+`region_specs.py` no longer accepts top-level `sig_downscale`. Region-spec TOML
+files must now declare signature downscaling through
+`[section.signature].post_downscale`.
 
-### Current audit result
-No current TOML entries under `src/wuwa_inventory_kamera/config/` use
-`sig_downscale`.
-
-### Plan
-Remove the alias loader and its compatibility diagnostics once there is no need
-to preserve older TOML files.
+### Current status
+No current TOML entries in the repository use `sig_downscale`, and legacy alias
+loading has been removed.
 
 ---
 
