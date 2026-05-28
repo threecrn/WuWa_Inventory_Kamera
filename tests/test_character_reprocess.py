@@ -214,35 +214,35 @@ def test_reprocess_character_scans_reconstructs_sections_and_outputs_dict(monkey
 
     np.testing.assert_array_equal(
         submitted[0].crops['name'],
-        cv2.cvtColor(overview_full[0:2, 0:2], cv2.COLOR_RGB2BGR),
+        overview_full[0:2, 0:2],
     )
     np.testing.assert_array_equal(
         submitted[0].crops['level'],
-        cv2.cvtColor(overview_full[0:2, 2:4], cv2.COLOR_RGB2BGR),
+        overview_full[0:2, 2:4],
     )
     np.testing.assert_array_equal(
         submitted[1].crops['weaponName'],
-        cv2.cvtColor(weapon_full[0:2, 0:2], cv2.COLOR_RGB2BGR),
+        weapon_full[0:2, 0:2],
     )
     np.testing.assert_array_equal(
         submitted[1].crops['weaponLevel'],
-        cv2.cvtColor(weapon_full[0:2, 2:4], cv2.COLOR_RGB2BGR),
+        weapon_full[0:2, 2:4],
     )
     np.testing.assert_array_equal(
         submitted[1].crops['weaponRank'],
-        cv2.cvtColor(weapon_full[0:2, 4:6], cv2.COLOR_RGB2BGR),
+        weapon_full[0:2, 4:6],
     )
     np.testing.assert_array_equal(
         submitted[2].crops['skill_0'],
-        cv2.cvtColor(skill, cv2.COLOR_RGB2BGR),
+        skill,
     )
     np.testing.assert_array_equal(
         submitted[2].crops['passive_stats0_1'],
-        cv2.cvtColor(passive_skill, cv2.COLOR_RGB2BGR),
+        passive_skill,
     )
     np.testing.assert_array_equal(
         submitted[3].crops['chain_0'],
-        cv2.cvtColor(chain, cv2.COLOR_RGB2BGR),
+        chain,
     )
 
 
