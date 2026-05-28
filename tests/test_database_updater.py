@@ -329,3 +329,158 @@ def test_update_stats_and_defined_text_write_locale_outputs(tmp_path: Path, monk
 		'受取': 'PrefabTextItem_128820487_Text',
 		'発動済み': 'PrefabTextItem_3963945691_Text',
 	}
+
+
+def test_run_bootstraps_missing_generated_outputs_from_existing_source_data(
+	tmp_path: Path,
+	monkeypatch,
+) -> None:
+	_prepare_workspace(tmp_path, monkeypatch)
+	_write_json(
+		tmp_path / 'data' / 'en' / 'MultiText.json',
+		{
+			'ItemInfo_1_Name': 'Shell Credit',
+			'WeaponConf_1_WeaponName': 'Training Broadblade',
+			'PropertyIndex_10003_Name': 'HP',
+			'PhantomFetter_1_Name': 'Moonlit Clouds',
+			'Achievement_1_Name': 'First Step',
+			'RoleInfo_1102_Name': 'Sanhua',
+			'MonsterInfo_310000010_Name': 'Vanguard Junrock',
+			'PrefabTextItem_1547656443_Text': 'Terminal',
+			'PrefabTextItem_128820487_Text': 'Claim',
+			'PrefabTextItem_3963945691_Text': 'Activated',
+		},
+	)
+	_write_json(
+		tmp_path / 'data' / 'en' / 'ItemInfo.json',
+		[
+			{
+				'Id': 1,
+				'Name': 'ItemInfo_1_Name',
+				'Icon': '/Game/Aki/UI/UIResources/Common/Image/IconA/T_IconA_AccountExp_UI.T_IconA_AccountExp_UI',
+			},
+		],
+	)
+	_write_json(
+		tmp_path / 'data' / 'en' / 'WeaponConf.json',
+		[
+			{
+				'WeaponName': 'WeaponConf_1_WeaponName',
+				'ModelId': 101,
+				'QualityId': 4,
+				'Icon': '/Game/Aki/UI/UIResources/Common/Image/IconWeapon/T_Weapon_UI.T_Weapon_UI',
+			},
+		],
+	)
+
+	monkeypatch.setattr(BaseDataUpdater, 'updateFiles', lambda self: None)
+
+	updater = BaseDataUpdater(lang='English')
+	updater.run()
+
+	assert (tmp_path / 'data' / 'catalog' / 'items.json').is_file()
+	assert (tmp_path / 'data' / 'catalog' / 'echoes.json').is_file()
+	assert (tmp_path / 'data' / 'catalog' / 'sonatas.json').is_file()
+	assert (tmp_path / 'data' / 'locale' / 'en' / 'lookup' / 'definedText.json').is_file()
+
+
+def test_non_english_run_bootstraps_english_catalog_before_locale_generation(
+	tmp_path: Path,
+	monkeypatch,
+) -> None:
+	_prepare_workspace(tmp_path, monkeypatch)
+	_write_json(tmp_path / 'data' / 'languages.json', {'English': 'en', 'Japanese': 'ja'})
+	_write_json(
+		tmp_path / 'data' / 'en' / 'MultiText.json',
+		{
+			'ItemInfo_1_Name': 'Shell Credit',
+			'WeaponConf_1_WeaponName': 'Training Broadblade',
+			'PropertyIndex_10003_Name': 'HP',
+			'PhantomFetter_1_Name': 'Moonlit Clouds',
+			'Achievement_1_Name': 'First Step',
+			'RoleInfo_1102_Name': 'Sanhua',
+			'MonsterInfo_310000010_Name': 'Vanguard Junrock',
+			'PrefabTextItem_1547656443_Text': 'Terminal',
+			'PrefabTextItem_128820487_Text': 'Claim',
+			'PrefabTextItem_3963945691_Text': 'Activated',
+		},
+	)
+	_write_json(
+		tmp_path / 'data' / 'ja' / 'MultiText.json',
+		{
+			'ItemInfo_1_Name': 'シェルコイン',
+			'WeaponConf_1_WeaponName': '訓練用大剣',
+			'PropertyIndex_10003_Name': '体力',
+			'PhantomFetter_1_Name': '月を窺う軽雲',
+			'Achievement_1_Name': '最初の一歩',
+			'RoleInfo_1102_Name': '散華',
+			'MonsterInfo_310000010_Name': '先鋒岩塊',
+			'PrefabTextItem_1547656443_Text': '端末',
+			'PrefabTextItem_128820487_Text': '受取',
+			'PrefabTextItem_3963945691_Text': '発動済み',
+		},
+	)
+	_write_json(
+		tmp_path / 'data' / 'en' / 'ItemInfo.json',
+		[
+			{
+				'Id': 1,
+				'Name': 'ItemInfo_1_Name',
+				'Icon': '/Game/Aki/UI/UIResources/Common/Image/IconA/T_IconA_AccountExp_UI.T_IconA_AccountExp_UI',
+			},
+		],
+	)
+	_write_json(
+		tmp_path / 'data' / 'en' / 'WeaponConf.json',
+		[
+			{
+				'WeaponName': 'WeaponConf_1_WeaponName',
+				'ModelId': 101,
+				'QualityId': 4,
+				'Icon': '/Game/Aki/UI/UIResources/Common/Image/IconWeapon/T_Weapon_UI.T_Weapon_UI',
+			},
+		],
+	)
+	_write_json(
+		tmp_path / 'data' / 'ja' / 'ItemInfo.json',
+		[
+			{
+				'Id': 1,
+				'Name': 'ItemInfo_1_Name',
+				'Icon': '/Game/Aki/UI/UIResources/Common/Image/IconA/T_IconA_AccountExp_UI.T_IconA_AccountExp_UI',
+			},
+		],
+	)
+	_write_json(
+		tmp_path / 'data' / 'ja' / 'WeaponConf.json',
+		[
+			{
+				'WeaponName': 'WeaponConf_1_WeaponName',
+				'ModelId': 101,
+				'QualityId': 4,
+				'Icon': '/Game/Aki/UI/UIResources/Common/Image/IconWeapon/T_Weapon_UI.T_Weapon_UI',
+			},
+		],
+	)
+
+	monkeypatch.setattr(BaseDataUpdater, 'updateFiles', lambda self: None)
+
+	updater = BaseDataUpdater(lang='Japanese')
+	updater.run()
+
+	echo_catalog = json.loads((tmp_path / 'data' / 'catalog' / 'echoes.json').read_text(encoding='utf-8'))
+	ja_locale = json.loads((tmp_path / 'data' / 'locale' / 'ja' / 'echoes.json').read_text(encoding='utf-8'))
+
+	assert echo_catalog == {
+		'vanguardjunrock': {
+			'id': 310000010,
+			'text_key': 'MonsterInfo_310000010_Name',
+		},
+	}
+	assert ja_locale == {
+		'vanguardjunrock': {
+			'display_name': '先鋒岩塊',
+			'normalized': '先鋒岩塊',
+			'aliases': ['先鋒岩塊'],
+		},
+	}

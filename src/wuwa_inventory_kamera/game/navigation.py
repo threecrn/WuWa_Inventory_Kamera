@@ -37,12 +37,15 @@ from __future__ import annotations
 
 import enum
 import functools
+import json
 import logging
+from pathlib import Path
 import string
 import time
 
 import numpy as np
 
+from ..config.app_config import app_config, basePATH
 from .input_controller import InputController
 from .screen import (
     GameWindow,
@@ -118,6 +121,107 @@ def _nav_ocr(image: np.ndarray, allowed: str | None = None) -> str:
         allowedChars=allowed,
         backend=_nav_cpu_backend(),
     )
+
+
+def _load_json_file(path: Path) -> object | None:
+    try:
+        return json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _resolve_game_language_code() -> str:
+    selected = str(getattr(app_config, 'gameLanguage', 'English') or 'English')
+    data_root = basePATH / 'data'
+
+    if (data_root / 'locale' / selected).is_dir() or (data_root / selected).is_dir():
+        return selected
+
+    payload = _load_json_file(data_root / 'languages.json')
+    if isinstance(payload, dict):
+        mapped = payload.get(selected)
+        if isinstance(mapped, str) and mapped:
+            return mapped
+        if selected in payload.values():
+            return selected
+
+    return 'en'
+
+
+def _load_sonata_catalog() -> dict[str, int]:
+    payload = _load_json_file(basePATH / 'data' / 'catalog' / 'sonatas.json')
+    if isinstance(payload, dict):
+        catalog = {
+            slug: info['id']
+            for slug, info in payload.items()
+            if isinstance(slug, str)
+            and isinstance(info, dict)
+            and isinstance(info.get('id'), int)
+        }
+        if catalog:
+            return catalog
+
+    payload = _load_json_file(basePATH / 'data' / 'en' / 'sonataName.json')
+    if isinstance(payload, dict):
+        return {
+            slug: identifier
+            for slug, identifier in payload.items()
+            if isinstance(slug, str) and isinstance(identifier, int)
+        }
+
+    return {}
+
+
+def _load_sonata_locale(language_code: str) -> dict[str, dict]:
+    candidates = (language_code,) if language_code == 'en' else (language_code, 'en')
+    for code in candidates:
+        payload = _load_json_file(basePATH / 'data' / 'locale' / code / 'sonatas.json')
+        if isinstance(payload, dict) and payload:
+            return payload
+    return {}
+
+
+def _sonata_text_candidates(sonata_slug: str, *, locale_data: dict[str, dict]) -> tuple[str, ...]:
+    candidates: list[str] = [sonata_slug]
+    record = locale_data.get(sonata_slug)
+    if isinstance(record, dict):
+        for value in (record.get('display_name'), record.get('normalized')):
+            if isinstance(value, str) and value and value not in candidates:
+                candidates.append(value)
+        aliases = record.get('aliases')
+        if isinstance(aliases, list):
+            for alias in aliases:
+                if isinstance(alias, str) and alias and alias not in candidates:
+                    candidates.append(alias)
+    return tuple(candidates)
+
+
+def _normalize_sonata_text(text: str) -> str:
+    return text.casefold().replace(' ', '')
+
+
+def _sonata_text_matches(
+    ocr_text: str,
+    sonata_slug: str | None,
+    *,
+    locale_data: dict[str, dict],
+) -> bool:
+    from difflib import get_close_matches
+
+    normalized = _normalize_sonata_text(ocr_text)
+    if sonata_slug is None or sonata_slug == 'off':
+        return 'filter' in normalized or 'on/off' in normalized
+
+    for candidate in _sonata_text_candidates(sonata_slug, locale_data=locale_data):
+        normalized_candidate = _normalize_sonata_text(candidate)
+        if not normalized_candidate:
+            continue
+        if normalized_candidate in normalized:
+            return True
+        if get_close_matches(normalized, [normalized_candidate], n=1, cutoff=0.75):
+            return True
+
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -412,16 +516,10 @@ class GameNavigator:
         Raises :class:`ValueError` for unknown slugs and :class:`RuntimeError`
         when OCR verification fails.
         """
-        import json as _json
-        import pathlib as _pathlib
-        from difflib import get_close_matches
-
         # ── Resolve the target dropdown position ────────────────────────
-        # TODO: load lang-specific sonata dict from the layout instead of hardcoding English here.
-        sonata_dict = _json.loads(
-            (_pathlib.Path('data') / 'en' / 'sonataName.json')
-            .read_text(encoding='utf-8')
-        )
+        language_code = _resolve_game_language_code()
+        sonata_dict = _load_sonata_catalog()
+        sonata_locale = _load_sonata_locale(language_code)
 
         want_off = sonata_slug is None or sonata_slug == 'off'
         if not want_off and sonata_slug not in sonata_dict:
@@ -455,20 +553,12 @@ class GameNavigator:
 
         def _slug_matches(ocr_text: str, slug: str | None) -> bool:
             """Check whether *ocr_text* matches *slug* (or the Filter On/Off entry)."""
-            normalised = ocr_text.lower().replace(' ', '')
-            if slug is None or slug == 'off':
-                return 'filter' in normalised or 'on/off' in normalised
-            return slug in normalised or bool(
-                get_close_matches(normalised, [slug], n=1, cutoff=0.75)
-            )
+            return _sonata_text_matches(ocr_text, slug, locale_data=sonata_locale)
 
         def _find_slug_in_text(text: str) -> int | None:
             """Return index *j* in *sorted_slugs* if *text* matches it, else None."""
-            normalised = text.lower().replace(' ', '')
             for j, slug in enumerate(sorted_slugs):
-                if slug in normalised or bool(
-                    get_close_matches(normalised, [slug], n=1, cutoff=0.75)
-                ):
+                if _slug_matches(text, slug):
                     return j
             return None
 

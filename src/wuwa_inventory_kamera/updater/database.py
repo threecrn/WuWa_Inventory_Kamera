@@ -45,6 +45,26 @@ class SourceConfig:
 
 
 class BaseDataUpdater:
+	_CATALOG_FILENAMES = (
+		'items.json',
+		'weapons.json',
+		'characters.json',
+		'echoes.json',
+		'achievements.json',
+		'stats.json',
+		'sonatas.json',
+	)
+	_LOCALE_FILENAMES = (
+		'items.json',
+		'weapons.json',
+		'characters.json',
+		'echoes.json',
+		'achievements.json',
+		'stats.json',
+		'sonatas.json',
+		'definedText.json',
+	)
+
 	"""
 	Core data updater — no GUI/Qt dependencies.
 
@@ -144,6 +164,56 @@ class BaseDataUpdater:
 
 	def _isCanonicalLanguage(self) -> bool:
 		return self.lang == 'en'
+
+	def _catalogOutputsMissing(self) -> bool:
+		return any(
+			not (self._catalogDir() / filename).is_file()
+			for filename in self._CATALOG_FILENAMES
+		)
+
+	def _localeOutputsMissing(self, lang: Optional[str] = None) -> bool:
+		locale_dir = self._localeDir(lang)
+		lookup_dir = self._localeLookupDir(lang)
+		return any(
+			not (locale_dir / filename).is_file() or not (lookup_dir / filename).is_file()
+			for filename in self._LOCALE_FILENAMES
+		)
+
+	def _generatedOutputsMissing(self) -> bool:
+		return self._catalogOutputsMissing() or self._localeOutputsMissing()
+
+	def _regenerateDerivedFiles(self) -> None:
+		self.updateItems()
+		self.updateEchoStats()
+		self.updateSonata()
+		self.updateDefinedText()
+		self.updateAchievements()
+		self.updateCharacters()
+		self.updateEcho()
+
+	def _bootstrapCanonicalCatalogIfMissing(self) -> bool:
+		if not self._catalogOutputsMissing():
+			return True
+
+		if self._isCanonicalLanguage():
+			logger.info('Canonical catalog outputs missing; bootstrapping from local English source data')
+			self._regenerateDerivedFiles()
+			return not self._catalogOutputsMissing()
+
+		logger.info(
+			'Canonical catalog outputs missing; bootstrapping English data before generating %s locale outputs',
+			self.lang,
+		)
+		canonical_updater = BaseDataUpdater(lang='English', source=self.source)
+		canonical_updater.updateFiles()
+		if canonical_updater._update_failed:
+			logger.warning('Skipping canonical catalog bootstrap because English source files failed to update')
+			return False
+
+		if canonical_updater.updated or canonical_updater._generatedOutputsMissing():
+			canonical_updater._regenerateDerivedFiles()
+
+		return not self._catalogOutputsMissing()
 
 	def _stateMatchesSource(self, state: dict[str, Any]) -> bool:
 		return state.get('source') == self.source and state.get('ref', '') == (self.ref or '')
@@ -763,15 +833,15 @@ class BaseDataUpdater:
 		self.updateFiles()
 		if self._update_failed:
 			logger.warning('Skipping derived file regeneration because one or more source files failed to update')
-		elif self.updated:
-			logger.info('Files were updated, regenerating derived files...')
-			self.updateItems()
-			self.updateEchoStats()
-			self.updateSonata()
-			self.updateDefinedText()
-			self.updateAchievements()
-			self.updateCharacters()
-			self.updateEcho()
+		elif self.updated or self._generatedOutputsMissing():
+			if not self._bootstrapCanonicalCatalogIfMissing():
+				logger.warning('Skipping locale regeneration because canonical catalog bootstrap did not complete')
+			elif self.updated:
+				logger.info('Files were updated, regenerating derived files...')
+				self._regenerateDerivedFiles()
+			else:
+				logger.info('Generated outputs are missing, bootstrapping derived files from existing source data...')
+				self._regenerateDerivedFiles()
 		else:
 			logger.info('All files are up to date')
 		logger.info('Update process completed')

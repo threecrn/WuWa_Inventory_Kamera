@@ -17,8 +17,8 @@ _EQUIPPED_RE = re.compile(
 )
 _NON_WORD_RE = re.compile(r'[\W_]+', re.UNICODE)
 
-_CHARACTER_NAMES_CACHE_KEY: tuple[str, int, int] | None = None
-_CHARACTER_NAMES_CACHE_VALUE: tuple[str, ...] | None = None
+_CHARACTER_NAMES_CACHE_KEY: tuple[str, str, int, int] | None = None
+_CHARACTER_NAMES_CACHE_VALUE: dict[str, str] | None = None
 
 
 def _resolve_game_language_code() -> str:
@@ -47,34 +47,72 @@ def _runtime_character_names() -> tuple[str, ...]:
     global _CHARACTER_NAMES_CACHE_VALUE
 
     language_code = _resolve_game_language_code()
-    characters_path = basePATH / 'data' / language_code / 'characters.json'
+    candidate_paths = (
+        basePATH / 'data' / 'locale' / language_code / 'characters.json',
+        basePATH / 'data' / language_code / 'characters.json',
+    )
 
-    try:
-        stat = characters_path.stat()
-        cache_key = (language_code, stat.st_mtime_ns, stat.st_size)
-        if cache_key == _CHARACTER_NAMES_CACHE_KEY and _CHARACTER_NAMES_CACHE_VALUE is not None:
-            return _CHARACTER_NAMES_CACHE_VALUE
+    last_exc: Exception | None = None
+    for characters_path in candidate_paths:
+        try:
+            stat = characters_path.stat()
+            cache_key = (language_code, str(characters_path), stat.st_mtime_ns, stat.st_size)
+            if cache_key == _CHARACTER_NAMES_CACHE_KEY and _CHARACTER_NAMES_CACHE_VALUE is not None:
+                return tuple(_CHARACTER_NAMES_CACHE_VALUE.keys())
 
-        with open(characters_path, 'r', encoding='utf-8') as f:
-            payload = json.load(f)
+            with open(characters_path, 'r', encoding='utf-8') as f:
+                payload = json.load(f)
 
-        if isinstance(payload, dict):
-            names = tuple(
-                name for name in payload.keys()
-                if isinstance(name, str) and name
-            )
-            _CHARACTER_NAMES_CACHE_KEY = cache_key
-            _CHARACTER_NAMES_CACHE_VALUE = names
-            return names
-    except Exception as exc:
-        logger.debug('Equipped-name runtime character fallback: %s', exc)
+            if not isinstance(payload, dict):
+                continue
+
+            names_by_normalized: dict[str, str] = {}
+            if characters_path.parent.name == 'locale':
+                for canonical_key, entry in payload.items():
+                    if not isinstance(canonical_key, str) or not canonical_key or not isinstance(entry, dict):
+                        continue
+                    candidates: list[str] = []
+                    for value in (entry.get('display_name'), entry.get('normalized')):
+                        if isinstance(value, str) and value and value not in candidates:
+                            candidates.append(value)
+                    aliases = entry.get('aliases')
+                    if isinstance(aliases, list):
+                        for alias in aliases:
+                            if isinstance(alias, str) and alias and alias not in candidates:
+                                candidates.append(alias)
+                    for candidate in candidates:
+                        normalized_candidate = _normalize_character_name(candidate)
+                        if normalized_candidate:
+                            names_by_normalized.setdefault(normalized_candidate, canonical_key)
+            else:
+                for name in payload.keys():
+                    if not isinstance(name, str) or not name:
+                        continue
+                    normalized_name = _normalize_character_name(name)
+                    if normalized_name:
+                        names_by_normalized.setdefault(normalized_name, name)
+
+            if names_by_normalized:
+                _CHARACTER_NAMES_CACHE_KEY = cache_key
+                _CHARACTER_NAMES_CACHE_VALUE = names_by_normalized
+                return tuple(names_by_normalized.keys())
+        except Exception as exc:
+            last_exc = exc
+
+    if last_exc is not None:
+        logger.debug('Equipped-name runtime character fallback: %s', last_exc)
 
     from ...data import charactersID
 
-    return tuple(
-        name for name in charactersID.keys()
-        if isinstance(name, str) and name
-    )
+    fallback: dict[str, str] = {}
+    for name in charactersID.keys():
+        if not isinstance(name, str) or not name:
+            continue
+        normalized_name = _normalize_character_name(name)
+        if normalized_name:
+            fallback.setdefault(normalized_name, name)
+
+    return tuple(fallback.keys())
 
 
 def _normalize_character_name(text: str) -> str:
@@ -90,11 +128,10 @@ def _canonicalize_character_name(text: str) -> str | None:
     if not normalized:
         return raw
 
-    canonical_by_normalized: dict[str, str] = {}
-    for name in _runtime_character_names():
-        normalized_name = _normalize_character_name(name)
-        if normalized_name:
-            canonical_by_normalized.setdefault(normalized_name, name)
+    canonical_by_normalized = dict(_CHARACTER_NAMES_CACHE_VALUE or {})
+    if not canonical_by_normalized:
+        _runtime_character_names()
+        canonical_by_normalized = dict(_CHARACTER_NAMES_CACHE_VALUE or {})
 
     if not canonical_by_normalized:
         return raw
