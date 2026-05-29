@@ -568,3 +568,41 @@ def test_ocr_cache_misses_when_spec_version_changes(tmp_path: Path) -> None:
     assert cached[0][0] == "HP"
     assert cached[0][1] == 0.91
     np.testing.assert_array_equal(cached[0][2], new_result[0][2])
+
+
+def test_ocr_cache_misses_when_spec_definition_changes_without_version_bump(
+    tmp_path: Path,
+) -> None:
+    old_spec = OcrRegionSpec(
+        roi_key="items.name",
+        color_space="hsv",
+        text_color_ranges_by_rarity={3: [((100, 60, 150), (115, 255, 255))]},
+        cache_mode="persistent",
+        spec_version="cache-test",
+    )
+    new_spec = OcrRegionSpec(
+        roi_key="items.name",
+        color_space="hsv",
+        text_color_ranges_by_rarity={3: [((98, 60, 150), (115, 255, 255))]},
+        cache_mode="persistent",
+        spec_version="cache-test",
+    )
+    image = np.zeros((16, 16, 3), dtype=np.uint8)
+    image[4:12, 4:12] = 255
+    old_result = [("OldName", 0.95, _bbox())]
+    new_result = [("NewName", 0.91, _bbox())]
+
+    cache = OcrCache(tmp_path / "ocr-cache.sqlite3")
+    try:
+        cache.store(old_spec, image, old_result, rarity=3)
+        assert cache.lookup(new_spec, image, rarity=3) is None
+
+        cache.store(new_spec, image, new_result, rarity=3)
+        cached = cache.lookup(new_spec, image, rarity=3)
+    finally:
+        cache.close()
+
+    assert cached is not None
+    assert cached[0][0] == "NewName"
+    assert cached[0][1] == 0.91
+    np.testing.assert_array_equal(cached[0][2], new_result[0][2])

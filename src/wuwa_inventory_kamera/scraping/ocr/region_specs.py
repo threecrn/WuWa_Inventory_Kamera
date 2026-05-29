@@ -23,9 +23,10 @@ edit, not a code change.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import math
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 # --- Phase 1: Color Preprocessing Migration ---
 @dataclass(frozen=True, slots=True)
@@ -519,6 +520,8 @@ class OcrRegionSpec:
         """Compute a stable hex-string fingerprint for cache keying."""
         sig_image = self._image_for_signature(bgr, rarity)
         digest = hashlib.blake2b(digest_size=20)
+        digest.update(self._cache_config_digest().encode("ascii"))
+        digest.update(b"|")
         digest.update(self.spec_version.encode("ascii"))
         digest.update(b"|")
         digest.update(self.roi_key.encode("ascii"))
@@ -533,6 +536,19 @@ class OcrRegionSpec:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _cache_config_digest(self) -> str:
+        """Return a stable digest of the OCR spec config for cache invalidation."""
+        payload = json.dumps(
+            asdict(self),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        )
+        return hashlib.blake2b(
+            payload.encode("ascii"),
+            digest_size=16,
+        ).hexdigest()
 
     def _resolve_text_ranges(self, rarity: int | None) -> ColorRangeList | None:
         if rarity is not None and self.text_color_ranges_by_rarity:
