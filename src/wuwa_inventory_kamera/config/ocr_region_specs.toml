@@ -185,9 +185,14 @@ text_color_ranges = [[[25,70,200],[27,90,255]]]
 [weapons.name.ocr.rarity_overrides."4"]
 text_color_ranges = [[[135, 60, 150], [150, 255, 255]]]
 [weapons.name.ocr.rarity_overrides."3"]
-text_color_ranges = [[[112, 60, 150], [125, 255, 255]]]
+text_color_ranges = [
+    #[[112, 60, 150], [125, 255, 255]],
+    [[100, 60, 150], [125, 255, 255]]
+]
 [weapons.name.ocr.rarity_overrides."2"]
 text_color_ranges = [[[55, 60, 150], [70, 255, 255]]]
+[weapons.name.ocr.rarity_overrides."1"]
+text_color_ranges = [[[70, 0, 210], [110, 10, 255]]]
 
 [weapons.name.signature]
 single_line = true
@@ -199,13 +204,25 @@ pre_downscale = [512, 32]
 text_color_ranges = [[[166, 235, 247], [166, 235, 247]]]
 
 [weapons.name.signature.rarity_overrides."4"]
-text_color_ranges = [[[185, 135, 200], [185, 135, 200]]]
+text_color_ranges = [
+    [[185, 135, 200], [185, 135, 200]],
+    [[255,  92, 200], [255,  92, 200]],
+]
 
 [weapons.name.signature.rarity_overrides."3"]
-text_color_ranges = [[[220, 180, 120], [220, 180, 120]]]
+text_color_ranges = [
+    [[220, 180, 120], [220, 180, 120]],
+    [[255, 152,  81], [255, 152,  81]],
+]
 
 [weapons.name.signature.rarity_overrides."2"]
-text_color_ranges = [[[130, 210, 140], [130, 210, 140]]]
+text_color_ranges = [
+    [[130, 210, 140], [130, 210, 140]],
+    [[125, 207, 123], [125, 207, 123]],
+]
+
+[weapons.name.signature.rarity_overrides."1"]
+text_color_ranges = [[[255,255,249], [255, 255, 249]]]
 
 [weapons.value]
 color_space = "gray"
@@ -232,9 +249,11 @@ text_color_ranges = [[[25,70,200],[27,90,255]]]
 [items.name.ocr.rarity_overrides."4"]
 text_color_ranges = [[[135, 60, 150], [150, 255, 255]]]
 [items.name.ocr.rarity_overrides."3"]
-text_color_ranges = [[[112, 60, 150], [125, 255, 255]]]
+text_color_ranges = [[[100, 60, 150], [115, 255, 255]]]
 [items.name.ocr.rarity_overrides."2"]
 text_color_ranges = [[[55, 60, 150], [70, 255, 255]]]
+[items.name.ocr.rarity_overrides."1"]
+text_color_ranges = [[[70, 0, 210], [110, 10, 255]]]
 
 [items.name.signature]
 cache_mode = "persistent"

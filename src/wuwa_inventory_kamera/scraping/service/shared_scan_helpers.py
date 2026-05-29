@@ -19,16 +19,20 @@ logger = logging.getLogger(__name__)
 
 
 # Reference colors from game_roi.py comments, expressed in BGR order
-# as used by OpenCV / mss captures.
+# as used by OpenCV / mss captures. Rarity 1 is calibrated from the
+# new UI's neutral-gray rarity pick because the original comments only
+# cover rarities 2-5.
 #   rarity 5: gold   - (R=1.00, G=0.98, B=0.69)
 #   rarity 4: purple - (R=0.91, G=0.63, B=1.00)
 #   rarity 3: blue   - (R=0.60, G=0.60, B=1.00)
 #   rarity 2: green  - (R=0.60, G=1.00, B=0.60)
+#   rarity 1: gray   - (R=218, G=222, B=225)
 _RARITY_PIXEL_COLORS_BGR: dict[int, np.ndarray] = {
     5: np.array([176, 250, 255], dtype=np.int32),
     4: np.array([255, 161, 232], dtype=np.int32),
     3: np.array([255, 153, 153], dtype=np.int32),
     2: np.array([153, 255, 153], dtype=np.int32),
+    1: np.array([225, 222, 218], dtype=np.int32),
 }
 
 _DEBUG_REGION_SPECS: tuple[tuple[str, str], ...] = (
@@ -54,7 +58,7 @@ def _closest_rarity_from_bgr_pixel(pixel: np.ndarray) -> tuple[int, float]:
 
 
 def _rarity_from_bgr_pixel(pixel: np.ndarray) -> int:
-    """Return the rarity (2-5) whose reference color is closest to *pixel* (BGR)."""
+    """Return the rarity (1-5) whose reference color is closest to *pixel* (BGR)."""
     return _closest_rarity_from_bgr_pixel(pixel)[0]
 
 

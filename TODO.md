@@ -52,6 +52,7 @@
     - [ ] validation of OCR results against localized data (e.g. sonata names)
       - [ ] geometry validation: are RoI sizes and positions compatible with the expected text lengths of localized strings?
       - [ ] signature validation: do the OCR cache signature setups work for localized strings with different character sets, draw widths, etc?
+- [ ] grid scroll towards the bottom for weapon, echo, item tabs: predict the end of the page and handle it correctly
 - [ ] minor issues on edge cases:
   - [ ] at 2560x1440, the echo level signature configuration doesn't work properly because the key text color is slightly off
   - [ ] on slow systems, wait delays might be too short for UI animations to complete, causing OCR failures

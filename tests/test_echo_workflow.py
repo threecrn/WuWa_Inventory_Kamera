@@ -49,6 +49,16 @@ def test_capture_rarity_helper_recovers_rgb_ordered_gold_pixel() -> None:
     assert dist < 100.0
 
 
+def test_capture_rarity_helper_recovers_rgb_ordered_rarity_1_pixel() -> None:
+    rarity, channel_order, dist = _rarity_from_capture_pixel(
+        np.asarray([218, 222, 225], dtype=np.uint8)
+    )
+
+    assert rarity == 1
+    assert channel_order == 'RGB'
+    assert dist == 0.0
+
+
 def test_decide_echo_level_uses_parsed_digits_for_slot_selection() -> None:
     decision = decide_echo_level(level_text='25.')
 
