@@ -438,6 +438,17 @@ class OcrRegionSpec:
         rarity: int | None,
     ) -> np.ndarray:
         sig = self.signature_preprocess
+        if sig is None:
+            signature_text_color_ranges_by_rarity = self.text_color_ranges_by_rarity
+        elif sig.text_color_ranges_by_rarity is not None:
+            signature_text_color_ranges_by_rarity = sig.text_color_ranges_by_rarity
+        elif sig.text_color_ranges is not None:
+            signature_text_color_ranges_by_rarity = None
+        elif sig.color_space is not None and sig.color_space != self.color_space:
+            signature_text_color_ranges_by_rarity = None
+        else:
+            signature_text_color_ranges_by_rarity = self.text_color_ranges_by_rarity
+
         scaled_bgr = _apply_scaling_stage(
             bgr,
             upscale_min=(sig.pre_upscale if sig is not None else None),
@@ -452,11 +463,7 @@ class OcrRegionSpec:
                 if sig is not None and sig.text_color_ranges is not None
                 else self.text_color_ranges
             ),
-            text_color_ranges_by_rarity=(
-                sig.text_color_ranges_by_rarity
-                if sig is not None and sig.text_color_ranges_by_rarity is not None
-                else self.text_color_ranges_by_rarity
-            ),
+            text_color_ranges_by_rarity=signature_text_color_ranges_by_rarity,
             background_color_ranges=(
                 sig.background_color_ranges
                 if sig is not None and sig.background_color_ranges is not None

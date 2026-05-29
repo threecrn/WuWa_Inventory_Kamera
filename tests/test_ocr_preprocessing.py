@@ -404,6 +404,26 @@ def test_signature_can_use_separate_preprocess_spec() -> None:
     assert spec.make_signature(image_a) == spec.make_signature(image_b)
 
 
+def test_signature_preprocess_base_ranges_do_not_inherit_ocr_rarity_overrides() -> None:
+    spec = OcrRegionSpec(
+        roi_key="items.name",
+        color_space="hsv",
+        text_color_ranges_by_rarity={5: [((25, 70, 200), (27, 90, 255))]},
+        signature_preprocess=SignaturePreprocessSpec(
+            color_space="bgr",
+            text_color_ranges=[((255, 255, 249), (255, 255, 249))],
+        ),
+    )
+    image = np.zeros((12, 24, 3), dtype=np.uint8)
+    image[3:9, 5:19] = np.asarray([255, 255, 249], dtype=np.uint8)
+
+    without_rarity = spec._preprocess_for_signature(image, None)
+    with_rarity = spec._preprocess_for_signature(image, 5)
+
+    assert np.ptp(without_rarity) != 0
+    np.testing.assert_array_equal(with_rarity, without_rarity)
+
+
 def test_load_specs_from_toml_parses_rarity_and_fallback_color_space(tmp_path: Path) -> None:
     config_path = tmp_path / "ocr_region_specs.toml"
     config_path.write_text(

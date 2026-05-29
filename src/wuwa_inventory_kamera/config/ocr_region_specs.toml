@@ -237,22 +237,16 @@ text_color_ranges = [[[112, 60, 150], [125, 255, 255]]]
 text_color_ranges = [[[55, 60, 150], [70, 255, 255]]]
 
 [items.name.signature]
-single_line = true
 cache_mode = "persistent"
+single_line = true
 color_space = "bgr"
-pre_downscale = [512, 32]
-
-[items.name.signature.rarity_overrides."5"]
-text_color_ranges = [[[166, 235, 247], [166, 235, 247]]]
-
-[items.name.signature.rarity_overrides."4"]
-text_color_ranges = [[[185, 135, 200], [185, 135, 200]]]
-
-[items.name.signature.rarity_overrides."3"]
-text_color_ranges = [[[220, 180, 120], [220, 180, 120]]]
-
-[items.name.signature.rarity_overrides."2"]
-text_color_ranges = [[[130, 210, 140], [130, 210, 140]]]
+text_color_ranges = [
+    [[166, 235, 247], [166, 235, 247]],
+    [[255,  92, 200], [255,  92, 200]],
+    [[255, 152,  81], [255, 152,  81]],
+    [[125, 207, 123], [125, 207, 123]],
+    [[255, 255, 249], [255, 255, 249]],
+]
 
 [items.value.ocr]
 single_line = true
@@ -263,7 +257,7 @@ text_color_ranges = [
 ]
 
 [items.value.signature]
-cache_mode = "transient"
+cache_mode = "persistent"
 single_line = true
 color_space = "rgb"
 text_color_ranges = [
