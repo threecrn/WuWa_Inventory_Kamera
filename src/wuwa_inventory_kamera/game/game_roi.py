@@ -171,8 +171,11 @@ COORDINATES = {
                 "resources": Coordinates(81.5, 731.5),
             },
             "items": {
-                "start": Coordinates(205, 122, 151, 181),
-                "rarityColorPick": Coordinates(1313, 423), 
+                "page": Coordinates(102, 50, 400, 40),
+                "start": Coordinates(176, 135, 151, 181),
+                "rarityColorPick": Coordinates(1313, 423),
+                "name": Coordinates(1328, 116, 525, 55),
+                "value": Coordinates(1327, 417, 230, 43),
                 "info": Coordinates(1296, 114, 558, 278),
                 "description": Coordinates(1296, 114, 558, 820)
             },
@@ -337,8 +340,13 @@ COORDINATES = {
                 "resources": Coordinates(81.7, 730.3),
             },
             "items": {
-                "start": Coordinates(205.7, 118.9, 148.6, 185.1),
+                "page": Coordinates(102, 52, 400, 45),
+                "start": Coordinates(176, 135, 148.6, 185.1),
                 "rarityColorPick": Coordinates(1313, 482), 
+
+                "name": Coordinates(1328, 173.7, 525, 57.1),
+                "value": Coordinates(1327, 417, 230, 43),
+                
                 "info": Coordinates(1298.3, 176.0, 554.3, 274.3),
                 "description": Coordinates(1298.3, 176.0, 554.3, 817.1)
             },

@@ -972,30 +972,36 @@ class OcrService:
         captures = [cast(WeaponCapture, it.capture) for it in group]
 
         name_results: list[list] = [[] for _ in captures]
-        name_rarity_groups: dict[int | None, list[int]] = defaultdict(list)
-        for idx, capture in enumerate(captures):
-            rarity = capture.detected_rarity if capture.rank is not None else None
-            name_rarity_groups[rarity].append(idx)
-        for rarity, indices in name_rarity_groups.items():
-            group_results = self._ocr_with_spec(
-                'weapons.name',
-                [captures[i].name for i in indices],
-                rarity=rarity,
-            )
-            for list_pos, capture_idx in enumerate(indices):
-                name_results[capture_idx] = group_results[list_pos]
+        weapon_present = [i for i, c in enumerate(captures) if c.rank is not None]
+        item_present = [i for i, c in enumerate(captures) if c.rank is None]
+
+        def _fill_name_results(indices: list[int], roi_key: str) -> None:
+            rarity_groups: dict[int | None, list[int]] = defaultdict(list)
+            for capture_idx in indices:
+                rarity_groups[captures[capture_idx].detected_rarity].append(capture_idx)
+            for rarity, group_indices in rarity_groups.items():
+                group_results = self._ocr_with_spec(
+                    roi_key,
+                    [captures[i].name for i in group_indices],
+                    rarity=rarity,
+                )
+                for list_pos, capture_idx in enumerate(group_indices):
+                    name_results[capture_idx] = group_results[list_pos]
+
+        if weapon_present:
+            _fill_name_results(weapon_present, 'weapons.name')
+        if item_present:
+            _fill_name_results(item_present, 'items.name')
 
         value_results: list[list] = [[] for _ in captures]
 
-        weapon_present = [i for i, c in enumerate(captures) if c.rank is not None]
         if weapon_present:
             level_results = self._ocr_with_spec('weapons.level', [captures[i].value for i in weapon_present])
             for list_pos, capture_idx in enumerate(weapon_present):
                 value_results[capture_idx] = level_results[list_pos]
 
-        item_present = [i for i, c in enumerate(captures) if c.rank is None]
         if item_present:
-            item_value_results = self._ocr_with_spec('weapons.value', [captures[i].value for i in item_present])
+            item_value_results = self._ocr_with_spec('items.value', [captures[i].value for i in item_present])
             for list_pos, capture_idx in enumerate(item_present):
                 value_results[capture_idx] = item_value_results[list_pos]
 

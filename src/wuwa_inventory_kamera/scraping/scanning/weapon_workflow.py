@@ -146,21 +146,22 @@ class WeaponWorkflow:
             seen_hashes.add(img_hash)
 
             # Crop regions.
-            # devItems/resources share the weapons detail-panel layout for
-            # name and value, but use .value (item count) instead of .level.
+            # devItems/resources use the dedicated items.* panel layout and
+            # OCR keys, while weapons keep the weapon-specific fields.
             is_item_tab = self.tab in (InventoryTab.DEV_ITEMS, InventoryTab.RESOURCES)
-            wi = layout.weapons  # weapons coords cover both weapons and item panels
+            panel = layout.items if is_item_tab else layout.weapons
             name_crop = full[
-                int(wi.name.y) : int(wi.name.y + wi.name.h),
-                int(wi.name.x) : int(wi.name.x + wi.name.w),
+                int(panel.name.y) : int(panel.name.y + panel.name.h),
+                int(panel.name.x) : int(panel.name.x + panel.name.w),
             ]
             detected_rarity: int | None = None
-            if not is_item_tab and hasattr(wi, 'rarityColorPick'):
-                rcp = wi.rarityColorPick
+            if hasattr(panel, 'rarityColorPick'):
+                rcp = panel.rarityColorPick
                 rarity_pixel = full[int(rcp.y), int(rcp.x)]
                 detected_rarity, rarity_order, rarity_dist = _rarity_from_capture_pixel(rarity_pixel)
                 logger.debug(
-                    'Weapon %d — rarity pixel raw=%s interpreted_as=%s → rarity %d (dist=%.1f)',
+                    '%s %d — rarity pixel raw=%s interpreted_as=%s → rarity %d (dist=%.1f)',
+                    'Item' if is_item_tab else 'Weapon',
                     position.scan_index,
                     rarity_pixel.tolist(),
                     rarity_order,
@@ -168,9 +169,9 @@ class WeaponWorkflow:
                     rarity_dist,
                 )
             if is_item_tab:
-                value_roi = wi.value
+                value_roi = panel.value
             else:
-                value_roi = wi.level
+                value_roi = panel.level
             value_crop = full[
                 int(value_roi.y) : int(value_roi.y + value_roi.h),
                 int(value_roi.x) : int(value_roi.x + value_roi.w),
@@ -180,15 +181,15 @@ class WeaponWorkflow:
             rank_crop = None
             if not is_item_tab:
                 rank_crop = full[
-                    int(wi.rank.y) : int(wi.rank.y + wi.rank.h),
-                    int(wi.rank.x) : int(wi.rank.x + wi.rank.w),
+                    int(panel.rank.y) : int(panel.rank.y + panel.rank.h),
+                    int(panel.rank.x) : int(panel.rank.x + panel.rank.w),
                 ]
 
             equipped_crop = None
-            if not is_item_tab and hasattr(wi, 'equipped'):
+            if not is_item_tab and hasattr(panel, 'equipped'):
                 equipped_crop = full[
-                    int(wi.equipped.y) : int(wi.equipped.y + wi.equipped.h),
-                    int(wi.equipped.x) : int(wi.equipped.x + wi.equipped.w),
+                    int(panel.equipped.y) : int(panel.equipped.y + panel.equipped.h),
+                    int(panel.equipped.x) : int(panel.equipped.x + panel.equipped.w),
                 ]
 
             if self.write_debug:
@@ -271,14 +272,15 @@ class WeaponWorkflow:
         from ..service.shared_scan_helpers import _write_region_debug_artifacts
 
         debug_dir = self._debug_base() / f'weapon_{pos.scan_index:04d}' / 'debug'
+        name_roi_key = 'weapons.name' if rank is not None else 'items.name'
         value_basename = 'level' if rank is not None else 'value'
-        value_roi_key = 'weapons.level' if rank is not None else 'weapons.value'
+        value_roi_key = 'weapons.level' if rank is not None else 'items.value'
         _write_region_debug_artifacts(
             debug_dir,
             basename='name',
-            roi_key='weapons.name',
+            roi_key=name_roi_key,
             raw_bgr=name,
-            rarity=detected_rarity if rank is not None else None,
+            rarity=detected_rarity,
         )
         _write_region_debug_artifacts(
             debug_dir,

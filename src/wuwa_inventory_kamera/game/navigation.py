@@ -715,8 +715,8 @@ class GameNavigator:
         tab = self._current_tab
         if tab is None:
             return None
-        # devItems/resources share the weapons page-count ROI (same panel location).
-        layout_key = tab.value if tab not in (InventoryTab.DEV_ITEMS, InventoryTab.RESOURCES) else 'weapons'
+        # devItems/resources use the item-panel page-count ROI.
+        layout_key = tab.value if tab not in (InventoryTab.DEV_ITEMS, InventoryTab.RESOURCES) else 'items'
         tab_coords = getattr(self.layout, layout_key, None)
         if tab_coords is None:
             return None

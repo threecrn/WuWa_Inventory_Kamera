@@ -130,7 +130,103 @@ def test_weapon_workflow_write_debug_dumps_region_artifacts(monkeypatch, tmp_pat
     np.testing.assert_array_equal(debug_calls[3]['raw_bgr'], image[2:4, 2:4])
 
 
-def test_ocr_service_uses_level_spec_for_weapons_and_value_spec_for_items() -> None:
+def test_item_workflow_write_debug_uses_item_region_artifacts(monkeypatch, tmp_path) -> None:
+    image = np.arange(8 * 8 * 3, dtype=np.uint8).reshape(8, 8, 3)
+
+    monkeypatch.setattr(weapon_workflow_module, 'capture_full', lambda *args, **kwargs: image)
+    monkeypatch.setattr(WeaponWorkflow, '_save_raw', lambda self, *args, **kwargs: None)
+
+    debug_calls: list[dict[str, object]] = []
+
+    def _fake_write_region_debug_artifacts(debug_dir, *, basename, roi_key, raw_bgr, rarity):
+        debug_calls.append({
+            'debug_dir': debug_dir,
+            'basename': basename,
+            'roi_key': roi_key,
+            'raw_bgr': raw_bgr.copy(),
+            'rarity': rarity,
+        })
+
+    monkeypatch.setattr(
+        'wuwa_inventory_kamera.scraping.service.shared_scan_helpers._write_region_debug_artifacts',
+        _fake_write_region_debug_artifacts,
+    )
+
+    class _FakeGridNavigator:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def scan_forward(self, visitor) -> None:
+            assert visitor(SimpleNamespace(scan_index=9, page=0, row=0, col=0)) is True
+
+    monkeypatch.setattr(weapon_workflow_module, 'GridNavigator', _FakeGridNavigator)
+
+    session = SimpleNamespace(
+        total_items=1,
+        sort_order=None,
+        session_id='session-id',
+        mark_scanned=lambda *_args, **_kwargs: None,
+        mark_skipped=lambda *_args, **_kwargs: None,
+        mark_failed=lambda *_args, **_kwargs: None,
+    )
+    layout = SimpleNamespace(
+        width=8,
+        height=8,
+        monitor=1,
+        items=SimpleNamespace(
+            name=SimpleNamespace(x=0, y=0, w=2, h=2),
+            value=SimpleNamespace(x=2, y=0, w=2, h=2),
+            rarityColorPick=SimpleNamespace(x=1, y=1),
+        ),
+        weapons=SimpleNamespace(
+            name=SimpleNamespace(x=4, y=4, w=2, h=2),
+            level=SimpleNamespace(x=6, y=4, w=2, h=2),
+            rank=SimpleNamespace(x=4, y=6, w=2, h=2),
+            equipped=SimpleNamespace(x=6, y=6, w=2, h=2),
+        ),
+    )
+    nav = SimpleNamespace(
+        layout=layout,
+        gw=None,
+        switch_tab=lambda *_args, **_kwargs: None,
+        set_sort_order=lambda *_args, **_kwargs: None,
+        read_item_count=lambda: (1, 1),
+    )
+
+    class _FakeFuture:
+        def result(self, timeout: int) -> WeaponResult:
+            return WeaponResult(index=9, is_weapon=False, data={'id': 'item'}, below_minimum=False)
+
+    class _FakeOcrService:
+        def submit(self, capture) -> _FakeFuture:
+            return _FakeFuture()
+
+    monkeypatch.setattr(
+        weapon_workflow_module,
+        '_rarity_from_capture_pixel',
+        lambda _pixel: (4, 'BGR', 0.0),
+    )
+
+    workflow = WeaponWorkflow(
+        nav=cast(Any, nav),
+        ocr_service=cast(Any, _FakeOcrService()),
+        session=cast(Any, session),
+        tab=InventoryTab.DEV_ITEMS,
+        save_raw=tmp_path / 'raw',
+        write_debug=True,
+    )
+
+    results = workflow.run()
+
+    assert results == [{'id': 'item'}]
+    assert [call['basename'] for call in debug_calls] == ['name', 'value']
+    assert [call['roi_key'] for call in debug_calls] == ['items.name', 'items.value']
+    assert [call['rarity'] for call in debug_calls] == [4, None]
+    np.testing.assert_array_equal(debug_calls[0]['raw_bgr'], image[0:2, 0:2])
+    np.testing.assert_array_equal(debug_calls[1]['raw_bgr'], image[0:2, 2:4])
+
+
+def test_ocr_service_uses_level_spec_for_weapons_and_item_specs_for_items() -> None:
     service = cast(Any, ocr_service_module.OcrService.__new__(ocr_service_module.OcrService))
     spec_calls: list[tuple[str, int, int | None]] = []
     assemble_calls: list[dict[str, object]] = []
@@ -175,7 +271,7 @@ def test_ocr_service_uses_level_spec_for_weapons_and_value_spec_for_items() -> N
             concurrent.futures.Future(),
         ),
         ocr_service_module._QueueItem(
-            WeaponCapture(index=2, name=image, value=image, rank=None),
+            WeaponCapture(index=2, name=image, value=image, rank=None, detected_rarity=4),
             1,
             concurrent.futures.Future(),
         ),
@@ -185,19 +281,39 @@ def test_ocr_service_uses_level_spec_for_weapons_and_value_spec_for_items() -> N
 
     assert spec_calls == [
         ('weapons.name', 1, 5),
-        ('weapons.name', 1, None),
+        ('items.name', 1, 4),
         ('weapons.level', 1, None),
-        ('weapons.value', 1, None),
+        ('items.value', 1, None),
         ('weapons.equipped', 1, None),
     ]
     assert assemble_calls[0]['name_texts'] == ['weapons.name']
-    assert assemble_calls[1]['name_texts'] == ['weapons.name']
+    assert assemble_calls[1]['name_texts'] == ['items.name']
     assert assemble_calls[0]['value_texts'] == ['weapons.level']
-    assert assemble_calls[1]['value_texts'] == ['weapons.value']
+    assert assemble_calls[1]['value_texts'] == ['items.value']
     assert assemble_calls[0]['equipped_texts'] == ['weapons.equipped']
     assert assemble_calls[1]['equipped_texts'] == []
     assert group[0].future.result().is_weapon is True
     assert group[1].future.result().is_weapon is False
+
+
+def test_game_navigator_uses_item_page_roi_for_item_tabs() -> None:
+    items_page = SimpleNamespace(x=1, y=2, w=3, h=4)
+    weapons_page = SimpleNamespace(x=5, y=6, w=7, h=8)
+
+    navigator = GameNavigator.__new__(GameNavigator)
+    navigator.layout = SimpleNamespace(
+        items=SimpleNamespace(page=items_page),
+        weapons=SimpleNamespace(page=weapons_page),
+    )
+
+    navigator._current_tab = InventoryTab.DEV_ITEMS
+    assert navigator._page_count_roi() is items_page
+
+    navigator._current_tab = InventoryTab.RESOURCES
+    assert navigator._page_count_roi() is items_page
+
+    navigator._current_tab = InventoryTab.WEAPONS
+    assert navigator._page_count_roi() is weapons_page
 
 
 def test_ocr_service_passes_equipped_tokens_for_echoes() -> None:

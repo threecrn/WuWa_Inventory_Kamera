@@ -235,6 +235,33 @@ def test_packaged_echo_level_signature_preprocess_expects_bgr_badge_pixels() -> 
     assert np.ptp(preprocessed_rgb) == 0
 
 
+def test_packaged_item_name_and_value_specs_match_weapon_specs() -> None:
+    weapon_name_spec = get_spec("weapons.name")
+    item_name_spec = get_spec("items.name")
+    weapon_value_spec = get_spec("weapons.value")
+    item_value_spec = get_spec("items.value")
+
+    assert weapon_name_spec is not None
+    assert item_name_spec is not None
+    assert weapon_value_spec is not None
+    assert item_value_spec is not None
+
+    assert item_name_spec.color_space == weapon_name_spec.color_space
+    assert item_name_spec.single_line == weapon_name_spec.single_line
+    assert item_name_spec.render_mode == weapon_name_spec.render_mode
+    assert item_name_spec.anchor_contrast_sharpness == weapon_name_spec.anchor_contrast_sharpness
+    assert item_name_spec.pre_upscale == weapon_name_spec.pre_upscale
+    assert item_name_spec.text_color_ranges_by_rarity == weapon_name_spec.text_color_ranges_by_rarity
+    assert item_name_spec.signature_preprocess == weapon_name_spec.signature_preprocess
+    assert item_name_spec.cache_mode == weapon_name_spec.cache_mode
+
+    assert item_value_spec.color_space == weapon_value_spec.color_space
+    assert item_value_spec.threshold_mode == weapon_value_spec.threshold_mode
+    assert item_value_spec.floor_value == weapon_value_spec.floor_value
+    assert item_value_spec.allowed_chars == weapon_value_spec.allowed_chars
+    assert item_value_spec.cache_mode == weapon_value_spec.cache_mode
+
+
 def test_post_scaling_resizes_ocr_output() -> None:
     spec = OcrRegionSpec(
         roi_key="echoes.fullStatsValue",

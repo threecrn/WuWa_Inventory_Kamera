@@ -217,6 +217,50 @@ cache_mode = "persistent"
 # Item workflow
 # =====================================================================
 
+[items.name.ocr]
+color_space = "hsv"
+single_line = true
+pre_upscale = [512, 64]
+render_mode = "masked_normalized_anchor_contrast"
+anchor_contrast_sharpness = 6.0
+#background_color_ranges = [[[80, 66, 50], [220, 215, 200]]]
+
+[items.name.ocr.rarity_overrides."5"]
+#text_color_ranges = [[[20, 60, 150], [32, 255, 255]]]
+text_color_ranges = [[[25,70,200],[27,90,255]]]
+[items.name.ocr.rarity_overrides."4"]
+text_color_ranges = [[[135, 60, 150], [150, 255, 255]]]
+[items.name.ocr.rarity_overrides."3"]
+text_color_ranges = [[[112, 60, 150], [125, 255, 255]]]
+[items.name.ocr.rarity_overrides."2"]
+text_color_ranges = [[[55, 60, 150], [70, 255, 255]]]
+
+[items.name.signature]
+single_line = true
+cache_mode = "persistent"
+color_space = "bgr"
+pre_downscale = [512, 32]
+
+[items.name.signature.rarity_overrides."5"]
+text_color_ranges = [[[166, 235, 247], [166, 235, 247]]]
+
+[items.name.signature.rarity_overrides."4"]
+text_color_ranges = [[[185, 135, 200], [185, 135, 200]]]
+
+[items.name.signature.rarity_overrides."3"]
+text_color_ranges = [[[220, 180, 120], [220, 180, 120]]]
+
+[items.name.signature.rarity_overrides."2"]
+text_color_ranges = [[[130, 210, 140], [130, 210, 140]]]
+
+[items.value.ocr]
+single_line = true
+character_whitelist = "0123456789"
+color_space = "rgb"
+text_color_ranges = [
+    [[230, 220, 150], [255, 255, 190]],
+]
+
 [items.info]
 color_space = "gray"
 threshold_mode = "floor"
