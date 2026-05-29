@@ -44,14 +44,14 @@ class ScanThread(QThread):
     -------
     progress(str, int, int)
         ``(step, scanned, total)`` forwarded from the orchestrator.
-    finished(dict)
+    finished(object)
         The result dict returned by ``SessionOrchestrator.run()``.
     error(str)
         Human-readable error if the scan crashes.
     """
 
     progress = Signal(str, int, int)
-    finished = Signal(dict)
+    finished = Signal(object)
     error = Signal(str)
 
     def __init__(
