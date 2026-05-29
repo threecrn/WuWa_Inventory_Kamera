@@ -159,6 +159,7 @@ text_color_ranges = [[[25,70,200],[27,90,255]]]
 
 [weapons.rank.singature]
 single_line = true
+color_space = "hsv"
 text_color_ranges = [[[25,70,200],[27,90,255]]]
 
 [weapons.level.ocr]
@@ -256,6 +257,14 @@ text_color_ranges = [[[130, 210, 140], [130, 210, 140]]]
 [items.value.ocr]
 single_line = true
 character_whitelist = "0123456789"
+color_space = "rgb"
+text_color_ranges = [
+    [[230, 220, 150], [255, 255, 190]],
+]
+
+[items.value.signature]
+cache_mode = "transient"
+single_line = true
 color_space = "rgb"
 text_color_ranges = [
     [[230, 220, 150], [255, 255, 190]],

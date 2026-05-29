@@ -215,6 +215,18 @@ def loadWeaponRawScans(base_path: Path) -> list:
     return _load_raw_scans(Path(base_path), directory_glob='weapon_*/')
 
 
+def loadDevItemRawScans(base_path: Path) -> list:
+    """Reconstruct raw scan records from ``devItem_XXXX/`` directories."""
+
+    return _load_raw_scans(Path(base_path), directory_glob='devItem_*/')
+
+
+def loadResourceRawScans(base_path: Path) -> list:
+    """Reconstruct raw scan records from ``resource_XXXX/`` directories."""
+
+    return _load_raw_scans(Path(base_path), directory_glob='resource_*/')
+
+
 def loadCharacterRawScans(base_path: Path) -> list:
     """Reconstruct character raw scans from ``char_XXXX/`` directories."""
     from ..models.raw_scan import RawCharacterScan  # local import — avoids circular deps

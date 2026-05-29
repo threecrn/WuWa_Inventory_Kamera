@@ -1,18 +1,8 @@
 """
-wuwa_inventory_kamera.scraping.scanning.weapon_workflow
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+wuwa_inventory_kamera.scraping.scanning.item_workflow
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Scanning workflow for weapons.
-
-Weapons are simpler than echoes:
-* No sonata scroll.
-* No rescan (OCR is straightforward).
-* Sequential: each cell is captured and the future is resolved
-  immediately because the scanner needs the result for duplicate
-  detection.
-
-The workflow reuses the same :class:`~.grid_navigator.GridNavigator` and
-:class:`~.scan_state.ScanSession` infrastructure.
+Scanning workflow for Development Items and Resources inventory tabs.
 """
 from __future__ import annotations
 
@@ -23,17 +13,10 @@ from typing import Callable
 
 import numpy as np
 
-from ...game.navigation import (
-    GameNavigator,
-    InventoryTab,
-    SortOrder,
-)
+from ...game.navigation import GameNavigator, InventoryTab, SortOrder
 from ...game.screen import capture_full
 from .grid_navigator import GridNavigator
-from .scan_state import (
-    GridPosition,
-    ScanSession,
-)
+from .scan_state import GridPosition, ScanSession
 from ..service.captures import WeaponCapture, WeaponResult
 from ..service.ocr_service import OcrService
 from ..service.shared_scan_helpers import _rarity_from_capture_pixel
@@ -41,46 +24,22 @@ from ..service.shared_scan_helpers import _rarity_from_capture_pixel
 logger = logging.getLogger(__name__)
 
 
-class WeaponWorkflow:
-    """
-    Scanning workflow for the weapon inventory tab.
-
-    Each cell is captured, submitted to the OcrService, and resolved
-    immediately (blocking).  This keeps the logic simple and allows
-    duplicate detection based on the OCR result.
-
-    Parameters
-    ----------
-    nav:
-        Game navigator.
-    ocr_service:
-        OCR service for assembling weapon data.
-    session:
-        Scan session tracking progress.
-    tab:
-        Which inventory tab to scan (``WEAPONS`` only).
-    sort_order:
-        Desired sort order, or ``None`` to leave unchanged.
-    save_raw:
-        If set, raw screenshots are saved to this directory for offline
-        reprocessing.
-    write_debug:
-        If set, write OCR debug crops and preprocessed/signature artifacts.
-    """
+class ItemWorkflow:
+    """Scanning workflow for the Development Items and Resources tabs."""
 
     def __init__(
         self,
         nav: GameNavigator,
         ocr_service: OcrService,
         session: ScanSession,
-        tab: InventoryTab = InventoryTab.WEAPONS,
+        tab: InventoryTab = InventoryTab.DEV_ITEMS,
         sort_order: SortOrder | None = None,
         save_raw: Path | None = None,
         stop_event: threading.Event | None = None,
         write_debug: bool = False,
     ) -> None:
-        if tab != InventoryTab.WEAPONS:
-            raise ValueError(f'WeaponWorkflow only supports the weapons tab, got {tab!r}')
+        if tab not in (InventoryTab.DEV_ITEMS, InventoryTab.RESOURCES):
+            raise ValueError(f'ItemWorkflow only supports item tabs, got {tab!r}')
 
         self.nav = nav
         self.ocr = ocr_service
@@ -92,18 +51,12 @@ class WeaponWorkflow:
         self.write_debug = write_debug
 
     def run(self, on_progress: Callable | None = None) -> list[dict]:
-        """
-        Execute the weapon scan.
-
-        Returns a list of accepted result dicts.
-        """
+        """Execute the item scan and return accepted result dicts."""
         self.nav.switch_tab(self.tab)
-        if self.sort_order is not None:
-            self.nav.set_sort_order(self.sort_order)
 
         total_items, total_pages = self.nav.read_item_count()
         logger.info(
-            'Weapon workflow — tab=%s items=%d pages=%d',
+            'Item workflow — tab=%s items=%d pages=%d',
             self.tab.value, total_items, total_pages,
         )
 
@@ -123,70 +76,52 @@ class WeaponWorkflow:
             nonlocal processed
             if self._stop_event and self._stop_event.is_set():
                 return False
-            layout = self.nav.layout
 
-            # Full screenshot for this cell
+            layout = self.nav.layout
             full = capture_full(layout.width, layout.height, layout.monitor, gw=self.nav.gw)
 
-            # Optionally save raw images
             if self.save_raw:
                 self._save_raw(position, full)
 
-            # Hash-based dedup: skip if identical to a previously seen cell
             img_hash = hash(full.tobytes())
             if img_hash in seen_hashes:
                 self.session.mark_skipped(position.scan_index)
-                logger.debug('Weapon %d — duplicate image, skipping', position.scan_index)
+                logger.debug('Item %d — duplicate image, skipping', position.scan_index)
                 processed += 1
                 if on_progress:
                     on_progress(processed, self.session.total_items)
                 return True
             seen_hashes.add(img_hash)
 
-            # Crop regions.
-            panel = layout.weapons
+            panel = layout.items
             name_crop = full[
                 int(panel.name.y) : int(panel.name.y + panel.name.h),
                 int(panel.name.x) : int(panel.name.x + panel.name.w),
             ]
+            value_crop = full[
+                int(panel.value.y) : int(panel.value.y + panel.value.h),
+                int(panel.value.x) : int(panel.value.x + panel.value.w),
+            ]
+
             detected_rarity: int | None = None
             if hasattr(panel, 'rarityColorPick'):
                 rcp = panel.rarityColorPick
                 rarity_pixel = full[int(rcp.y), int(rcp.x)]
                 detected_rarity, rarity_order, rarity_dist = _rarity_from_capture_pixel(rarity_pixel)
                 logger.debug(
-                    'Weapon %d — rarity pixel raw=%s interpreted_as=%s → rarity %d (dist=%.1f)',
+                    'Item %d — rarity pixel raw=%s interpreted_as=%s → rarity %d (dist=%.1f)',
                     position.scan_index,
                     rarity_pixel.tolist(),
                     rarity_order,
                     detected_rarity,
                     rarity_dist,
                 )
-            value_roi = panel.level
-            value_crop = full[
-                int(value_roi.y) : int(value_roi.y + value_roi.h),
-                int(value_roi.x) : int(value_roi.x + value_roi.w),
-            ]
-
-            rank_crop = full[
-                int(panel.rank.y) : int(panel.rank.y + panel.rank.h),
-                int(panel.rank.x) : int(panel.rank.x + panel.rank.w),
-            ]
-
-            equipped_crop = None
-            if hasattr(panel, 'equipped'):
-                equipped_crop = full[
-                    int(panel.equipped.y) : int(panel.equipped.y + panel.equipped.h),
-                    int(panel.equipped.x) : int(panel.equipped.x + panel.equipped.w),
-                ]
 
             if self.write_debug:
                 self._write_debug_artifacts(
                     position,
                     name=name_crop,
                     value=value_crop,
-                    rank=rank_crop,
-                    equipped=equipped_crop,
                     detected_rarity=detected_rarity,
                 )
 
@@ -194,16 +129,15 @@ class WeaponWorkflow:
                 index=position.scan_index,
                 name=name_crop,
                 value=value_crop,
-                rank=rank_crop,
-                equipped=equipped_crop,
+                rank=None,
+                equipped=None,
                 detected_rarity=detected_rarity,
             )
 
-            # Submit and block — weapons are fast enough to do synchronously
             try:
                 result: WeaponResult = self.ocr.submit(capture).result(timeout=30)
             except Exception as exc:
-                logger.error('Weapon %d — OCR error: %s', position.scan_index, exc)
+                logger.error('Item %d — OCR error: %s', position.scan_index, exc)
                 self.session.mark_failed(position.scan_index, str(exc))
                 processed += 1
                 if on_progress:
@@ -215,29 +149,16 @@ class WeaponWorkflow:
                 results.append(result.data)
             else:
                 self.session.mark_skipped(position.scan_index)
-                logger.debug('Weapon %d — rejected', position.scan_index)
+                logger.debug('Item %d — rejected', position.scan_index)
 
             processed += 1
             if on_progress:
                 on_progress(processed, self.session.total_items)
-
-            # Early termination: when sorted by level, the first weapon below
-            # the minimum guarantees all remaining weapons are also below it.
-            if result.below_minimum and self.sort_order == SortOrder.LEVEL:
-                logger.info(
-                    'Weapon %d — below minimum level while sorted by level, stopping scan.',
-                    position.scan_index,
-                )
-                return False
-
             return True
 
         grid.scan_forward(_visitor)
 
-        logger.info(
-            'Weapon workflow finished — %d/%d accepted',
-            len(results), total_items,
-        )
+        logger.info('Item workflow finished — %d/%d accepted', len(results), total_items)
         return results
 
     def _debug_base(self) -> Path:
@@ -247,11 +168,11 @@ class WeaponWorkflow:
 
         return Path(app_config.exportFolder) / self.session.session_id / 'raw'
 
-    def _scan_dir_for_scan(self, pos: GridPosition) -> Path:
-        return self._debug_base() / f'weapon_{pos.scan_index:04d}'
+    def _item_prefix(self) -> str:
+        return 'devItem' if self.tab == InventoryTab.DEV_ITEMS else 'resource'
 
-    def _debug_dir_for_scan(self, pos: GridPosition) -> Path:
-        return self._scan_dir_for_scan(pos) / 'debug'
+    def _scan_dir_for_scan(self, pos: GridPosition) -> Path:
+        return self._debug_base() / f'{self._item_prefix()}_{pos.scan_index:04d}'
 
     def _write_debug_artifacts(
         self,
@@ -259,56 +180,33 @@ class WeaponWorkflow:
         *,
         name: np.ndarray,
         value: np.ndarray,
-        rank: np.ndarray,
-        equipped: np.ndarray | None,
         detected_rarity: int | None,
     ) -> None:
         from ..service.shared_scan_helpers import _write_region_debug_artifacts
 
-        debug_dir = self._debug_dir_for_scan(pos)
-        name_roi_key = 'weapons.name'
-        value_basename = 'level'
-        value_roi_key = 'weapons.level'
+        debug_dir = self._scan_dir_for_scan(pos) / 'debug'
         _write_region_debug_artifacts(
             debug_dir,
             basename='name',
-            roi_key=name_roi_key,
+            roi_key='items.name',
             raw_bgr=name,
             rarity=detected_rarity,
         )
         _write_region_debug_artifacts(
             debug_dir,
-            basename=value_basename,
-            roi_key=value_roi_key,
+            basename='value',
+            roi_key='items.value',
             raw_bgr=value,
             rarity=None,
         )
-        _write_region_debug_artifacts(
-            debug_dir,
-            basename='rank',
-            roi_key='weapons.rank',
-            raw_bgr=rank,
-            rarity=None,
-        )
-        if equipped is not None:
-            _write_region_debug_artifacts(
-                debug_dir,
-                basename='equipped',
-                roi_key='weapons.equipped',
-                raw_bgr=equipped,
-                rarity=None,
-            )
-
-    # ── Raw image persistence ────────────────────────────────────────────
 
     def _save_raw(
         self,
         pos: GridPosition,
         full: np.ndarray,
     ) -> None:
-        """Save raw screenshots to disk for offline reprocessing."""
-        import json
         import cv2
+        import json
 
         assert self.save_raw is not None
         item_dir = self._scan_dir_for_scan(pos)

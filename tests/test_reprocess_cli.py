@@ -13,6 +13,20 @@ def test_detect_raw_session_kind_recognizes_weapon_sessions(tmp_path) -> None:
     assert reprocess._detect_raw_session_kind(raw_dir) == 'weapons'
 
 
+def test_detect_raw_session_kind_recognizes_dev_item_sessions(tmp_path) -> None:
+    raw_dir = tmp_path / 'raw'
+    (raw_dir / 'devItem_0001').mkdir(parents=True)
+
+    assert reprocess._detect_raw_session_kind(raw_dir) == 'devItems'
+
+
+def test_detect_raw_session_kind_recognizes_resource_sessions(tmp_path) -> None:
+    raw_dir = tmp_path / 'raw'
+    (raw_dir / 'resource_0001').mkdir(parents=True)
+
+    assert reprocess._detect_raw_session_kind(raw_dir) == 'resources'
+
+
 def test_detect_raw_session_kind_recognizes_character_sessions(tmp_path) -> None:
     raw_dir = tmp_path / 'raw'
     (raw_dir / 'char_0001').mkdir(parents=True)
@@ -115,6 +129,55 @@ def test_main_reprocesses_mixed_sessions_and_writes_one_file_per_kind(
     stdout = capsys.readouterr().out
     assert 'echoes_wuwainventorykamera.json: 1 echo(s)' in stdout
     assert 'characters_wuwainventorykamera.json: 1 character(s)' in stdout
+
+
+def test_main_reprocesses_dev_item_and_resource_sessions(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    raw_dir = tmp_path / 'session' / 'raw'
+    (raw_dir / 'devItem_0001').mkdir(parents=True)
+    (raw_dir / 'resource_0002').mkdir(parents=True)
+    output_dir = tmp_path / 'out'
+
+    def fake_load_session_scans(_raw_dir, session_kind: str):
+        if session_kind == 'devItems':
+            return [SimpleNamespace(index=1)]
+        if session_kind == 'resources':
+            return [SimpleNamespace(index=2)]
+        raise AssertionError(f'unexpected session kind: {session_kind}')
+
+    monkeypatch.setattr(reprocess, '_load_session_scans', fake_load_session_scans)
+    monkeypatch.setattr(
+        reprocess,
+        '_run_item_service',
+        lambda scans, raw_dir, session_kind, **kwargs: [
+            {'index': scans[0].index, 'kind': session_kind},
+        ],
+    )
+    monkeypatch.setattr(reprocess.sys, 'argv', [
+        'wuwa-reprocess',
+        '--raw-dir',
+        str(raw_dir),
+        '--output-dir',
+        str(output_dir),
+        '--provider',
+        'cpu',
+    ])
+
+    reprocess.main()
+
+    assert json.loads((output_dir / 'devItems_wuwainventorykamera.json').read_text(encoding='utf-8')) == [
+        {'index': 1, 'kind': 'devItems'},
+    ]
+    assert json.loads((output_dir / 'resources_wuwainventorykamera.json').read_text(encoding='utf-8')) == [
+        {'index': 2, 'kind': 'resources'},
+    ]
+
+    stdout = capsys.readouterr().out
+    assert 'devItems_wuwainventorykamera.json: 1 dev item(s)' in stdout
+    assert 'resources_wuwainventorykamera.json: 1 resource(s)' in stdout
 
 
 def test_main_skips_empty_filtered_kind_in_mixed_sessions(

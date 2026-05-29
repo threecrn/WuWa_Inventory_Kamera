@@ -9,6 +9,7 @@ import numpy as np
 
 import wuwa_inventory_kamera.game.stop_signal as stop_signal_module
 import wuwa_inventory_kamera.scraping.scanning.character_workflow as character_workflow_module
+import wuwa_inventory_kamera.scraping.scanning.item_workflow as item_workflow_module
 import wuwa_inventory_kamera.scraping.scanning.session_orchestrator as session_orchestrator_module
 import wuwa_inventory_kamera.scraping.scanning.weapon_workflow as weapon_workflow_module
 import wuwa_inventory_kamera.scraping.service.ocr_service as ocr_service_module
@@ -16,6 +17,7 @@ import wuwa_inventory_kamera.ui.home as home_module
 from wuwa_inventory_kamera.game.navigation import GameNavigator, InventoryTab
 from wuwa_inventory_kamera.game.stop_signal import StopSignal
 from wuwa_inventory_kamera.scraping.scanning.character_workflow import CharacterWorkflow
+from wuwa_inventory_kamera.scraping.scanning.item_workflow import ItemWorkflow
 from wuwa_inventory_kamera.scraping.scanning.session_orchestrator import SessionOrchestrator
 from wuwa_inventory_kamera.scraping.scanning.weapon_workflow import WeaponWorkflow
 from wuwa_inventory_kamera.scraping.service.captures import (
@@ -133,8 +135,8 @@ def test_weapon_workflow_write_debug_dumps_region_artifacts(monkeypatch, tmp_pat
 def test_item_workflow_write_debug_uses_item_region_artifacts(monkeypatch, tmp_path) -> None:
     image = np.arange(8 * 8 * 3, dtype=np.uint8).reshape(8, 8, 3)
 
-    monkeypatch.setattr(weapon_workflow_module, 'capture_full', lambda *args, **kwargs: image)
-    monkeypatch.setattr(WeaponWorkflow, '_save_raw', lambda self, *args, **kwargs: None)
+    monkeypatch.setattr(item_workflow_module, 'capture_full', lambda *args, **kwargs: image)
+    monkeypatch.setattr(ItemWorkflow, '_save_raw', lambda self, *args, **kwargs: None)
 
     debug_calls: list[dict[str, object]] = []
 
@@ -159,7 +161,7 @@ def test_item_workflow_write_debug_uses_item_region_artifacts(monkeypatch, tmp_p
         def scan_forward(self, visitor) -> None:
             assert visitor(SimpleNamespace(scan_index=9, page=0, row=0, col=0)) is True
 
-    monkeypatch.setattr(weapon_workflow_module, 'GridNavigator', _FakeGridNavigator)
+    monkeypatch.setattr(item_workflow_module, 'GridNavigator', _FakeGridNavigator)
 
     session = SimpleNamespace(
         total_items=1,
@@ -201,13 +203,9 @@ def test_item_workflow_write_debug_uses_item_region_artifacts(monkeypatch, tmp_p
         def submit(self, capture) -> _FakeFuture:
             return _FakeFuture()
 
-    monkeypatch.setattr(
-        weapon_workflow_module,
-        '_rarity_from_capture_pixel',
-        lambda _pixel: (4, 'BGR', 0.0),
-    )
+    monkeypatch.setattr(item_workflow_module, '_rarity_from_capture_pixel', lambda _pixel: (4, 'BGR', 0.0))
 
-    workflow = WeaponWorkflow(
+    workflow = ItemWorkflow(
         nav=cast(Any, nav),
         ocr_service=cast(Any, _FakeOcrService()),
         session=cast(Any, session),
@@ -222,8 +220,41 @@ def test_item_workflow_write_debug_uses_item_region_artifacts(monkeypatch, tmp_p
     assert [call['basename'] for call in debug_calls] == ['name', 'value']
     assert [call['roi_key'] for call in debug_calls] == ['items.name', 'items.value']
     assert [call['rarity'] for call in debug_calls] == [4, None]
+    assert all(
+        call['debug_dir'] == tmp_path / 'raw' / 'devItem_0009' / 'debug'
+        for call in debug_calls
+    )
     np.testing.assert_array_equal(debug_calls[0]['raw_bgr'], image[0:2, 0:2])
     np.testing.assert_array_equal(debug_calls[1]['raw_bgr'], image[0:2, 2:4])
+
+
+def test_item_workflow_scan_dir_uses_item_prefixes(tmp_path) -> None:
+    workflow = ItemWorkflow.__new__(ItemWorkflow)
+    workflow.save_raw = tmp_path / 'raw'
+    workflow.session = SimpleNamespace(session_id='session-id')
+    position = SimpleNamespace(scan_index=5)
+
+    workflow.tab = InventoryTab.DEV_ITEMS
+    assert workflow._scan_dir_for_scan(position) == tmp_path / 'raw' / 'devItem_0005'
+
+    workflow.tab = InventoryTab.RESOURCES
+    assert workflow._scan_dir_for_scan(position) == tmp_path / 'raw' / 'resource_0005'
+
+
+def test_item_workflow_save_raw_uses_item_prefix(tmp_path) -> None:
+    workflow = ItemWorkflow.__new__(ItemWorkflow)
+    workflow.save_raw = tmp_path / 'raw'
+    workflow.session = SimpleNamespace(session_id='session-id')
+    workflow.nav = SimpleNamespace(layout=SimpleNamespace(width=1920, height=1080, monitor=1))
+    workflow.tab = InventoryTab.DEV_ITEMS
+
+    position = SimpleNamespace(scan_index=5, page=0, row=1, col=2)
+    full = np.zeros((4, 4, 3), dtype=np.uint8)
+
+    workflow._save_raw(position, full)
+
+    assert (tmp_path / 'raw' / 'devItem_0005' / 'full.png').exists()
+    assert (tmp_path / 'raw' / 'devItem_0005' / 'meta.json').exists()
 
 
 def test_ocr_service_uses_level_spec_for_weapons_and_item_specs_for_items() -> None:
@@ -1539,11 +1570,19 @@ def test_session_orchestrator_passes_write_debug_to_weapon_and_character_workflo
     tmp_path,
 ) -> None:
     weapon_init: dict[str, object] = {}
+    item_init: dict[str, object] = {}
     character_init: dict[str, object] = {}
 
     class _FakeWeaponWorkflow:
         def __init__(self, **kwargs) -> None:
             weapon_init.update(kwargs)
+
+        def run(self, on_progress=None) -> list[dict]:
+            return []
+
+    class _FakeItemWorkflow:
+        def __init__(self, **kwargs) -> None:
+            item_init.update(kwargs)
 
         def run(self, on_progress=None) -> list[dict]:
             return []
@@ -1560,6 +1599,10 @@ def test_session_orchestrator_passes_write_debug_to_weapon_and_character_workflo
         _FakeWeaponWorkflow,
     )
     monkeypatch.setattr(
+        'wuwa_inventory_kamera.scraping.scanning.item_workflow.ItemWorkflow',
+        _FakeItemWorkflow,
+    )
+    monkeypatch.setattr(
         'wuwa_inventory_kamera.scraping.scanning.character_workflow.CharacterWorkflow',
         _FakeCharacterWorkflow,
     )
@@ -1574,6 +1617,13 @@ def test_session_orchestrator_passes_write_debug_to_weapon_and_character_workflo
         InventoryTab.WEAPONS,
         stop_event,
     )
+    orchestrator._run_items(
+        cast(Any, object()),
+        cast(Any, object()),
+        'session-id',
+        InventoryTab.DEV_ITEMS,
+        stop_event,
+    )
     orchestrator._run_characters(
         cast(Any, object()),
         cast(Any, object()),
@@ -1582,8 +1632,10 @@ def test_session_orchestrator_passes_write_debug_to_weapon_and_character_workflo
     )
 
     assert weapon_init['save_raw'] == tmp_path / 'session-id' / 'raw'
+    assert item_init['save_raw'] == tmp_path / 'session-id' / 'raw'
     assert character_init['save_raw'] == tmp_path / 'session-id' / 'raw'
     assert weapon_init['write_debug'] is True
+    assert item_init['write_debug'] is True
     assert character_init['write_debug'] is True
 
 

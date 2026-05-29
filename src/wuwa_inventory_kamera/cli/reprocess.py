@@ -59,6 +59,16 @@ _RAW_SESSION_TYPES: dict[str, dict[str, str]] = {
         'item_label': 'weapon',
         'output_filename': 'weapons_wuwainventorykamera.json',
     },
+    'devItems': {
+        'directory_prefix': 'devItem_',
+        'item_label': 'dev item',
+        'output_filename': 'devItems_wuwainventorykamera.json',
+    },
+    'resources': {
+        'directory_prefix': 'resource_',
+        'item_label': 'resource',
+        'output_filename': 'resources_wuwainventorykamera.json',
+    },
     'characters': {
         'directory_prefix': 'char_',
         'item_label': 'character',
@@ -208,8 +218,10 @@ def _resolve_raw_dir(args, export_folder: str) -> Path:
 
 def _load_session_scans(raw_dir: Path, session_kind: str) -> list:
     from ..scraping.utils.common import (
+        loadDevItemRawScans,
         loadCharacterRawScans,
         loadRawScans,
+        loadResourceRawScans,
         loadWeaponRawScans,
     )
 
@@ -217,6 +229,10 @@ def _load_session_scans(raw_dir: Path, session_kind: str) -> list:
         return loadRawScans(raw_dir)
     if session_kind == 'weapons':
         return loadWeaponRawScans(raw_dir)
+    if session_kind == 'devItems':
+        return loadDevItemRawScans(raw_dir)
+    if session_kind == 'resources':
+        return loadResourceRawScans(raw_dir)
     if session_kind == 'characters':
         return loadCharacterRawScans(raw_dir)
     raise ValueError(f'Unsupported raw session kind: {session_kind!r}')
@@ -360,6 +376,35 @@ def _run_weapon_service(
     )
 
 
+def _run_item_service(
+    scans,
+    raw_dir: Path,
+    providers: list[str],
+    min_rarity: int,
+    min_level: int,
+    write_debug: bool,
+    max_batch_size: int,
+    ocr_cache_path: Path | None,
+    *,
+    session_kind: str,
+) -> list[dict]:
+    from ..game.navigation import InventoryTab
+    from ..scraping.service.item_reprocess import reprocess_item_scans_with_service
+
+    tab = InventoryTab.DEV_ITEMS if session_kind == 'devItems' else InventoryTab.RESOURCES
+    return reprocess_item_scans_with_service(
+        scans,
+        providers=providers,
+        min_rarity=min_rarity,
+        min_level=min_level,
+        write_debug=write_debug,
+        max_batch_size=max_batch_size,
+        ocr_cache_path=ocr_cache_path,
+        raw_base=raw_dir,
+        tab=tab,
+    )
+
+
 def _run_character_service(
     scans,
     raw_dir: Path,
@@ -393,6 +438,14 @@ def _resolve_session_filters(args, session_kind: str, app_config) -> tuple[int, 
         min_rarity = config_min_rarity if args.min_rarity is None else args.min_rarity
         min_level = config_min_level if args.min_level is None else args.min_level
         max_level = 25
+    elif session_kind in ('devItems', 'resources'):
+        if args.min_rarity is not None:
+            logger.warning('--min-rarity is ignored for item sessions.')
+        if args.min_level is not None:
+            logger.warning('--min-level is ignored for item sessions.')
+        min_rarity = 1
+        min_level = 0
+        max_level = 0
     else:
         if args.min_rarity is not None:
             logger.warning('--min-rarity is ignored for character sessions.')
@@ -543,7 +596,7 @@ def main() -> None:
 
     if not session_kinds:
         logger.error(
-            'No supported raw scans found in %s. Expected echo_XXXX/, weapon_XXXX/, or char_XXXX/ directories.',
+            'No supported raw scans found in %s. Expected echo_XXXX/, weapon_XXXX/, devItem_XXXX/, resource_XXXX/, or char_XXXX/ directories.',
             raw_dir,
         )
         sys.exit(1)
@@ -602,6 +655,8 @@ def main() -> None:
             )
         if session_kind == 'characters':
             logger.info('Filters   : none (character sessions are unfiltered)')
+        elif session_kind in ('devItems', 'resources'):
+            logger.info('Filters   : none (item sessions are unfiltered)')
         else:
             logger.info('Min rarity: %d', min_rarity)
             logger.info('Min level : %d', min_level)
@@ -636,6 +691,18 @@ def main() -> None:
                 write_debug=args.write_debug,
                 max_batch_size=args.max_batch_size,
                 ocr_cache_path=ocr_cache_path,
+            )
+        elif session_kind in ('devItems', 'resources'):
+            records = _run_item_service(
+                scans,
+                raw_dir,
+                providers=providers,
+                min_rarity=min_rarity,
+                min_level=min_level,
+                write_debug=args.write_debug,
+                max_batch_size=args.max_batch_size,
+                ocr_cache_path=ocr_cache_path,
+                session_kind=session_kind,
             )
         elif session_kind == 'characters':
             records = _run_character_service(

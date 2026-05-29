@@ -211,7 +211,7 @@ class SessionOrchestrator:
             return self._run_weapons(nav, ocr_service, session_id, InventoryTab.WEAPONS, stop_event)
         elif name in ('devItems', 'resources'):
             tab = InventoryTab.DEV_ITEMS if name == 'devItems' else InventoryTab.RESOURCES
-            return self._run_weapons(nav, ocr_service, session_id, tab, stop_event)
+            return self._run_items(nav, ocr_service, session_id, tab, stop_event)
         elif name == 'characters':
             return self._run_characters(nav, ocr_service, session_id, stop_event)
         elif name == 'achievements':
@@ -274,6 +274,40 @@ class SessionOrchestrator:
         raw_path = self.save_raw / session_id / 'raw' if self.save_raw else None
 
         wf = WeaponWorkflow(
+            nav=nav,
+            ocr_service=ocr_service,
+            session=session,
+            tab=tab,
+            sort_order=self.sort_order,
+            save_raw=raw_path,
+            stop_event=stop_event,
+            write_debug=self.write_debug,
+        )
+
+        def _on_progress(scanned: int, total: int) -> None:
+            self.on_progress(tab.value, scanned, total)
+
+        return wf.run(on_progress=_on_progress)
+
+    def _run_items(
+        self,
+        nav: GameNavigator,
+        ocr_service: OcrService,
+        session_id: str,
+        tab: 'InventoryTab',
+        stop_event: threading.Event,
+    ) -> list[dict]:
+        from .item_workflow import ItemWorkflow
+
+        session = ScanSession(
+            total_items=0,
+            sort_order=self.sort_order or SortOrder.TIME_ADDED,
+            session_id=session_id,
+        )
+
+        raw_path = self.save_raw / session_id / 'raw' if self.save_raw else None
+
+        wf = ItemWorkflow(
             nav=nav,
             ocr_service=ocr_service,
             session=session,
