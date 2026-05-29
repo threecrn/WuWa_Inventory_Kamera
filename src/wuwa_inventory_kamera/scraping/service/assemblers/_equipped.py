@@ -100,7 +100,11 @@ def _runtime_character_names() -> tuple[str, ...]:
             continue
         normalized_name = _normalize_character_name(name)
         if normalized_name:
-            fallback.setdefault(normalized_name, name)
+            fallback.setdefault(normalized_name, normalized_name)
+
+    if fallback:
+        _CHARACTER_NAMES_CACHE_KEY = None
+        _CHARACTER_NAMES_CACHE_VALUE = fallback
 
     return tuple(fallback.keys())
 
@@ -124,7 +128,7 @@ def _canonicalize_character_name(text: str) -> str | None:
         canonical_by_normalized = dict(_CHARACTER_NAMES_CACHE_VALUE or {})
 
     if not canonical_by_normalized:
-        return raw
+        return normalized
 
     exact = canonical_by_normalized.get(normalized)
     if exact is not None:
@@ -134,7 +138,7 @@ def _canonicalize_character_name(text: str) -> str | None:
     if close:
         return canonical_by_normalized[close[0]]
 
-    return raw
+    return normalized
 
 
 def parse_equipped_character(tokens: list[OcrResult] | None) -> str | None:

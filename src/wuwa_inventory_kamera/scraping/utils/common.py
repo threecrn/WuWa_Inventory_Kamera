@@ -6,6 +6,7 @@ import numpy as np
 from pathlib import Path
 
 from ...config.app_config import app_config
+from ...output_serialization import write_json_exports
 from ..data import (
     itemsID, charactersID, weaponsID,
     echoesID, achievementsID, echoStats,
@@ -28,18 +29,10 @@ def _trace(logger: logging.Logger, msg: str, *args, **kwargs) -> None:
 
 _logger = logging.getLogger(__name__)
 
-def savingScraped(scannedData: dict | None = None, START_DATE: str = ''):
-    scannedData = {} if scannedData is None else scannedData
+def savingScraped(exports: dict[str, object] | None = None, START_DATE: str = ''):
+    exports = {} if exports is None else exports
     savePATH: Path = Path(app_config.exportFolder) / START_DATE
-    
-    if any(data != emptyType() for data, emptyType in scannedData.values()):
-        savePATH.mkdir(parents=True, exist_ok=True)
-
-        for filename, (data, emptyType) in scannedData.items():
-            if data != emptyType():
-                filePATH = savePATH / filename
-                with open(filePATH, 'w', encoding='utf-8') as f:
-                    json.dump(data, f)
+    write_json_exports(exports, savePATH)
 
 def screenshot(left: int = 0, top: int = 0, width: int = 0, height: int = 0, monitor: int = 1, bw: bool = False):
     import mss

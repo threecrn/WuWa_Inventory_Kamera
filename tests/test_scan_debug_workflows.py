@@ -1720,7 +1720,7 @@ def test_stop_signal_stop_does_not_mark_cancellation(monkeypatch) -> None:
 
 
 def test_home_scan_finished_saves_character_results(monkeypatch) -> None:
-    saved_calls: list[tuple[dict[str, tuple[object, type]], str]] = []
+    saved_calls: list[tuple[dict[str, object], str]] = []
     notifications: list[tuple[str, str, str]] = []
 
     monkeypatch.setattr(
@@ -1778,13 +1778,10 @@ def test_home_scan_finished_saves_character_results(monkeypatch) -> None:
     assert saved_calls == [
         (
             {
-                'characters_wuwainventorykamera.json': (
-                    {
-                        'alpha': {'_name': 'alpha'},
-                        'beta': {'_name': 'beta'},
-                    },
-                    dict,
-                ),
+                'characters_wuwainventorykamera.json': {
+                    'alpha': {'_name': 'alpha'},
+                    'beta': {'_name': 'beta'},
+                },
             },
             'session-id',
         ),

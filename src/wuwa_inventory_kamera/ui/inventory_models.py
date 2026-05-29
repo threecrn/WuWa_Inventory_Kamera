@@ -12,15 +12,27 @@ from pathlib import Path
 
 from .. import localization_data as _localization_data
 from ..config.app_config import app_config, basePATH
+from ..output_serialization import (
+    ACHIEVEMENT_EXPORT_FILENAME,
+    CHARACTER_EXPORT_FILENAME,
+    DEV_ITEMS_EXPORT_FILENAME,
+    ECHO_EXPORT_FILENAME,
+    INVENTORY_EXPORT_FILENAME,
+    RESOURCES_EXPORT_FILENAME,
+    SCAN_RESULT_FILENAME,
+    WEAPON_EXPORT_FILENAME,
+)
 from ..scraping import data as scraping_data
 
-_SESSION_SCAN_RESULT = 'scan_result.json'
+_SESSION_SCAN_RESULT = SCAN_RESULT_FILENAME
 _SESSION_EXPORT_FILES: tuple[str, ...] = (
-    'echoes_wuwainventorykamera.json',
-    'weapons_wuwainventorykamera.json',
-    'devItems_wuwainventorykamera.json',
-    'resources_wuwainventorykamera.json',
-    'characters_wuwainventorykamera.json',
+    ECHO_EXPORT_FILENAME,
+    WEAPON_EXPORT_FILENAME,
+    INVENTORY_EXPORT_FILENAME,
+    DEV_ITEMS_EXPORT_FILENAME,
+    RESOURCES_EXPORT_FILENAME,
+    CHARACTER_EXPORT_FILENAME,
+    ACHIEVEMENT_EXPORT_FILENAME,
 )
 
 
@@ -341,22 +353,38 @@ def detect_document_kind(file_path: str, payload: object) -> str:
     """Infer the result document kind from file name and payload shape."""
     file_name = Path(file_path).name.lower()
 
-    if file_name == 'scan_result.json' or _looks_like_scan_session(payload):
+    if file_name == SCAN_RESULT_FILENAME:
         return 'scan_session'
-    if file_name.endswith('echoes_wuwainventorykamera.json') or _looks_like_echo_export(payload):
+    if file_name.endswith(ECHO_EXPORT_FILENAME):
         return 'echoes_export'
-    if file_name.endswith('weapons_wuwainventorykamera.json') or _looks_like_weapon_export(payload):
+    if file_name.endswith(WEAPON_EXPORT_FILENAME):
         return 'weapons_export'
+    if file_name.endswith(INVENTORY_EXPORT_FILENAME):
+        return 'inventory_export'
     if (
-        file_name.endswith('devitems_wuwainventorykamera.json')
-        or file_name.endswith('resources_wuwainventorykamera.json')
-        or _looks_like_items_export(payload)
+        file_name.endswith(DEV_ITEMS_EXPORT_FILENAME.lower())
+        or file_name.endswith(RESOURCES_EXPORT_FILENAME.lower())
     ):
         return 'items_export'
-    if file_name.endswith('characters_wuwainventorykamera.json') or _looks_like_character_export(payload):
+    if file_name.endswith(CHARACTER_EXPORT_FILENAME):
         return 'characters_export'
-    if file_name.endswith('inventory_wuwainventorykamera.json') or _looks_like_legacy_inventory(payload):
-        return 'unsupported_legacy'
+    if file_name.endswith(ACHIEVEMENT_EXPORT_FILENAME):
+        return 'achievements_export'
+
+    if _looks_like_scan_session(payload):
+        return 'scan_session'
+    if _looks_like_echo_export(payload):
+        return 'echoes_export'
+    if _looks_like_weapon_export(payload):
+        return 'weapons_export'
+    if _looks_like_inventory_export(payload):
+        return 'inventory_export'
+    if _looks_like_items_export(payload):
+        return 'items_export'
+    if _looks_like_character_export(payload):
+        return 'characters_export'
+    if _looks_like_achievement_export(payload):
+        return 'achievements_export'
     return 'unknown'
 
 
@@ -372,6 +400,9 @@ def load_inventory_document(file_path: str, payload: object) -> InventoryDocumen
     if kind == 'weapons_export':
         rows = _build_weapon_rows(payload if isinstance(payload, list) else [], resolver)
         return _document_with_single_section(kind, file_name, 'Weapons', rows)
+    if kind == 'inventory_export':
+        rows = _build_inventory_rows(payload if isinstance(payload, dict) else {}, resolver)
+        return _document_with_single_section(kind, file_name, 'Inventory', rows)
     if kind == 'items_export':
         section_title = _item_section_title(file_name)
         rows = _build_item_rows(payload if isinstance(payload, list) else [], resolver)
@@ -379,6 +410,9 @@ def load_inventory_document(file_path: str, payload: object) -> InventoryDocumen
     if kind == 'characters_export':
         rows = _build_character_rows(payload if isinstance(payload, dict) else {}, resolver)
         return _document_with_single_section(kind, file_name, 'Characters', rows)
+    if kind == 'achievements_export':
+        rows = _build_achievement_rows(payload if isinstance(payload, list) else [], resolver)
+        return _document_with_single_section(kind, file_name, 'Achievements', rows)
     if kind == 'scan_session':
         message_lines = _build_session_message_lines(payload if isinstance(payload, dict) else {})
         sections = _build_session_sections(payload if isinstance(payload, dict) else {}, resolver)
@@ -389,21 +423,12 @@ def load_inventory_document(file_path: str, payload: object) -> InventoryDocumen
             title=file_name,
             message_lines=message_lines + ('No populated result sections were found in this session file.',),
         )
-    if kind == 'unsupported_legacy':
-        return InventoryDocument(
-            kind=kind,
-            title=file_name,
-            message_lines=(
-                'Legacy inventory files are no longer supported.',
-                'Open scan_result.json or a current standalone export instead.',
-            ),
-        )
     return InventoryDocument(
         kind=kind,
         title=file_name,
         message_lines=(
             'This file is not a supported scan result format.',
-            'Supported files: scan_result.json, echoes, weapons, devItems, resources, and characters exports.',
+            'Supported files: scan_result.json, echoes, weapons, inventory, devItems, resources, achievements, and characters exports.',
         ),
     )
 
@@ -532,12 +557,18 @@ def _build_session_sections(payload: dict, resolver: MetadataResolver) -> tuple[
         if rows:
             sections.append(InventorySection('Weapons', rows))
 
-    for key, title in (('devItems', 'Development Items'), ('resources', 'Resources')):
-        data = payload.get(key)
-        if isinstance(data, list):
-            rows = _build_item_rows(data, resolver)
-            if rows:
-                sections.append(InventorySection(title, rows))
+    inventory = payload.get('inventory')
+    if isinstance(inventory, dict):
+        rows = _build_inventory_rows(inventory, resolver)
+        if rows:
+            sections.append(InventorySection('Inventory', rows))
+    else:
+        for key, title in (('devItems', 'Development Items'), ('resources', 'Resources')):
+            data = payload.get(key)
+            if isinstance(data, list):
+                rows = _build_item_rows(data, resolver)
+                if rows:
+                    sections.append(InventorySection(title, rows))
 
     characters = payload.get('characters')
     if isinstance(characters, dict):
@@ -552,7 +583,7 @@ def _build_session_sections(payload: dict, resolver: MetadataResolver) -> tuple[
             sections.append(InventorySection('Achievements', rows))
 
     shell = payload.get('shell')
-    if isinstance(shell, dict):
+    if not isinstance(inventory, dict) and isinstance(shell, dict):
         rows = _build_shell_rows(shell, resolver)
         if rows:
             sections.append(InventorySection('Shell', rows))
@@ -626,22 +657,33 @@ def _build_echo_rows(payload: list, resolver: MetadataResolver) -> tuple[Invento
 def _build_weapon_rows(payload: list, resolver: MetadataResolver) -> tuple[InventoryRow, ...]:
     rows: list[InventoryRow] = []
     for entry in payload:
-        if not isinstance(entry, dict) or ('id' not in entry and 'weapon_key' not in entry):
+        weapon_id: object | None = None
+        details: dict | None = None
+
+        if isinstance(entry, dict) and ('id' in entry or 'weapon_key' in entry):
+            weapon_id = entry.get('id', entry.get('weapon_key'))
+            details = entry
+        elif isinstance(entry, dict) and len(entry) == 1:
+            weapon_id, details = next(iter(entry.items()))
+
+        if not isinstance(details, dict):
             continue
-        weapon_ref = entry.get('id', entry.get('weapon_key'))
+
+        weapon_ref = details.get('weapon_key', weapon_id)
         weapon_name, image_path, rarity = resolver.resolve_weapon(weapon_ref)
 
         body_lines: list[str] = []
         summary = _join_non_empty_parts(
-            _format_level(entry.get('level')),
-            _format_max_level(entry.get('maxLevel')),
-            _format_rank(entry.get('rank')),
+            _format_level(details.get('level')),
+            _format_max_level(details.get('maxLevel')),
+            _format_ascension(details.get('ascension')) if details.get('maxLevel') is None else None,
+            _format_rank(details.get('rank')),
             _format_rarity(rarity),
         )
         if summary:
             body_lines.append(summary)
 
-        equipped = entry.get('_equipped')
+        equipped = details.get('_equipped')
         if equipped:
             body_lines.append(f'Equipped: {resolver.resolve_character(equipped)}')
 
@@ -649,12 +691,28 @@ def _build_weapon_rows(payload: list, resolver: MetadataResolver) -> tuple[Inven
             InventoryRow(
                 title=weapon_name,
                 subtitle=(
-                    f'Weapon Key: {entry.get("weapon_key")}'
-                    if entry.get('weapon_key')
-                    else f'Weapon ID: {entry.get("id")}'
+                    f'Weapon Key: {details.get("weapon_key")}'
+                    if details.get('weapon_key')
+                    else f'Weapon ID: {weapon_id}'
                 ),
                 body_lines=tuple(body_lines),
-                details_lines=_build_weapon_details(entry, rarity),
+                details_lines=_build_weapon_details(weapon_id, details, rarity),
+                image_path=image_path,
+            )
+        )
+    return tuple(rows)
+
+
+def _build_inventory_rows(payload: dict, resolver: MetadataResolver) -> tuple[InventoryRow, ...]:
+    rows: list[InventoryRow] = []
+    for item_id, amount in payload.items():
+        item_name, image_path = resolver.resolve_item(item_id)
+        rows.append(
+            InventoryRow(
+                title=item_name,
+                subtitle=f'Item ID: {item_id}',
+                body_lines=(f'Count: {amount}',),
+                details_lines=(f'Item ID: {item_id}', f'Count: {amount}'),
                 image_path=image_path,
             )
         )
@@ -801,20 +859,21 @@ def _build_echo_details(echo_id: object, details: dict, resolver: MetadataResolv
     return tuple(lines)
 
 
-def _build_weapon_details(entry: dict, rarity: object) -> tuple[str, ...]:
+def _build_weapon_details(weapon_id: object, details: dict, rarity: object) -> tuple[str, ...]:
     lines: list[str] = []
 
-    if entry.get('weapon_key'):
-        lines.append(f'Weapon Key: {entry.get("weapon_key")}')
-    if entry.get('id') is not None:
-        lines.append(f'Weapon ID: {entry.get("id")}')
+    if details.get('weapon_key'):
+        lines.append(f'Weapon Key: {details.get("weapon_key")}')
+    if weapon_id is not None:
+        lines.append(f'Weapon ID: {weapon_id}')
 
     for label, value in (
-        ('Level', entry.get('level')),
-        ('Max Level', entry.get('maxLevel')),
-        ('Rank', entry.get('rank')),
+        ('Level', details.get('level')),
+        ('Ascension', details.get('ascension')),
+        ('Max Level', details.get('maxLevel')),
+        ('Rank', details.get('rank')),
         ('Rarity', rarity),
-        ('Equipped', entry.get('_equipped')),
+        ('Equipped', details.get('_equipped')),
     ):
         if value is not None and value != '':
             lines.append(f'{label}: {value}')
@@ -886,7 +945,7 @@ def _item_section_title(file_name: str) -> str:
 def _looks_like_scan_session(payload: object) -> bool:
     if not isinstance(payload, dict):
         return False
-    return any(key in payload for key in ('echoes', 'weapons', 'devItems', 'resources', 'characters', 'achievements', 'shell'))
+    return any(key in payload for key in ('echoes', 'weapons', 'inventory', 'devItems', 'resources', 'characters', 'achievements', 'shell'))
 
 
 def _looks_like_echo_export(payload: object) -> bool:
@@ -906,18 +965,27 @@ def _looks_like_echo_export(payload: object) -> bool:
 def _looks_like_weapon_export(payload: object) -> bool:
     if not isinstance(payload, list) or not payload:
         return False
-    return all(
-        isinstance(entry, dict)
-        and 'id' in entry
-        and any(key in entry for key in ('level', 'maxLevel', 'rank'))
-        for entry in payload
-    )
+    for entry in payload:
+        if isinstance(entry, dict) and 'id' in entry and any(key in entry for key in ('level', 'maxLevel', 'rank')):
+            continue
+        if isinstance(entry, dict) and len(entry) == 1:
+            details = next(iter(entry.values()))
+            if isinstance(details, dict) and any(key in details for key in ('level', 'ascension', 'maxLevel', 'rank')):
+                continue
+        return False
+    return True
 
 
 def _looks_like_items_export(payload: object) -> bool:
     if not isinstance(payload, list) or not payload:
         return False
     return all(isinstance(entry, dict) and 'id' in entry and 'count' in entry for entry in payload)
+
+
+def _looks_like_inventory_export(payload: object) -> bool:
+    if not isinstance(payload, dict) or not payload:
+        return False
+    return all(_is_int_like(value) for value in payload.values())
 
 
 def _looks_like_character_export(payload: object) -> bool:
@@ -931,10 +999,10 @@ def _looks_like_character_export(payload: object) -> bool:
     )
 
 
-def _looks_like_legacy_inventory(payload: object) -> bool:
-    if not isinstance(payload, dict) or not payload:
+def _looks_like_achievement_export(payload: object) -> bool:
+    if not isinstance(payload, list) or not payload:
         return False
-    return all(_is_int_like(value) for value in payload.values())
+    return all(_is_int_like(value) for value in payload)
 
 
 def _is_int_like(value: object) -> bool:

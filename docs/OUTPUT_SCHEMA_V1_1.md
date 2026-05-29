@@ -20,18 +20,20 @@ Version label:
 
 Current standalone filenames:
 
+- `inventory_wuwainventorykamera.json`
 - `echoes_wuwainventorykamera.json`
 - `weapons_wuwainventorykamera.json`
 - `devItems_wuwainventorykamera.json`
 - `resources_wuwainventorykamera.json`
 - `characters_wuwainventorykamera.json`
+- `achievements_wuwainventorykamera.json`
 
 Not currently emitted as standalone files:
 
-- `achievements`
 - `shell`
 
-Those sections currently exist only inside `scan_result.json`.
+The `shell` section exists inside `scan_result.json` and is also folded into the
+aggregated `inventory` export.
 
 ## Notation
 
@@ -50,7 +52,8 @@ ScanResult = {
   date: TimestampString,
   cancelled?: true,
   echoes?: EchoExport | ScraperError,
-  weapons?: WeaponRow[] | ScraperError,
+  weapons?: WeaponExport | ScraperError,
+  inventory?: InventoryExport,
   devItems?: ItemRow[] | ScraperError,
   resources?: ItemRow[] | ScraperError,
   characters?: CharacterExport | ScraperError,
@@ -58,7 +61,11 @@ ScanResult = {
   shell?: ShellExport | ScraperError
 }
 
-AchievementExport = string[]
+AchievementExport = int[]
+
+InventoryExport = {
+  [itemId: string]: int
+}
 
 ShellExport = {
   "2": int
@@ -72,6 +79,8 @@ Semantics:
 - `cancelled` is present only when the user stopped the scan early.
 - If a requested scraper raises an exception after the session starts, that
   scraper section is serialized as `{ "error": "..." }`.
+- `inventory` is a serializer-built aggregate of any successful `devItems`,
+  `resources`, and `shell` payloads present in the in-memory result.
 - If the session fails before scan output exists, the CLI exits without writing
   `scan_result.json`.
 - The `shell` object keeps the v1 shell item id convention and therefore uses
@@ -83,6 +92,9 @@ Example:
 {
   "date": "2026-05-29_11-00-00",
   "cancelled": true,
+  "inventory": {
+    "2": 123456
+  },
   "echoes": [
     {
       "310000010": {
@@ -108,7 +120,7 @@ Example:
       }
     }
   ],
-  "achievements": ["9001"],
+  "achievements": [9001],
   "shell": {
     "2": 123456
   }
@@ -122,11 +134,38 @@ Each standalone file uses the same payload type as the corresponding section in
 
 | File | Top-level type |
 | --- | --- |
+| `inventory_wuwainventorykamera.json` | `InventoryExport` |
 | `echoes_wuwainventorykamera.json` | `EchoExport` |
-| `weapons_wuwainventorykamera.json` | `WeaponRow[]` |
+| `weapons_wuwainventorykamera.json` | `WeaponExport` |
 | `devItems_wuwainventorykamera.json` | `ItemRow[]` |
 | `resources_wuwainventorykamera.json` | `ItemRow[]` |
 | `characters_wuwainventorykamera.json` | `CharacterExport` |
+| `achievements_wuwainventorykamera.json` | `AchievementExport` |
+
+## Inventory Export
+
+```text
+InventoryExport = {
+  [itemId: string]: int
+}
+```
+
+Semantics:
+
+- Restores the v1 inventory container shape for compatibility.
+- Contains item quantities keyed by serialized item id.
+- Includes shell currency under item id `"2"` when shell data is available.
+- May represent a partial inventory when only a subset of item-like scrapers was
+  requested.
+
+Example:
+
+```json
+{
+  "2": 123456,
+  "10800": 3
+}
+```
 
 ## Item Rows
 
@@ -141,7 +180,8 @@ ItemRow = {
 Semantics:
 
 - Used by both `devItems` and `resources`.
-- Replaces the v1 `inventory_wuwainventorykamera.json` map for item-tab exports.
+- These are additive convenience exports alongside the restored
+  `inventory_wuwainventorykamera.json` map.
 - `item_key` is the canonical normalized lookup key and is always emitted for
   recognized item rows.
 
@@ -157,23 +197,30 @@ Example:
 ]
 ```
 
-## Weapon Rows
+## Weapon Export
 
 ```text
-WeaponRow = {
-  id: int,
-  weapon_key: normalized-key,
+WeaponExport = WeaponEntry[]
+
+WeaponEntry = {
+  [weaponId: string]: WeaponRecord
+}
+
+WeaponRecord = {
   level: int,
-  maxLevel: int,
+  ascension: int,
   rank: int,
+  weapon_key?: normalized-key,
+  maxLevel?: int,
   _equipped?: normalized-key
 }
 ```
 
 Semantics:
 
-- v1.1 weapon exports are flat row objects, not singleton maps.
-- `weapon_key` is the canonical normalized lookup key.
+- Restores the v1 array-of-singletons container shape.
+- `ascension` restores the v1 weapon-ascension field.
+- `weapon_key` and `maxLevel` are additive convenience fields.
 - `_equipped` stores the normalized character key when equipped text was
   parsed successfully.
 
@@ -182,12 +229,14 @@ Example:
 ```json
 [
   {
-    "id": 21010074,
-    "weapon_key": "emeraldofgenesis",
-    "level": 90,
-    "maxLevel": 90,
-    "rank": 1,
-    "_equipped": "shorekeeper"
+    "21010074": {
+      "level": 90,
+      "ascension": 6,
+      "rank": 1,
+      "weapon_key": "emeraldofgenesis",
+      "maxLevel": 90,
+      "_equipped": "shorekeeper"
+    }
   }
 ]
 ```
@@ -349,7 +398,7 @@ Example:
 ## Achievements and Shell
 
 ```text
-AchievementExport = string[]
+AchievementExport = int[]
 
 ShellExport = {
   "2": int
@@ -358,16 +407,21 @@ ShellExport = {
 
 Semantics:
 
-- `achievements` contains completed achievement ids as strings.
+- `achievements` contains completed achievement ids as JSON integers.
 - `shell` records the shell currency count under item id `"2"`.
-- These sections are currently only emitted inside `scan_result.json`.
+- `achievements` is emitted both inside `scan_result.json` and as
+  `achievements_wuwainventorykamera.json`.
+- `shell` is emitted only inside `scan_result.json`, and its value is also
+  folded into the aggregated `inventory` export.
 
 ## Compatibility Notes
 
 - `scan_result.json` is the canonical current session artifact.
 - Standalone exports remain available for UI save flow and reprocessing.
-- Compared with v1, v1.1 adds dedicated `devItems` and `resources` files,
-  flattens weapon and item rows, and adds canonical key fields such as
-  `item_key`, `weapon_key`, `character_key`, `echo_key`, and `sonata_key`.
+- Compared with v1, v1.1 keeps the legacy inventory and weapon container
+  shapes for compatibility, restores standalone achievements, and keeps
+  `devItems` and `resources` as additive convenience exports.
+- Compared with v1, v1.1 adds canonical key fields such as `item_key`,
+  `weapon_key`, `character_key`, `echo_key`, and `sonata_key`.
 - Compared with v1, v1.1 also adds optional equipped and scan metadata to echo
   and weapon outputs.

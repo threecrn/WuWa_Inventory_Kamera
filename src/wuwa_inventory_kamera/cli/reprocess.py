@@ -47,6 +47,8 @@ import os
 import sys
 from pathlib import Path
 
+from ..output_serialization import build_standalone_exports, merge_export_payloads, write_json_exports
+
 
 _RAW_SESSION_TYPES: dict[str, dict[str, str]] = {
     'echoes': {
@@ -189,6 +191,10 @@ def _write_output(records: list[dict] | dict[str, dict], output_dir: Path, filen
     with open(out_path, 'w', encoding='utf-8') as f:
         json.dump(records, f, indent=2, ensure_ascii=False)
     return out_path
+
+
+def _write_exports(exports: dict[str, object], output_dir: Path) -> dict[str, Path]:
+    return write_json_exports(exports, output_dir)
 
 
 def _resolve_raw_dir(args, export_folder: str) -> Path:
@@ -631,7 +637,8 @@ def main() -> None:
         args.max_batch_size,
     )
 
-    results: list[tuple[str, int, int, Path]] = []
+    results: list[tuple[str, int, int, tuple[str, ...]]] = []
+    export_payloads: dict[str, object] = {}
     require_non_empty = len(session_kinds) == 1
 
     for session_kind in session_kinds:
@@ -727,31 +734,43 @@ def main() -> None:
 
         logger.info('Accepted %d / %d %s scan(s)', len(records), len(scans), scan_label)
 
-        out_path = _write_output(
-            records,
+        new_exports = build_standalone_exports({session_kind: records})
+        export_payloads = merge_export_payloads(export_payloads, new_exports)
+        written_paths = _write_exports(
+            {filename: export_payloads[filename] for filename in new_exports},
             output_dir,
-            _RAW_SESSION_TYPES[session_kind]['output_filename'],
         )
-        logger.info('Saved → %s', out_path)
-        results.append((session_kind, len(records), len(scans), out_path))
+        for out_path in written_paths.values():
+            logger.info('Saved → %s', out_path)
+        results.append((session_kind, len(records), len(scans), tuple(written_paths.keys())))
 
     if not results:
         logger.error('No scans remain to process in %s after applying the requested filters.', raw_dir)
         sys.exit(1)
 
-    if len(results) == 1:
-        session_kind, record_count, _scan_count, out_path = results[0]
+    written_exports = _write_exports(export_payloads, output_dir)
+
+    if len(results) == 1 and len(results[0][3]) == 1:
+        session_kind, record_count, _scan_count, filenames = results[0]
+        out_path = output_dir / filenames[0]
         scan_label = _RAW_SESSION_TYPES[session_kind]['item_label']
         print(f'Done. {record_count} {scan_label}(s) written to {out_path}')
         return
 
-    total_records = sum(record_count for _kind, record_count, _scan_count, _out_path in results)
+    total_records = sum(_payload_count(payload) for payload in export_payloads.values())
     print(
-        f'Done. {total_records} item(s) written across {len(results)} export files in {output_dir}'
+        f'Done. {total_records} item(s) written across {len(written_exports)} export files in {output_dir}'
     )
-    for session_kind, record_count, _scan_count, out_path in results:
+    for session_kind, record_count, _scan_count, filenames in results:
         scan_label = _RAW_SESSION_TYPES[session_kind]['item_label']
-        print(f'  {out_path.name}: {record_count} {scan_label}(s)')
+        for filename in filenames:
+            print(f'  {filename}: {record_count} {scan_label}(s)')
+
+
+def _payload_count(payload: object) -> int:
+    if isinstance(payload, (list, dict)):
+        return len(payload)
+    return 0
 
 
 if __name__ == '__main__':

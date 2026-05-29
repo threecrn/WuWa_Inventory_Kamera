@@ -36,6 +36,8 @@ import logging
 import sys
 from pathlib import Path
 
+from ..output_serialization import serialize_scan_result
+
 logger = logging.getLogger('wuwa.scan')
 
 
@@ -185,8 +187,9 @@ def main() -> None:
     output_dir = Path(args.output_dir) / result.get('date', 'unknown')
     output_dir.mkdir(parents=True, exist_ok=True)
     out_path = output_dir / 'scan_result.json'
+    serialized_result = serialize_scan_result(result)
     with open(out_path, 'w', encoding='utf-8') as f:
-        json.dump(result, f, indent=2, ensure_ascii=False, default=str)
+        json.dump(serialized_result, f, indent=2, ensure_ascii=False, default=str)
 
     total_items = sum(
         len(v) for k, v in result.items()

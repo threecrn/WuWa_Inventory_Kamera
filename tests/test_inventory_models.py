@@ -150,7 +150,7 @@ def test_load_inventory_document_uses_rolled_main_and_object_stat_order() -> Non
 
 
 def test_load_inventory_document_normalizes_weapon_export() -> None:
-    payload = [{'id': 21010074, 'level': 90, 'maxLevel': 90, 'rank': 1, '_equipped': 'Shorekeeper'}]
+    payload = [{'21010074': {'level': 90, 'ascension': 6, 'maxLevel': 90, 'rank': 1, '_equipped': 'Shorekeeper'}}]
 
     document = inventory_models.load_inventory_document('weapons_wuwainventorykamera.json', payload)
 
@@ -177,12 +177,14 @@ def test_load_inventory_document_normalizes_item_export_from_filename() -> None:
 def test_load_inventory_document_normalizes_keyed_weapon_export() -> None:
     payload = [
         {
-            'id': 21010074,
-            'weapon_key': 'emeraldofgenesis',
-            'level': 90,
-            'maxLevel': 90,
-            'rank': 1,
-            '_equipped': 'shorekeeper',
+            '21010074': {
+                'weapon_key': 'emeraldofgenesis',
+                'level': 90,
+                'ascension': 6,
+                'maxLevel': 90,
+                'rank': 1,
+                '_equipped': 'shorekeeper',
+            },
         }
     ]
 
@@ -195,6 +197,26 @@ def test_load_inventory_document_normalizes_keyed_weapon_export() -> None:
     assert 'Equipped: Shorekeeper' in row.body_lines
     assert 'Weapon Key: emeraldofgenesis' in row.details_lines
     assert 'Weapon ID: 21010074' in row.details_lines
+
+
+def test_load_inventory_document_normalizes_inventory_export() -> None:
+    payload = {'2': 123456, '10800': 3}
+
+    document = inventory_models.load_inventory_document('inventory_wuwainventorykamera.json', payload)
+
+    assert document.kind == 'inventory_export'
+    assert document.sections[0].title == 'Inventory'
+    assert [row.title for row in document.sections[0].rows] == ['Shell Credit', 'Resonance Potion']
+
+
+def test_load_inventory_document_normalizes_achievement_export() -> None:
+    payload = [9001]
+
+    document = inventory_models.load_inventory_document('achievements_wuwainventorykamera.json', payload)
+
+    assert document.kind == 'achievements_export'
+    assert document.sections[0].title == 'Achievements'
+    assert document.sections[0].rows[0].title == 'First Steps'
 
 
 def test_load_inventory_document_normalizes_keyed_item_export() -> None:
@@ -298,28 +320,27 @@ def test_load_inventory_document_normalizes_scan_session_sections() -> None:
         'date': '2026-05-28_120000',
         'cancelled': True,
         'echoes': [{'310000010': {'level': 25, 'tuneLv': 5, 'rarity': 5, 'stats': {'main': {'ATK%': '18%'}}}}],
-        'achievements': ['9001'],
-        'shell': {'2': 123456},
+        'inventory': {'2': 123456},
+        'achievements': [9001],
     }
 
     document = inventory_models.load_inventory_document('scan_result.json', payload)
 
     assert document.kind == 'scan_session'
     assert document.message_lines == ('Session: 2026-05-28_120000', 'Status: Cancelled')
-    assert [section.title for section in document.sections] == ['Echoes', 'Achievements', 'Shell']
-    assert document.sections[1].rows[0].title == 'First Steps'
-    assert document.sections[2].rows[0].title == 'Shell Credit'
-    assert document.sections[2].rows[0].body_lines == ('Count: 123456',)
+    assert [section.title for section in document.sections] == ['Echoes', 'Inventory', 'Achievements']
+    assert document.sections[1].rows[0].title == 'Shell Credit'
+    assert document.sections[1].rows[0].body_lines == ('Count: 123456',)
+    assert document.sections[2].rows[0].title == 'First Steps'
 
 
-def test_load_inventory_document_rejects_legacy_inventory() -> None:
+def test_load_inventory_document_reads_inventory_export() -> None:
     payload = {'2': 5000, '10800': 3}
 
     document = inventory_models.load_inventory_document('inventory_wuwainventorykamera.json', payload)
 
-    assert document.kind == 'unsupported_legacy'
-    assert document.sections == ()
-    assert document.message_lines[0] == 'Legacy inventory files are no longer supported.'
+    assert document.kind == 'inventory_export'
+    assert [row.title for row in document.sections[0].rows] == ['Shell Credit', 'Resonance Potion']
 
 
 def test_filter_section_rows_returns_all_rows_for_blank_query() -> None:
@@ -497,8 +518,12 @@ def test_load_inventory_session_aggregates_standalone_exports(tmp_path) -> None:
         json.dumps([{'310000010': {'level': 25, 'tuneLv': 5, 'rarity': 5, 'stats': {'main': {'ATK%': '18%'}}}}]),
         encoding='utf-8',
     )
-    (session_dir / 'resources_wuwainventorykamera.json').write_text(
-        json.dumps([{'id': 2, 'count': 321}]),
+    (session_dir / 'inventory_wuwainventorykamera.json').write_text(
+        json.dumps({'2': 321}),
+        encoding='utf-8',
+    )
+    (session_dir / 'achievements_wuwainventorykamera.json').write_text(
+        json.dumps([9001]),
         encoding='utf-8',
     )
 
@@ -506,7 +531,7 @@ def test_load_inventory_session_aggregates_standalone_exports(tmp_path) -> None:
 
     assert document.kind == 'scan_session'
     assert document.message_lines == ('Session folder: 2026-05-28_130000',)
-    assert [section.title for section in document.sections] == ['Echoes', 'Resources']
+    assert [section.title for section in document.sections] == ['Echoes', 'Inventory', 'Achievements']
 
 
 def test_load_inventory_session_reports_missing_supported_exports(tmp_path) -> None:

@@ -26,6 +26,7 @@ from qfluentwidgets import (
     ProgressBar,
 )
 
+from ..output_serialization import build_standalone_exports
 from .config import cfg
 from ..scraping.utils.common import savingScraped
 
@@ -397,22 +398,13 @@ class LControlPanel(QFrame):
             self.signalNotifier.emit('error', 'Scan Error', result['error'])
             return
 
-        # Save results
-        scan_data: dict[str, tuple] = {}
         session_id = result.get('date', '')
 
-        for key in ('echoes', 'weapons', 'devItems', 'resources'):
-            data = result.get(key)
-            if isinstance(data, list) and data:
-                filename = f'{key}_wuwainventorykamera.json'
-                scan_data[filename] = (data, list)
+        exports = build_standalone_exports(result)
+        if exports:
+            savingScraped(exports, START_DATE=session_id)
 
         characters = result.get('characters')
-        if isinstance(characters, dict) and characters and 'error' not in characters:
-            scan_data['characters_wuwainventorykamera.json'] = (characters, dict)
-
-        if scan_data:
-            savingScraped(scan_data, START_DATE=session_id)
 
         cancelled = result.get('cancelled', False)
         summary_parts = []
@@ -499,10 +491,7 @@ class LControlPanel(QFrame):
                 ocr_cache_path=cfg.get(cfg.ocrCachePath),
                 raw_base=raw_base,
             )
-            savingScraped(
-                {'echoes_wuwainventorykamera.json': (echoes, list)},
-                session_id,
-            )
+            savingScraped(build_standalone_exports({'echoes': echoes}), session_id)
             self.signalNotifier.emit(
                 'success', 'Reprocess Complete',
                 f'Saved {len(echoes)} echoes for session "{session_id}".',
