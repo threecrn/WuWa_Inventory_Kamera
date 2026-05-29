@@ -73,6 +73,29 @@ def test_weapon_assembler_adds_item_key_for_item_tabs(monkeypatch) -> None:
     }
 
 
+def test_weapon_assembler_extracts_item_id_from_metadata_lookup(monkeypatch) -> None:
+    monkeypatch.setattr(
+        weapon_assembler_module,
+        '_get_data',
+        lambda: ({}, {'premiumsealedtube': {'id': 36000004, 'name': 'Premium Sealed Tube'}}),
+    )
+
+    image = np.zeros((1, 1, 3), dtype=np.uint8)
+    assembler = WeaponAssembler()
+    result = assembler.assemble(
+        WeaponCapture(index=6, name=image, value=image, rank=None),
+        [_token('Premium'), _token('Sealed'), _token('Tube')],
+        [_token('39')],
+        None,
+    )
+
+    assert result.data == {
+        'id': 36000004,
+        'item_key': 'premiumsealedtube',
+        'count': 39,
+    }
+
+
 def test_item_assembler_returns_item_key_when_recognized(monkeypatch) -> None:
     monkeypatch.setattr(
         item_assembler_module,
@@ -93,6 +116,29 @@ def test_item_assembler_returns_item_key_when_recognized(monkeypatch) -> None:
     assert result.item_id == 'item-id'
     assert result.item_key == 'resonancepotion'
     assert result.count == 3
+
+
+def test_item_assembler_extracts_id_from_metadata_lookup(monkeypatch) -> None:
+    monkeypatch.setattr(
+        item_assembler_module,
+        '_get_data',
+        lambda: {'premiumsealedtube': {'id': 36000004, 'name': 'Premium Sealed Tube'}},
+    )
+
+    assembler = ItemAssembler()
+    result = assembler.assemble(
+        ItemCapture(index=6, info=np.zeros((1, 1, 3), dtype=np.uint8)),
+        [
+            ([[0, 0], [1, 0], [1, 1], [0, 1]], 'Premium', 1.0),
+            ([[2, 0], [3, 0], [3, 1], [2, 1]], 'Sealed', 1.0),
+            ([[4, 0], [5, 0], [5, 1], [4, 1]], 'Tube', 1.0),
+            ([[0, 20], [1, 20], [1, 21], [0, 21]], '39', 1.0),
+        ],
+    )
+
+    assert result.item_id == 36000004
+    assert result.item_key == 'premiumsealedtube'
+    assert result.count == 39
 
 
 def test_echo_assembler_adds_equipped_character(monkeypatch) -> None:

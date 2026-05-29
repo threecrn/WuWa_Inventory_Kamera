@@ -32,6 +32,12 @@ _LEVEL_RE = re.compile(r'(\d+)\s*/\s*(\d+)')
 _RANK_RE  = re.compile(r'\d')
 
 
+def _extract_lookup_id(value):
+    if isinstance(value, dict) and 'id' in value:
+        return value.get('id')
+    return value
+
+
 def _get_data():
     from ...data import getWeaponsID, getItemsID
 
@@ -92,7 +98,7 @@ class WeaponAssembler:
 
         # ── Determine weapon vs item ──────────────────────────────────────
         is_weapon = name_text in weaponsID or rank_tokens is not None
-        lookup_id = (weaponsID if is_weapon else itemsID).get(name_text)
+        lookup_id = _extract_lookup_id((weaponsID if is_weapon else itemsID).get(name_text))
 
         if lookup_id is None:
             # Fuzzy fallback
@@ -102,7 +108,7 @@ class WeaponAssembler:
             if close:
                 logger.info('Weapon %d — fuzzy-resolved %r → %r', idx, name_text, close[0])
                 name_text = close[0]
-                lookup_id = candidates[close[0]]
+                lookup_id = _extract_lookup_id(candidates[close[0]])
             else:
                 logger.warning('Weapon %d — name %r not recognised, rejecting.', idx, name_text)
                 return WeaponResult(index=idx, is_weapon=is_weapon, data=None)

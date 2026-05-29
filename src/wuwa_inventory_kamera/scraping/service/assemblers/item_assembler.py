@@ -25,6 +25,12 @@ logger = logging.getLogger(__name__)
 _DIGITS_RE = re.compile(r'\d[\d,]*')
 
 
+def _extract_lookup_id(value):
+    if isinstance(value, dict) and 'id' in value:
+        return value.get('id')
+    return value
+
+
 def _get_data():
     from ...data import getItemsID
 
@@ -64,13 +70,13 @@ class ItemAssembler:
         count = int(m.group().replace(',', '')) if m else 0
 
         # Item lookup
-        item_id: str | None = itemsID.get(name_text)
+        item_id = _extract_lookup_id(itemsID.get(name_text))
         if item_id is None:
             from difflib import get_close_matches
             close = get_close_matches(name_text, itemsID, n=1, cutoff=0.8)
             if close:
                 logger.info('Item %d — fuzzy-resolved %r → %r', idx, name_text, close[0])
-                item_id = itemsID[close[0]]
+                item_id = _extract_lookup_id(itemsID[close[0]])
                 name_text = close[0]
             else:
                 logger.warning('Item %d — name %r not recognised.', idx, name_text)
