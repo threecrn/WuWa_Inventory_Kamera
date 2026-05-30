@@ -16,7 +16,7 @@ pytest.importorskip('qfluentwidgets')
 from PySide6.QtWidgets import QApplication
 
 from wuwa_inventory_kamera.ui import inventory as inventory_module
-from wuwa_inventory_kamera.ui.inventory import InventoryInterface, ResultCard
+from wuwa_inventory_kamera.ui.inventory import InventoryInterface, ResultCard, TileCard
 from wuwa_inventory_kamera.ui.inventory_models import InventoryDocument, InventoryRow, InventorySection
 
 
@@ -46,6 +46,22 @@ def _build_document() -> InventoryDocument:
                 ),
             ),
         ),
+    )
+
+
+def _build_tile_document() -> InventoryDocument:
+    rows = tuple(
+        InventoryRow(
+            title=f'Extremely Long Inventory Item Name {index}',
+            body_lines=(str(index),),
+            display_kind='tile',
+        )
+        for index in range(1, 8)
+    )
+    return InventoryDocument(
+        kind='test',
+        title='Inventory',
+        sections=(InventorySection(title='Resources', rows=rows),),
     )
 
 
@@ -113,6 +129,34 @@ def test_row_selection_reuses_existing_result_cards(qapp: QApplication) -> None:
     assert interface._resultCards[0]._selected is False
     assert interface._resultCards[1]._selected is True
     assert _details_texts(interface) == ['Beta details']
+
+    interface.hide()
+    interface.deleteLater()
+    qapp.processEvents()
+
+
+def test_tile_section_uses_tile_cards_with_six_column_wrap(qapp: QApplication) -> None:
+    interface = InventoryInterface()
+    set_document = cast(Any, getattr(interface, '_InventoryInterface__setDocument'))
+    set_document(_build_tile_document())
+    interface.resize(1400, 800)
+    interface.show()
+    qapp.processEvents()
+
+    assert len(interface._resultCards) == 7
+    assert all(isinstance(card, TileCard) for card in interface._resultCards)
+
+    first_card = cast(TileCard, interface._resultCards[0])
+    sixth_card = cast(TileCard, interface._resultCards[5])
+    seventh_card = cast(TileCard, interface._resultCards[6])
+
+    assert first_card.width() == TileCard.TILE_WIDTH
+    assert first_card.height() == TileCard.TILE_HEIGHT
+    assert first_card.countLabel.text() == '1'
+    assert first_card.nameLabel.text() != first_card.row.title
+    assert first_card.nameLabel.text().endswith('…')
+    assert sixth_card.y() == first_card.y()
+    assert seventh_card.y() > first_card.y()
 
     interface.hide()
     interface.deleteLater()

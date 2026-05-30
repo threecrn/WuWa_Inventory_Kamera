@@ -171,7 +171,8 @@ def test_load_inventory_document_normalizes_item_export_from_filename() -> None:
     assert document.sections[0].title == 'Development Items'
     row = document.sections[0].rows[0]
     assert row.title == 'Resonance Potion'
-    assert row.body_lines == ('Count: 3',)
+    assert row.body_lines == ('3',)
+    assert row.display_kind == 'tile'
 
 
 def test_load_inventory_document_normalizes_keyed_weapon_export() -> None:
@@ -227,7 +228,8 @@ def test_load_inventory_document_normalizes_keyed_item_export() -> None:
     row = document.sections[0].rows[0]
     assert row.title == 'Resonance Potion'
     assert row.subtitle == 'Item Key: resonancepotion'
-    assert row.body_lines == ('Count: 3',)
+    assert row.body_lines == ('3',)
+    assert row.display_kind == 'tile'
     assert 'Item Key: resonancepotion' in row.details_lines
     assert 'Item ID: 10800' in row.details_lines
 
@@ -330,7 +332,8 @@ def test_load_inventory_document_normalizes_scan_session_sections() -> None:
     assert document.message_lines == ('Session: 2026-05-28_120000', 'Status: Cancelled')
     assert [section.title for section in document.sections] == ['Echoes', 'Inventory', 'Achievements']
     assert document.sections[1].rows[0].title == 'Shell Credit'
-    assert document.sections[1].rows[0].body_lines == ('Count: 123456',)
+    assert document.sections[1].rows[0].body_lines == ('123456',)
+    assert document.sections[1].rows[0].display_kind == 'tile'
     assert document.sections[2].rows[0].title == 'First Steps'
 
 
