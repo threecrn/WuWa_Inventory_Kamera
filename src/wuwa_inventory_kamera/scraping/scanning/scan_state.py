@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from ...game.navigation import SortOrder
+from ...game.navigation import GRID_COLS, GRID_ROWS, SortOrder
 
 logger = logging.getLogger(__name__)
 
@@ -54,18 +54,59 @@ class GridPosition:
     scan_index: int
 
     @staticmethod
-    def from_index(index: int, cols: int = 6, rows: int = 4) -> 'GridPosition':
-        """Compute page/row/col from a flat index."""
+    def page_start_index(
+        page: int,
+        total_items: int | None = None,
+        cols: int = GRID_COLS,
+        rows: int = GRID_ROWS,
+    ) -> int:
+        """
+        Return the flat index shown in the top-left cell of *page*.
+
+        On a short final page the game cannot scroll a full extra 24 cells,
+        so the last visible page overlaps the previous page and starts at
+        ``total_items - per_page``.
+        """
+        per_page = rows * cols
+        if total_items is None or total_items <= per_page:
+            return page * per_page
+
+        last_page = (total_items - 1) // per_page
+        if page == last_page:
+            return max(0, total_items - per_page)
+
+        return page * per_page
+
+    @staticmethod
+    def from_index(
+        index: int,
+        cols: int = GRID_COLS,
+        rows: int = GRID_ROWS,
+        total_items: int | None = None,
+    ) -> 'GridPosition':
+        """
+        Compute page/row/col from a flat index.
+
+        When *total_items* is provided, the final tail chunk is remapped onto
+        the overlapping last visible page so clicks stay aligned after the
+        final scroll lands short of a full page.
+        """
         per_page = rows * cols
         page = index // per_page
-        remainder = index % per_page
+        page_start = GridPosition.page_start_index(page, total_items, cols, rows)
+        remainder = index - page_start
         row = remainder // cols
         col = remainder % cols
         return GridPosition(page=page, row=row, col=col, scan_index=index)
 
-    def to_index(self, cols: int = 6, rows: int = 4) -> int:
-        per_page = rows * cols
-        return self.page * per_page + self.row * cols + self.col
+    def to_index(
+        self,
+        cols: int = GRID_COLS,
+        rows: int = GRID_ROWS,
+        total_items: int | None = None,
+    ) -> int:
+        page_start = self.page_start_index(self.page, total_items, cols, rows)
+        return page_start + self.row * cols + self.col
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +166,7 @@ class ScanSession:
 
         # Pre-allocate scan items for every grid slot
         self.items: list[ScanItem] = [
-            ScanItem(position=GridPosition.from_index(i))
+            ScanItem(position=GridPosition.from_index(i, total_items=total_items))
             for i in range(total_items)
         ]
 

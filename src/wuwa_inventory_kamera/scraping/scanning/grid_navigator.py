@@ -74,6 +74,14 @@ class GridNavigator:
     def current_page(self) -> int:
         return self._current_page
 
+    def _position_for_index(self, index: int) -> GridPosition:
+        return GridPosition.from_index(
+            index,
+            cols=GRID_COLS,
+            rows=GRID_ROWS,
+            total_items=self.total_items,
+        )
+
     # ── Forward scan ─────────────────────────────────────────────────────
 
     def scan_forward(
@@ -87,14 +95,14 @@ class GridNavigator:
         Calls *visitor* for each cell.  Returns the number of cells visited.
         """
         visited = 0
-        start_pos = GridPosition.from_index(start_index)
+        start_pos = self._position_for_index(start_index)
 
         # Navigate to the correct starting page
         if start_pos.page != self._current_page:
             self.navigate_to_page(start_pos.page)
 
         for index in range(start_index, self.total_items):
-            pos = GridPosition.from_index(index)
+            pos = self._position_for_index(index)
 
             # Page transition
             if pos.page != self._current_page:

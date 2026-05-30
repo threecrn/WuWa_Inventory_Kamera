@@ -557,7 +557,12 @@ class NavSession:
         logger.info('goto-index %d', n)
         from ..game.navigation import GRID_COLS
         from ..scraping.scanning.scan_state import GridPosition
-        pos = GridPosition.from_index(n, GRID_COLS)
+
+        total_items = None
+        if not self.dry_run:
+            total_items, _ = self.nav.read_item_count()
+
+        pos = GridPosition.from_index(n, cols=GRID_COLS, total_items=total_items)
         if not self.dry_run:
             scroll_kw = {} if scroll_wait is None else {'wait': scroll_wait}
             self.nav.scroll_to_page(pos.page, self._page_0, **scroll_kw)
