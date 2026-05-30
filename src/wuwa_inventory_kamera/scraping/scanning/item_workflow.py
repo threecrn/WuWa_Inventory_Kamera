@@ -18,6 +18,7 @@ from ...game.screen import capture_full
 from .grid_navigator import GridNavigator
 from .scan_state import GridPosition, ScanSession
 from ..service.captures import WeaponCapture, WeaponResult
+from ..service.item_result_normalization import normalize_item_rows
 from ..service.ocr_service import OcrService
 from ..service.shared_scan_helpers import _rarity_from_capture_pixel
 
@@ -158,8 +159,9 @@ class ItemWorkflow:
 
         grid.scan_forward(_visitor)
 
-        logger.info('Item workflow finished — %d/%d accepted', len(results), total_items)
-        return results
+        normalized_results = normalize_item_rows(results)
+        logger.info('Item workflow finished — %d/%d accepted', len(normalized_results), total_items)
+        return normalized_results
 
     def _debug_base(self) -> Path:
         if self.save_raw is not None:

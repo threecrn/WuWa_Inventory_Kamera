@@ -241,6 +241,68 @@ def test_item_workflow_scan_dir_uses_item_prefixes(tmp_path) -> None:
     assert workflow._scan_dir_for_scan(position) == tmp_path / 'raw' / 'resource_0005'
 
 
+def test_item_workflow_normalizes_final_rows(monkeypatch) -> None:
+    image = np.arange(8 * 8 * 3, dtype=np.uint8).reshape(8, 8, 3)
+
+    monkeypatch.setattr(item_workflow_module, 'capture_full', lambda *args, **kwargs: image)
+    monkeypatch.setattr(item_workflow_module, 'normalize_item_rows', lambda rows: [{'normalized': True, 'rows': rows}])
+
+    class _FakeGridNavigator:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def scan_forward(self, visitor) -> None:
+            assert visitor(SimpleNamespace(scan_index=9, page=0, row=0, col=0)) is True
+
+    monkeypatch.setattr(item_workflow_module, 'GridNavigator', _FakeGridNavigator)
+    monkeypatch.setattr(item_workflow_module, '_rarity_from_capture_pixel', lambda _pixel: (4, 'BGR', 0.0))
+
+    session = SimpleNamespace(
+        total_items=1,
+        sort_order=None,
+        session_id='session-id',
+        mark_scanned=lambda *_args, **_kwargs: None,
+        mark_skipped=lambda *_args, **_kwargs: None,
+        mark_failed=lambda *_args, **_kwargs: None,
+    )
+    nav = SimpleNamespace(
+        layout=SimpleNamespace(
+            width=8,
+            height=8,
+            monitor=1,
+            items=SimpleNamespace(
+                name=SimpleNamespace(x=0, y=0, w=2, h=2),
+                value=SimpleNamespace(x=2, y=0, w=2, h=2),
+                rarityColorPick=SimpleNamespace(x=1, y=1),
+            ),
+        ),
+        gw=None,
+        switch_tab=lambda *_args, **_kwargs: None,
+        set_sort_order=lambda *_args, **_kwargs: None,
+        read_item_count=lambda: (1, 1),
+    )
+
+    class _FakeFuture:
+        def result(self, timeout: int) -> WeaponResult:
+            return WeaponResult(index=9, is_weapon=False, data={'id': 'item'}, below_minimum=False)
+
+    class _FakeOcrService:
+        def submit(self, capture) -> _FakeFuture:
+            return _FakeFuture()
+
+    workflow = ItemWorkflow(
+        nav=cast(Any, nav),
+        ocr_service=cast(Any, _FakeOcrService()),
+        session=cast(Any, session),
+        tab=InventoryTab.RESOURCES,
+        write_debug=False,
+    )
+
+    result = workflow.run()
+
+    assert result == [{'normalized': True, 'rows': [{'id': 'item'}]}]
+
+
 def test_item_workflow_save_raw_uses_item_prefix(tmp_path) -> None:
     workflow = ItemWorkflow.__new__(ItemWorkflow)
     workflow.save_raw = tmp_path / 'raw'

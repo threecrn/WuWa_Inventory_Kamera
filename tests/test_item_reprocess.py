@@ -6,6 +6,7 @@ from types import ModuleType, SimpleNamespace
 import cv2
 import numpy as np
 
+import wuwa_inventory_kamera.scraping.service.item_reprocess as item_reprocess_module
 from wuwa_inventory_kamera.game.navigation import InventoryTab
 from wuwa_inventory_kamera.scraping.service.captures import WeaponResult
 from wuwa_inventory_kamera.scraping.service.item_reprocess import reprocess_item_scans_with_service
@@ -162,3 +163,42 @@ def test_reprocess_item_write_debug_dumps_region_images(monkeypatch, tmp_path) -
         'value_signature.png',
     }
     assert expected_files == {path.name for path in debug_dir.iterdir()}
+
+
+def test_reprocess_item_normalizes_final_rows(monkeypatch) -> None:
+    screen_info_module = ModuleType('wuwa_inventory_kamera.game.screen_info')
+    screen_info_module.ScreenInfo = _FakeScreenInfo
+    monkeypatch.setitem(sys.modules, 'wuwa_inventory_kamera.game.screen_info', screen_info_module)
+
+    shared_helpers_module = ModuleType('wuwa_inventory_kamera.scraping.service.shared_scan_helpers')
+    shared_helpers_module._rarity_from_capture_pixel = lambda _pixel: (4, 'RGB', 0.0)
+    monkeypatch.setitem(
+        sys.modules,
+        'wuwa_inventory_kamera.scraping.service.shared_scan_helpers',
+        shared_helpers_module,
+    )
+
+    ocr_service_module = ModuleType('wuwa_inventory_kamera.scraping.service.ocr_service')
+    ocr_service_module.OcrService = _FakeOcrService
+    monkeypatch.setitem(sys.modules, 'wuwa_inventory_kamera.scraping.service.ocr_service', ocr_service_module)
+
+    monkeypatch.setattr(
+        item_reprocess_module,
+        'normalize_item_rows',
+        lambda rows: [{'normalized': True, 'rows': rows}],
+    )
+
+    _FakeOcrService.instances.clear()
+    image = np.arange(6 * 6 * 3, dtype=np.uint8).reshape(6, 6, 3)
+    scan = _FakeScan(image)
+
+    result = reprocess_item_scans_with_service(
+        scans=[scan],
+        providers=['CPUExecutionProvider'],
+        min_rarity=1,
+        min_level=0,
+        write_debug=False,
+        tab=InventoryTab.RESOURCES,
+    )
+
+    assert result == [{'normalized': True, 'rows': [{'id': 'item'}]}]

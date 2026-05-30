@@ -116,32 +116,10 @@ def test_serialize_character_export_restores_scalar_weapon_id() -> None:
     assert serialized['1210']['weapon']['weapon_key'] == 'everbrightpolestar'
 
 
-def test_serialize_item_rows_reconstructs_overflow_stack_counts() -> None:
-    payload = [
-        {'id': 42310060, 'item_key': 'angelica', 'count': 1372},
-        {'id': 42310060, 'item_key': 'angelica', 'count': 1372},
-        {'id': 42400030, 'item_key': 'rawmeat', 'count': 3094},
-        {'id': 42400030, 'item_key': 'rawmeat', 'count': 3094},
-        {'id': 42400030, 'item_key': 'rawmeat', 'count': 3094},
-        {'id': 42400030, 'item_key': 'rawmeat', 'count': 3094},
-    ]
-
-    assert output_serialization.serialize_item_rows(payload) == [
-        {'id': 42310060, 'item_key': 'angelica', 'count': 999},
-        {'id': 42310060, 'item_key': 'angelica', 'count': 373},
-        {'id': 42400030, 'item_key': 'rawmeat', 'count': 999},
-        {'id': 42400030, 'item_key': 'rawmeat', 'count': 999},
-        {'id': 42400030, 'item_key': 'rawmeat', 'count': 999},
-        {'id': 42400030, 'item_key': 'rawmeat', 'count': 97},
-    ]
-
-
-def test_serialize_inventory_export_uses_reconstructed_overflow_stack_counts() -> None:
+def test_serialize_item_rows_preserves_duplicate_item_rows() -> None:
     payload = [
         {'id': 42310060, 'item_key': 'angelica', 'count': 1372},
         {'id': 42310060, 'item_key': 'angelica', 'count': 1372},
     ]
 
-    assert output_serialization.serialize_inventory_export(resources=payload) == {
-        '42310060': 1372,
-    }
+    assert output_serialization.serialize_item_rows(payload) == payload

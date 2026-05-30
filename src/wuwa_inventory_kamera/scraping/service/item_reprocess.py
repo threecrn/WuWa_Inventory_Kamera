@@ -14,6 +14,7 @@ import numpy as np
 
 from ...game.navigation import InventoryTab
 from .echo_capture_utils import ensure_bgr_image
+from .item_result_normalization import normalize_item_rows
 from .shared_scan_helpers import _write_region_debug_artifacts
 
 logger = logging.getLogger('wuwa.item_reprocess')
@@ -171,4 +172,4 @@ def reprocess_item_scans_with_service(
             else:
                 logger.debug('Scan %d — rejected', scan_index)
 
-    return items
+    return normalize_item_rows(items)
