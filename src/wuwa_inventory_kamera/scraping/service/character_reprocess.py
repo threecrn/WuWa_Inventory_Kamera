@@ -145,33 +145,33 @@ def _character_crops(scan) -> dict[int, dict[str, np.ndarray]]:
     overview = {
         'name': ensure_bgr_image(
             _crop_roi(overview_full, layout.resonatorName),
-            source_space='rgb',
+            source_space='bgr',
         ),
         'level': ensure_bgr_image(
             _crop_roi(overview_full, layout.resonatorLevel),
-            source_space='rgb',
+            source_space='bgr',
         ),
     }
     weapon = {
         'weaponName': ensure_bgr_image(
             _crop_roi(weapon_full, layout.weaponName),
-            source_space='rgb',
+            source_space='bgr',
         ),
         'weaponLevel': ensure_bgr_image(
             _crop_roi(weapon_full, layout.weaponLevel),
-            source_space='rgb',
+            source_space='bgr',
         ),
         'weaponRank': ensure_bgr_image(
             _crop_roi(weapon_full, layout.weaponRank),
-            source_space='rgb',
+            source_space='bgr',
         ),
     }
     skills = {
-        key: ensure_bgr_image(image, source_space='rgb')
+        key: ensure_bgr_image(image, source_space='bgr')
         for key, image in scan.load_section_images(3).items()
     }
     chain = {
-        key: ensure_bgr_image(image, source_space='rgb')
+        key: ensure_bgr_image(image, source_space='bgr')
         for key, image in scan.load_section_images(4).items()
     }
 
