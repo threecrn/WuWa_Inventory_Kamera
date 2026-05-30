@@ -9,6 +9,7 @@ The goal is to make the current app populate the local `assets/` cache with the 
 Primary scope:
 
 - restore item and weapon thumbnail support for the current app
+- limit `game-icons` syncing to the image paths currently referenced by the generated item and weapon catalogs
 - keep the existing sonata icon updater working
 - reuse the current startup order: data update first, asset update second
 - keep downloaded assets as a disposable local cache under `assets/`
@@ -121,6 +122,13 @@ Recommended manifest algorithm:
 4. Normalize each path to a safe relative POSIX path.
 5. Reject anything that tries to escape the assets root.
 6. De-duplicate into a sorted manifest.
+
+Current default boundary:
+
+- include every catalog-backed item and weapon image the app can currently render
+- implicitly cover `inventory`, `devItems`, `resources`, and `shell` rows because those views reuse item image paths
+- exclude characters, echoes, achievements, sonatas, stats, and skills because the current generated data and runtime UI do not consume image paths for those families
+- do not shrink the default manifest to only the user's current export files or latest scan results; that would be a narrower optional mode, not the shipping default
 
 Benefits:
 

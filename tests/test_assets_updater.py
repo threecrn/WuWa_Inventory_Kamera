@@ -64,6 +64,39 @@ def test_load_game_asset_manifest_filters_invalid_paths(tmp_path) -> None:
     )
 
 
+def test_load_game_asset_manifest_ignores_non_runtime_catalogs(tmp_path) -> None:
+    data_dir = tmp_path / 'data'
+    _write_json(
+        data_dir / 'catalog' / 'items.json',
+        {
+            'shell_credit': {'id': 1, 'image': 'IconA/T_IconA_ShellCredit_UI.png'},
+        },
+    )
+    _write_json(data_dir / 'catalog' / 'weapons.json', {})
+    _write_json(
+        data_dir / 'catalog' / 'characters.json',
+        {
+            'rover': {'id': 1000, 'image': 'Portraits/T_Rover_UI.png'},
+        },
+    )
+    _write_json(
+        data_dir / 'catalog' / 'echoes.json',
+        {
+            'junrock': {'id': 310000010, 'image': 'Echoes/T_Junrock_UI.png'},
+        },
+    )
+    _write_json(
+        data_dir / 'catalog' / 'sonatas.json',
+        {
+            'moonlitclouds': {'id': 12, 'image': 'IconS/moonlitclouds.png'},
+        },
+    )
+
+    assert assets_module._load_game_asset_manifest(data_dir) == (
+        'IconA/T_IconA_ShellCredit_UI.png',
+    )
+
+
 def test_base_assets_updater_uses_explicit_game_and_sonata_families() -> None:
     assert [family.name for family in assets_module.BaseAssetsUpdater()._iter_asset_families()] == [
         'game-icons',
