@@ -43,6 +43,7 @@ dev = [
 wuwa-reprocess = "wuwa_inventory_kamera.cli.reprocess:main"
 wuwa-scan      = "wuwa_inventory_kamera.cli.scan:main"
 wuwa-nav       = "wuwa_inventory_kamera.cli.nav:main"
+wuwa-assets    = "wuwa_inventory_kamera.cli.update_assets:main"
 wuwa-app       = "wuwa_inventory_kamera.app:main"
 
 [tool.hatch.build.targets.wheel]

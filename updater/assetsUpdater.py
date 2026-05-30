@@ -14,8 +14,9 @@ class AssetsUpdater(QObject, BaseAssetsUpdater):
     updateProgress = Signal(int, str)
     updateFinished = Signal()
 
-    def __init__(self):
+    def __init__(self, *, force: bool = False):
         QObject.__init__(self)
+        BaseAssetsUpdater.__init__(self, force=force)
 
     def _onProgress(self, file_name: str, percent: float) -> None:
         self.updateProgress.emit(int(percent), file_name)

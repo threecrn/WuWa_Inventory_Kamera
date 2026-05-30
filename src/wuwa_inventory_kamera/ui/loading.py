@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication, QVBoxLayout, QWidget,
@@ -93,8 +93,8 @@ class _QtDataUpdater(BaseDataUpdater):
 class _QtAssetsUpdater(BaseAssetsUpdater):
     """Thin adapter: emits Qt signals for progress / finished."""
 
-    def __init__(self, progress_signal, finished_signal):
-        super().__init__()
+    def __init__(self, progress_signal, finished_signal, *, force: bool = False):
+        super().__init__(force=force)
         self._progress = progress_signal
         self._finished = finished_signal
 
@@ -159,6 +159,16 @@ class LoadingScreen(QWidget):
         logger.info("UI setup completed")
 
     def startDataUpdate(self):
+        if not bool(cfg.get(cfg.checkUpdateAtStartUp)):
+            logger.info("Startup updates disabled by configuration")
+            self.progress_ring.setValue(100)
+            self.label.setText("Starting application...")
+            self.file_label.setText("Startup updates disabled")
+            QTimer.singleShot(0, self.on_updateFinished)
+            return
+
+        self.label.setText("Updating game data...")
+        self.file_label.setText("")
         logger.info("Initializing and starting data update thread")
         self.dataUpdater_thread = DataUpdaterThread()
         self.dataUpdater_thread.updateProgress.connect(self.updateProgress)
@@ -166,6 +176,8 @@ class LoadingScreen(QWidget):
         self.dataUpdater_thread.start()
 
     def startAssetsUpdate(self):
+        self.label.setText("Updating assets...")
+        self.file_label.setText("")
         logger.info("Initializing and starting assets update thread")
         self.assetsUpdater_thread = AssetsUpdaterThread()
         self.assetsUpdater_thread.updateProgress.connect(self.updateProgress)
@@ -174,7 +186,8 @@ class LoadingScreen(QWidget):
 
     def updateProgress(self, value, file_name):
         self.progress_ring.setValue(value)
-        self.label.setText(f"Downloading {file_name}...")
+        self.label.setText("Updating resources...")
+        self.file_label.setText(file_name)
 
     def on_updateFinished(self):
         logger.info("Data update finished, transitioning to main window")

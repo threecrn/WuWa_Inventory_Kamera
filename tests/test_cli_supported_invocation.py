@@ -44,3 +44,11 @@ def test_detect_sonata_icon_module_invocation_is_supported() -> None:
     assert result.returncode == 0, result.stderr or result.stdout
     assert 'build' in result.stdout
     assert 'detect' in result.stdout
+
+
+def test_update_assets_module_invocation_is_supported() -> None:
+    result = _run_module('wuwa_inventory_kamera.cli.update_assets', '--help')
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert 'status' in result.stdout
+    assert 'update' in result.stdout

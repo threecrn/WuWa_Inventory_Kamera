@@ -12,7 +12,8 @@ def _write_json(path: Path, data) -> None:
 
 
 class _RecorderUpdater(assets_module.BaseAssetsUpdater):
-    def __init__(self) -> None:
+    def __init__(self, *, force: bool = False) -> None:
+        super().__init__(force=force)
         self.progress: list[tuple[str, float]] = []
         self.finished = False
 
@@ -70,6 +71,36 @@ def test_base_assets_updater_uses_explicit_game_and_sonata_families() -> None:
     ]
 
 
+def test_base_assets_updater_collect_status_reports_existing_and_missing(tmp_path, monkeypatch) -> None:
+    _write_json(
+        tmp_path / 'data' / 'catalog' / 'items.json',
+        {
+            'shell_credit': {'id': 1, 'image': 'IconA/T_IconA_ShellCredit_UI.png'},
+        },
+    )
+    _write_json(tmp_path / 'data' / 'catalog' / 'weapons.json', {})
+    _write_json(
+        tmp_path / 'data' / 'catalog' / 'sonatas.json',
+        {'moonlitclouds': {'id': 12, 'text_key': 'PhantomFetter_12_Name'}},
+    )
+    (tmp_path / 'assets' / 'IconA').mkdir(parents=True, exist_ok=True)
+    (tmp_path / 'assets' / 'IconA' / 'T_IconA_ShellCredit_UI.png').write_bytes(b'present')
+
+    monkeypatch.setattr(assets_module, 'basePATH', tmp_path)
+    monkeypatch.setattr(
+        assets_module,
+        '_build_icon_mapping',
+        lambda sonata_keys: {'moonlitclouds': 'https://example.test/Icon_moonlitclouds.png'},
+    )
+
+    statuses = assets_module.BaseAssetsUpdater().collect_status()
+
+    assert [(status.family, status.total, status.existing, status.missing) for status in statuses] == [
+        ('game-icons', 1, 1, 0),
+        ('sonata-icons', 1, 0, 1),
+    ]
+
+
 def test_base_assets_updater_downloads_game_and_sonata_assets(tmp_path, monkeypatch) -> None:
     _write_json(
         tmp_path / 'data' / 'catalog' / 'items.json',
@@ -109,6 +140,43 @@ def test_base_assets_updater_downloads_game_and_sonata_assets(tmp_path, monkeypa
     assert (tmp_path / 'assets' / 'IconS' / 'moonlitclouds.png').read_bytes() == b'sonata-asset'
     assert updater.finished is True
     assert [label for label, _percent in updater.progress] == [
-        'IconA/T_IconA_ShellCredit_UI.png',
-        'IconS/moonlitclouds.png',
+        'game-icons: IconA/T_IconA_ShellCredit_UI.png',
+        'sonata-icons: IconS/moonlitclouds.png',
     ]
+
+
+def test_base_assets_updater_force_redownloads_existing_assets(tmp_path, monkeypatch) -> None:
+    _write_json(
+        tmp_path / 'data' / 'catalog' / 'items.json',
+        {
+            'shell_credit': {'id': 1, 'image': 'IconA/T_IconA_ShellCredit_UI.png'},
+        },
+    )
+    _write_json(tmp_path / 'data' / 'catalog' / 'weapons.json', {})
+
+    asset_path = tmp_path / 'assets' / 'IconA' / 'T_IconA_ShellCredit_UI.png'
+    asset_path.parent.mkdir(parents=True, exist_ok=True)
+    asset_path.write_bytes(b'old-asset')
+
+    monkeypatch.setattr(assets_module, 'basePATH', tmp_path)
+    monkeypatch.setattr(assets_module.time, 'sleep', lambda _: None)
+    monkeypatch.setattr(
+        assets_module.BaseAssetsUpdater,
+        '_iter_asset_families',
+        lambda self: (assets_module._GameIconsAssetFamily(),),
+    )
+
+    payloads = {
+        assets_module._build_game_asset_download_url('IconA/T_IconA_ShellCredit_UI.png'): b'new-asset',
+    }
+
+    def fake_urlopen(request, timeout=60):
+        url = request.full_url if hasattr(request, 'full_url') else str(request)
+        return _FakeResponse(payloads[url])
+
+    monkeypatch.setattr(assets_module.urllib.request, 'urlopen', fake_urlopen)
+
+    updater = _RecorderUpdater(force=True)
+    updater.run()
+
+    assert asset_path.read_bytes() == b'new-asset'

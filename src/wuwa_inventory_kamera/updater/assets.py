@@ -179,7 +179,16 @@ def _download_binary(url: str, dest: Path) -> None:
 
 
 @dataclass(frozen=True)
+class AssetFamilyStatus:
+    family: str
+    total: int
+    existing: int
+    missing: int
+
+
+@dataclass(frozen=True)
 class _AssetDownload:
+    family: str
     label: str
     url: str
     dest: Path
@@ -201,6 +210,7 @@ class _GameIconsAssetFamily(_AssetFamily):
         logger.info('Loaded %d game asset paths from catalogs', len(manifest))
         return tuple(
             _AssetDownload(
+                family=self.name,
                 label=image_path,
                 url=_build_game_asset_download_url(image_path),
                 dest=assets_dir / Path(image_path),
@@ -226,6 +236,7 @@ class _SonataIconsAssetFamily(_AssetFamily):
         output_dir = assets_dir / 'IconS'
         return tuple(
             _AssetDownload(
+                family=self.name,
                 label=f'IconS/{key}.png',
                 url=url,
                 dest=output_dir / f'{key}.png',
@@ -263,18 +274,45 @@ class BaseAssetsUpdater:
     (e.g. Qt signals).
     """
 
-    def run(self) -> None:
-        assets_dir = basePATH / 'assets'
-        assets_dir.mkdir(parents=True, exist_ok=True)
+    force: bool = False
 
+    def __init__(self, *, force: bool = False) -> None:
+        self.force = force
+
+    def plan_downloads(self) -> tuple[_AssetDownload, ...]:
         data_dir = basePATH / 'data'
+        assets_dir = basePATH / 'assets'
         downloads: list[_AssetDownload] = []
         for family in self._iter_asset_families():
             try:
                 downloads.extend(family.prepare_downloads(data_dir=data_dir, assets_dir=assets_dir))
             except Exception as exc:
                 logger.error('Failed to prepare %s asset downloads: %s', family.name, exc)
+        return tuple(downloads)
 
+    def collect_status(self) -> tuple[AssetFamilyStatus, ...]:
+        buckets: dict[str, dict[str, int]] = {}
+        for download in self.plan_downloads():
+            bucket = buckets.setdefault(download.family, {'total': 0, 'existing': 0})
+            bucket['total'] += 1
+            if download.dest.exists():
+                bucket['existing'] += 1
+
+        return tuple(
+            AssetFamilyStatus(
+                family=family,
+                total=counts['total'],
+                existing=counts['existing'],
+                missing=counts['total'] - counts['existing'],
+            )
+            for family, counts in buckets.items()
+        )
+
+    def run(self) -> None:
+        assets_dir = basePATH / 'assets'
+        assets_dir.mkdir(parents=True, exist_ok=True)
+
+        downloads = self.plan_downloads()
         progress = _ProgressTracker(self, len(downloads))
         self._sync_downloads(downloads, progress)
 
@@ -292,19 +330,25 @@ class BaseAssetsUpdater:
         progress: _ProgressTracker,
     ) -> None:
         for download in downloads:
-            if download.dest.exists():
-                logger.debug('Skip (already exists): %s', download.label)
-                progress.advance(download.label)
+            progress_label = self._progress_label(download)
+            if download.dest.exists() and not self.force:
+                logger.debug('Skip (already exists): %s', progress_label)
+                progress.advance(progress_label)
                 continue
 
-            logger.info('Downloading %s', download.label)
+            action = 'Refreshing' if self.force and download.dest.exists() else 'Downloading'
+            logger.info('%s %s', action, progress_label)
             try:
                 _download_binary(download.url, download.dest)
             except Exception as exc:
                 logger.error('Failed to download %s: %s', download.url, exc)
-            progress.advance(download.label)
+            progress.advance(progress_label)
             if download.delay_seconds > 0:
                 time.sleep(download.delay_seconds)
+
+    @staticmethod
+    def _progress_label(download: _AssetDownload) -> str:
+        return f'{download.family}: {download.label}'
 
     def _onProgress(self, file_name: str, percent: float) -> None:
         """Override to receive download progress."""
