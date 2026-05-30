@@ -25,6 +25,7 @@ CHARACTER_EXPORT_FILENAME = 'characters_wuwainventorykamera.json'
 ACHIEVEMENT_EXPORT_FILENAME = 'achievements_wuwainventorykamera.json'
 
 _WEAPON_ASCENSION_LEVELS: tuple[int, ...] = (20, 40, 50, 60, 70, 80, 90)
+_ITEM_MAX_STACK_COUNT = 999
 
 
 def serialize_scan_result(result: Mapping[str, Any]) -> dict[str, Any]:
@@ -186,7 +187,9 @@ def serialize_weapon_export(payload: Any) -> Any:
 def serialize_item_rows(payload: Any) -> Any:
     if _is_error_payload(payload):
         return deepcopy(payload)
-    return deepcopy(payload) if isinstance(payload, list) else payload
+    if not isinstance(payload, list):
+        return deepcopy(payload)
+    return _normalize_item_row_list(payload)
 
 
 def serialize_inventory_export(
@@ -300,7 +303,7 @@ def _merge_item_rows_into_inventory(inventory: dict[str, int], payload: Any) -> 
     if _is_error_payload(payload) or not isinstance(payload, list):
         return
 
-    for entry in payload:
+    for entry in _normalize_item_row_list(payload):
         if not isinstance(entry, dict) or 'id' not in entry or 'count' not in entry:
             continue
         item_id = str(entry.get('id'))
@@ -308,6 +311,67 @@ def _merge_item_rows_into_inventory(inventory: dict[str, int], payload: Any) -> 
         if count is None:
             continue
         inventory[item_id] = inventory.get(item_id, 0) + count
+
+
+def _normalize_item_row_list(payload: list[Any]) -> list[Any]:
+    normalized = deepcopy(payload)
+    groups: dict[tuple[str, str], list[int]] = {}
+
+    for index, entry in enumerate(normalized):
+        if not isinstance(entry, dict):
+            continue
+
+        item_id = entry.get('id')
+        if item_id is not None:
+            key = ('id', str(item_id))
+        else:
+            item_key = entry.get('item_key')
+            if item_key is None:
+                continue
+            key = ('item_key', str(item_key))
+
+        groups.setdefault(key, []).append(index)
+
+    for indices in groups.values():
+        if len(indices) < 2:
+            continue
+
+        counts: list[int] = []
+        for index in indices:
+            entry = normalized[index]
+            if not isinstance(entry, dict):
+                counts = []
+                break
+            count = _coerce_int(entry.get('count'))
+            if count is None:
+                counts = []
+                break
+            counts.append(count)
+
+        if not counts:
+            continue
+
+        total_owned = counts[0]
+        if total_owned <= _ITEM_MAX_STACK_COUNT:
+            continue
+        if any(count != total_owned for count in counts[1:]):
+            continue
+
+        expected_stacks = (total_owned + _ITEM_MAX_STACK_COUNT - 1) // _ITEM_MAX_STACK_COUNT
+        if expected_stacks != len(indices):
+            continue
+
+        split_counts = [_ITEM_MAX_STACK_COUNT] * len(indices)
+        remainder = total_owned % _ITEM_MAX_STACK_COUNT
+        if remainder != 0:
+            split_counts[-1] = remainder
+
+        for index, split_count in zip(indices, split_counts):
+            entry = normalized[index]
+            if isinstance(entry, dict):
+                entry['count'] = split_count
+
+    return normalized
 
 
 def _merge_shell_into_inventory(inventory: dict[str, int], payload: Any) -> None:
