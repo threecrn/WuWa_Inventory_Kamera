@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Qt, Signal
@@ -39,6 +40,8 @@ from ..updater import assets as _assets
 
 logger = logging.getLogger('InventoryInterface')
 
+_LAZY_DOWNLOAD_FAILURE_BACKOFF_SECONDS = 15.0
+
 
 class _LazyGameIconDownloader(QObject):
     downloadFinished = Signal(str, bool)
@@ -46,12 +49,18 @@ class _LazyGameIconDownloader(QObject):
     def __init__(self) -> None:
         super().__init__()
         self._in_flight: set[str] = set()
+        self._failed_at: dict[str, float] = {}
         self._lock = threading.Lock()
 
     def request(self, image_path: str) -> None:
         with self._lock:
             if image_path in self._in_flight:
                 return
+            failed_at = self._failed_at.get(image_path)
+            if failed_at is not None:
+                elapsed = time.monotonic() - failed_at
+                if elapsed < _LAZY_DOWNLOAD_FAILURE_BACKOFF_SECONDS:
+                    return
             self._in_flight.add(image_path)
 
         worker = threading.Thread(
@@ -71,6 +80,10 @@ class _LazyGameIconDownloader(QObject):
         finally:
             with self._lock:
                 self._in_flight.discard(image_path)
+                if success:
+                    self._failed_at.pop(image_path, None)
+                else:
+                    self._failed_at[image_path] = time.monotonic()
             self.downloadFinished.emit(image_path, success)
 
 

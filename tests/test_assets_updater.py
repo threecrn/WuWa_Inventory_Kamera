@@ -136,6 +136,15 @@ def test_base_assets_updater_uses_explicit_game_and_sonata_families() -> None:
     ]
 
 
+def test_base_assets_updater_can_limit_family_selection() -> None:
+    assert [
+        family.name
+        for family in assets_module.BaseAssetsUpdater(
+            include_families=('sonata-icons',),
+        )._iter_asset_families()
+    ] == ['sonata-icons']
+
+
 def test_base_assets_updater_collect_status_reports_existing_and_missing(tmp_path, monkeypatch) -> None:
     _write_json(
         tmp_path / 'data' / 'catalog' / 'items.json',

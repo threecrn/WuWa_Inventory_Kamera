@@ -24,6 +24,8 @@ from .config import cfg
 
 logger = logging.getLogger('LoadingScreen')
 
+_STARTUP_ASSET_FAMILIES = ('sonata-icons',)
+
 
 # ---------------------------------------------------------------------------
 # Updater threads
@@ -67,6 +69,7 @@ class AssetsUpdaterThread(QThread):
             updater = _QtAssetsUpdater(
                 progress_signal=self.updateProgress,
                 finished_signal=self.updateFinished,
+                include_families=_STARTUP_ASSET_FAMILIES,
             )
             updater.run()
             logger.info("Assets update process completed successfully")
@@ -93,8 +96,15 @@ class _QtDataUpdater(BaseDataUpdater):
 class _QtAssetsUpdater(BaseAssetsUpdater):
     """Thin adapter: emits Qt signals for progress / finished."""
 
-    def __init__(self, progress_signal, finished_signal, *, force: bool = False):
-        super().__init__(force=force)
+    def __init__(
+        self,
+        progress_signal,
+        finished_signal,
+        *,
+        force: bool = False,
+        include_families: tuple[str, ...] | None = None,
+    ):
+        super().__init__(force=force, include_families=include_families)
         self._progress = progress_signal
         self._finished = finished_signal
 
@@ -113,6 +123,7 @@ class LoadingScreen(QWidget):
     def __init__(self):
         super().__init__()
         logger.debug("Initializing LoadingScreen")
+        self._progress_label_text = "Loading, please wait..."
         self.initWindow()
         self.setupUI()
         self.startDataUpdate()
@@ -143,7 +154,7 @@ class LoadingScreen(QWidget):
         self.progress_ring.setValue(0)
         self.vBoxLayout.addWidget(self.progress_ring, 0, Qt.AlignHCenter)
 
-        self.label = BodyLabel("Loading, please wait...", self)
+        self.label = BodyLabel(self._progress_label_text, self)
         self.label.setStyleSheet("color: white; font-size: 18px;")
         self.label.setAlignment(Qt.AlignCenter)
         self.vBoxLayout.addWidget(self.label, 0, Qt.AlignHCenter)
@@ -162,12 +173,14 @@ class LoadingScreen(QWidget):
         if not bool(cfg.get(cfg.checkUpdateAtStartUp)):
             logger.info("Startup updates disabled by configuration")
             self.progress_ring.setValue(100)
-            self.label.setText("Starting application...")
+            self._progress_label_text = "Starting application..."
+            self.label.setText(self._progress_label_text)
             self.file_label.setText("Startup updates disabled")
             QTimer.singleShot(0, self.on_updateFinished)
             return
 
-        self.label.setText("Updating game data...")
+        self._progress_label_text = "Updating game data..."
+        self.label.setText(self._progress_label_text)
         self.file_label.setText("")
         logger.info("Initializing and starting data update thread")
         self.dataUpdater_thread = DataUpdaterThread()
@@ -176,7 +189,8 @@ class LoadingScreen(QWidget):
         self.dataUpdater_thread.start()
 
     def startAssetsUpdate(self):
-        self.label.setText("Updating assets...")
+        self._progress_label_text = "Updating sonata reference icons..."
+        self.label.setText(self._progress_label_text)
         self.file_label.setText("")
         logger.info("Initializing and starting assets update thread")
         self.assetsUpdater_thread = AssetsUpdaterThread()
@@ -186,7 +200,7 @@ class LoadingScreen(QWidget):
 
     def updateProgress(self, value, file_name):
         self.progress_ring.setValue(value)
-        self.label.setText("Updating resources...")
+        self.label.setText(self._progress_label_text)
         self.file_label.setText(file_name)
 
     def on_updateFinished(self):

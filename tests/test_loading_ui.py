@@ -51,3 +51,37 @@ def test_loading_screen_skips_updates_when_disabled(qapp: QApplication, monkeypa
     screen.hide()
     screen.deleteLater()
     qapp.processEvents()
+
+
+def test_assets_updater_thread_limits_startup_work_to_sonata_icons(monkeypatch: pytest.MonkeyPatch) -> None:
+    recorded: dict[str, object] = {}
+
+    class _FakeUpdater:
+        def __init__(
+            self,
+            progress_signal,
+            finished_signal,
+            *,
+            force: bool = False,
+            include_families: tuple[str, ...] | None = None,
+        ) -> None:
+            recorded['progress_signal'] = progress_signal
+            recorded['finished_signal'] = finished_signal
+            recorded['force'] = force
+            recorded['include_families'] = include_families
+
+        def run(self) -> None:
+            recorded['ran'] = True
+
+    monkeypatch.setattr(loading_module, '_QtAssetsUpdater', _FakeUpdater)
+
+    thread = loading_module.AssetsUpdaterThread()
+    thread.run()
+
+    assert recorded == {
+        'progress_signal': thread.updateProgress,
+        'finished_signal': thread.updateFinished,
+        'force': False,
+        'include_families': loading_module._STARTUP_ASSET_FAMILIES,
+        'ran': True,
+    }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import os
+import threading
 import time
 from typing import Any, cast
 
@@ -61,6 +62,17 @@ def _details_texts(interface: InventoryInterface) -> list[str]:
     return texts
 
 
+def _wait_until(qapp: QApplication, predicate, *, timeout: float = 2.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        qapp.processEvents()
+        if predicate():
+            return
+        time.sleep(0.01)
+    qapp.processEvents()
+    assert predicate()
+
+
 def test_row_selection_reuses_existing_result_cards(qapp: QApplication) -> None:
     interface = InventoryInterface()
     set_document = cast(Any, getattr(interface, '_InventoryInterface__setDocument'))
@@ -112,10 +124,7 @@ def test_result_card_lazy_downloads_missing_thumbnail(qapp: QApplication, tmp_pa
     card.show()
     qapp.processEvents()
 
-    deadline = time.monotonic() + 2.0
-    while time.monotonic() < deadline and card.imageLabel.isHidden():
-        qapp.processEvents()
-        time.sleep(0.01)
+    _wait_until(qapp, lambda: not card.imageLabel.isHidden())
 
     assert requested_paths == [image_path]
     assert target_path.is_file()
@@ -127,3 +136,71 @@ def test_result_card_lazy_downloads_missing_thumbnail(qapp: QApplication, tmp_pa
     card.hide()
     card.deleteLater()
     qapp.processEvents()
+
+
+def test_lazy_downloader_deduplicates_in_flight_requests(
+    qapp: QApplication,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    image_path = 'IconA/T_IconA_ShellCredit_UI.png'
+    target_path = tmp_path / 'assets' / 'IconA' / 'T_IconA_ShellCredit_UI.png'
+    release = threading.Event()
+    started = threading.Event()
+    requested_paths: list[str] = []
+
+    def fake_ensure_game_asset_cached(requested_image_path: str):
+        requested_paths.append(requested_image_path)
+        started.set()
+        release.wait(timeout=1.0)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_bytes(_PNG_BYTES)
+        return target_path
+
+    monkeypatch.setattr(inventory_module._assets, 'ensure_game_asset_cached', fake_ensure_game_asset_cached)
+
+    downloader = inventory_module._LazyGameIconDownloader()
+    downloader.request(image_path)
+    assert started.wait(timeout=1.0)
+
+    downloader.request(image_path)
+    release.set()
+
+    _wait_until(qapp, lambda: image_path not in downloader._in_flight)
+
+    assert requested_paths == [image_path]
+
+
+def test_lazy_downloader_applies_short_failure_backoff(
+    qapp: QApplication,
+    monkeypatch,
+) -> None:
+    image_path = 'IconA/T_IconA_ShellCredit_UI.png'
+    attempts: list[str] = []
+    clock = {'value': 100.0}
+
+    def fake_monotonic() -> float:
+        return clock['value']
+
+    def fake_ensure_game_asset_cached(requested_image_path: str):
+        attempts.append(requested_image_path)
+        raise RuntimeError('boom')
+
+    monkeypatch.setattr(inventory_module.time, 'monotonic', fake_monotonic)
+    monkeypatch.setattr(inventory_module._assets, 'ensure_game_asset_cached', fake_ensure_game_asset_cached)
+
+    downloader = inventory_module._LazyGameIconDownloader()
+    downloader.request(image_path)
+    _wait_until(qapp, lambda: image_path not in downloader._in_flight)
+
+    downloader.request(image_path)
+    time.sleep(0.05)
+    qapp.processEvents()
+
+    assert attempts == [image_path]
+
+    clock['value'] += inventory_module._LAZY_DOWNLOAD_FAILURE_BACKOFF_SECONDS + 0.1
+    downloader.request(image_path)
+    _wait_until(qapp, lambda: len(attempts) == 2 and image_path not in downloader._in_flight)
+
+    assert attempts == [image_path, image_path]

@@ -447,8 +447,18 @@ class BaseAssetsUpdater:
 
     force: bool = False
 
-    def __init__(self, *, force: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        force: bool = False,
+        include_families: tuple[str, ...] | None = None,
+    ) -> None:
         self.force = force
+        self._included_family_names = (
+            frozenset(include_families)
+            if include_families is not None
+            else None
+        )
 
     def _assets_dir(self) -> Path:
         return basePATH / 'assets'
@@ -552,9 +562,16 @@ class BaseAssetsUpdater:
         )
 
     def _iter_asset_families(self) -> tuple[_AssetFamily, ...]:
-        return (
+        families = (
             _GameIconsAssetFamily(),
             _SonataIconsAssetFamily(),
+        )
+        if self._included_family_names is None:
+            return families
+        return tuple(
+            family
+            for family in families
+            if family.name in self._included_family_names
         )
 
     def _sync_downloads(
