@@ -21,6 +21,11 @@ def _patch_metadata(monkeypatch) -> None:
     monkeypatch.setattr(inventory_models, '_load_generated_catalog', lambda _filename: {})
     monkeypatch.setattr(inventory_models, '_load_generated_locale', lambda _filename, _language_code: {})
     monkeypatch.setattr(
+        inventory_models.MetadataResolver,
+        '_load_character_rarity_lookup',
+        classmethod(lambda _cls, _language_code: {}),
+    )
+    monkeypatch.setattr(
         inventory_models.scraping_data,
         'itemsID',
         {
@@ -267,6 +272,13 @@ def test_load_inventory_document_normalizes_character_export() -> None:
     assert document.kind == 'characters_export'
     row = document.sections[0].rows[0]
     assert row.title == 'Shorekeeper'
+    assert row.display_kind == 'character_tile'
+    assert row.character_display == inventory_models.CharacterDisplayData(
+        level=90,
+        max_level=90,
+        chain=2,
+        rarity=None,
+    )
     assert 'Lv. 90 | Ascension 6 | Chain 2' in row.body_lines
     assert 'Weapon: Emerald of Genesis | Lv. 90 | Rank 1' in row.body_lines
     assert 'Skills: 2 entries' in row.body_lines
@@ -328,6 +340,13 @@ def test_load_inventory_document_normalizes_keyed_character_export() -> None:
     row = document.sections[0].rows[0]
     assert row.title == 'Shorekeeper'
     assert row.subtitle == 'Character Key: shorekeeper'
+    assert row.display_kind == 'character_tile'
+    assert row.character_display == inventory_models.CharacterDisplayData(
+        level=90,
+        max_level=90,
+        chain=2,
+        rarity=None,
+    )
     assert 'Weapon: Emerald of Genesis | Lv. 90 | Rank 1' in row.body_lines
     assert 'Character Key: shorekeeper' in row.details_lines
     assert 'Weapon Key: emeraldofgenesis' in row.details_lines
@@ -421,7 +440,14 @@ def test_metadata_resolver_prefers_generated_localized_metadata(tmp_path, monkey
     )
     _write_json(
         tmp_path / 'data' / 'catalog' / 'characters.json',
-        {'shorekeeper': {'id': 1105, 'text_key': 'RoleInfo_1105_Name'}},
+        {
+            'shorekeeper': {
+                'id': 1105,
+                'text_key': 'RoleInfo_1105_Name',
+                'image': 'IconRoleHead80/shorekeeper.png',
+                'rarity': 5,
+            }
+        },
     )
     _write_json(
         tmp_path / 'data' / 'catalog' / 'echoes.json',
@@ -477,12 +503,16 @@ def test_metadata_resolver_prefers_generated_localized_metadata(tmp_path, monkey
 
     item_name, item_image = resolver.resolve_item(2)
     weapon_name, weapon_image, rarity = resolver.resolve_weapon(21010074)
+    character_name, character_image, character_rarity = resolver.resolve_character_display(1105)
 
     assert item_name == 'シェルクレジット'
     assert item_image == 'IconA/shell.png'
     assert weapon_name == '翠緑の残光'
     assert weapon_image == 'IconWeapon/emerald.png'
     assert rarity == 5
+    assert character_name == 'ショアキーパー'
+    assert character_image == 'IconRoleHead80/shorekeeper.png'
+    assert character_rarity == 5
     assert resolver.resolve_item('shellcredit')[0] == 'シェルクレジット'
     assert resolver.resolve_weapon('emeraldofgenesis')[0] == '翠緑の残光'
     assert resolver.resolve_character(1105) == 'ショアキーパー'

@@ -16,8 +16,9 @@ pytest.importorskip('qfluentwidgets')
 from PySide6.QtWidgets import QApplication
 
 from wuwa_inventory_kamera.ui import inventory as inventory_module
-from wuwa_inventory_kamera.ui.inventory import InventoryInterface, ResultCard, TileCard, WeaponTileCard
+from wuwa_inventory_kamera.ui.inventory import CharacterTileCard, InventoryInterface, ResultCard, TileCard, WeaponTileCard
 from wuwa_inventory_kamera.ui.inventory_models import (
+    CharacterDisplayData,
     InventoryDocument,
     InventoryRow,
     InventorySection,
@@ -91,6 +92,28 @@ def _build_weapon_tile_document() -> InventoryDocument:
         kind='test',
         title='Weapons',
         sections=(InventorySection(title='Weapons', rows=rows),),
+    )
+
+
+def _build_character_tile_document() -> InventoryDocument:
+    rows = tuple(
+        InventoryRow(
+            title=f'Extremely Long Character Name {index}',
+            subtitle=f'Character ID: 110{index}',
+            display_kind='character_tile',
+            character_display=CharacterDisplayData(
+                level=90,
+                max_level=90,
+                chain=2,
+                rarity=4,
+            ),
+        )
+        for index in range(1, 8)
+    )
+    return InventoryDocument(
+        kind='test',
+        title='Characters',
+        sections=(InventorySection(title='Characters', rows=rows),),
     )
 
 
@@ -214,6 +237,35 @@ def test_weapon_section_uses_weapon_tile_cards_with_six_column_wrap(qapp: QAppli
     assert first_card.summaryLabel.text() == '90/90 (1)'
     assert first_card.equippedLabel.text() == 'Equipped: Shorekeeper 1'
     assert '#fffab0' in first_card.rarityLine.styleSheet()
+    assert sixth_card.y() == first_card.y()
+    assert seventh_card.y() > first_card.y()
+
+    interface.hide()
+    interface.deleteLater()
+    qapp.processEvents()
+
+
+def test_character_section_uses_character_tile_cards_with_six_column_wrap(qapp: QApplication) -> None:
+    interface = InventoryInterface()
+    set_document = cast(Any, getattr(interface, '_InventoryInterface__setDocument'))
+    set_document(_build_character_tile_document())
+    interface.resize(1400, 800)
+    interface.show()
+    qapp.processEvents()
+
+    assert len(interface._resultCards) == 7
+    assert all(isinstance(card, CharacterTileCard) for card in interface._resultCards)
+
+    first_card = cast(CharacterTileCard, interface._resultCards[0])
+    sixth_card = cast(CharacterTileCard, interface._resultCards[5])
+    seventh_card = cast(CharacterTileCard, interface._resultCards[6])
+
+    assert first_card.width() == CharacterTileCard.TILE_WIDTH
+    assert first_card.height() == CharacterTileCard.TILE_HEIGHT
+    assert first_card.nameLabel.text() != first_card.row.title
+    assert first_card.nameLabel.text().endswith('…')
+    assert first_card.summaryLabel.text() == '90/90 (2)'
+    assert '#e8a1ff' in first_card.rarityLine.styleSheet()
     assert sixth_card.y() == first_card.y()
     assert seventh_card.y() > first_card.y()
 

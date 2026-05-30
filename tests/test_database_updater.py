@@ -317,7 +317,7 @@ def test_non_english_echo_update_uses_catalog_keys_for_locale_outputs(tmp_path: 
 	assert ja_lookup == {'先鋒岩塊': 'vanguardjunrock'}
 
 
-def test_update_characters_writes_catalog_image_from_roleinfo(tmp_path: Path, monkeypatch) -> None:
+def test_update_characters_writes_catalog_image_and_rarity_from_roleinfo(tmp_path: Path, monkeypatch) -> None:
 	_prepare_workspace(tmp_path, monkeypatch)
 	_write_json(
 		tmp_path / 'data' / 'en' / 'MultiText.json',
@@ -331,6 +331,7 @@ def test_update_characters_writes_catalog_image_from_roleinfo(tmp_path: Path, mo
 			{
 				'Id': 1102,
 				'Name': 'RoleInfo_1102_Name',
+				'QualityId': 4,
 				'RoleHeadIcon': '/Game/Aki/UI/UIResources/Common/Image/IconRoleHead80/T_IconRoleHead80_14_UI.T_IconRoleHead80_14_UI',
 			},
 			{
@@ -353,6 +354,7 @@ def test_update_characters_writes_catalog_image_from_roleinfo(tmp_path: Path, mo
 			'id': 1102,
 			'text_key': 'RoleInfo_1102_Name',
 			'image': 'IconRoleHead80/T_IconRoleHead80_14_UI.png',
+			'rarity': 4,
 		},
 	}
 	assert character_locale == {

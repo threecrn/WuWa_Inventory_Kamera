@@ -30,6 +30,7 @@ from .custom_widgets import MultiplePushSettingCard
 from .config import cfg
 from ..config.app_config import basePATH
 from .inventory_models import (
+    CharacterDisplayData,
     InventoryDocument,
     InventoryRow,
     InventorySection,
@@ -44,7 +45,7 @@ logger = logging.getLogger('InventoryInterface')
 
 _LAZY_DOWNLOAD_FAILURE_BACKOFF_SECONDS = 15.0
 _LAZY_DOWNLOAD_MAX_WORKERS = 4
-_WEAPON_TILE_RARITY_COLORS: dict[int, QColor] = {
+_GRID_TILE_RARITY_COLORS: dict[int, QColor] = {
     5: QColor(255, 250, 176),
     4: QColor(232, 161, 255),
     3: QColor(153, 153, 255),
@@ -119,11 +120,11 @@ def _coerce_int_value(value: object) -> int | None:
     return None
 
 
-def _weapon_tile_rarity_color(rarity: object) -> QColor:
+def _grid_tile_rarity_color(rarity: object) -> QColor:
     rarity_value = _coerce_int_value(rarity)
     if rarity_value is None:
-        return _WEAPON_TILE_RARITY_COLORS[1]
-    return _WEAPON_TILE_RARITY_COLORS.get(rarity_value, _WEAPON_TILE_RARITY_COLORS[1])
+        return _GRID_TILE_RARITY_COLORS[1]
+    return _GRID_TILE_RARITY_COLORS.get(rarity_value, _GRID_TILE_RARITY_COLORS[1])
 
 
 class ResultCard(CardWidget):
@@ -475,7 +476,7 @@ class WeaponTileCard(CardWidget):
         else:
             self.summaryLabel.hide()
 
-        rarity_color = _weapon_tile_rarity_color(self._weaponDisplay.rarity if self._weaponDisplay else None)
+        rarity_color = _grid_tile_rarity_color(self._weaponDisplay.rarity if self._weaponDisplay else None)
         self.rarityLine.setFixedHeight(4)
         self.rarityLine.setStyleSheet(
             f'background-color: {rarity_color.name()}; border-radius: 2px;'
@@ -521,6 +522,158 @@ class WeaponTileCard(CardWidget):
         painter.end()
 
 
+class CharacterTileCard(CardWidget):
+    """Compact fixed-size character tile for the inventory viewer."""
+
+    TILE_WIDTH = 160
+    TILE_HEIGHT = 160
+    ICON_SIZE = 64
+
+    clicked = Signal()
+
+    def __init__(self, row: InventoryRow, parent=None):
+        super().__init__(parent)
+        self.row = row
+        self._selected = False
+        self._image_path = row.image_path
+        self._lazyDownloadPending = False
+        self._characterDisplay = row.character_display
+
+        self.imageLabel = BodyLabel(self)
+        self.nameLabel = StrongBodyLabel(self)
+        self.summaryLabel = BodyLabel(self)
+        self.rarityLine = QWidget(self)
+
+        _get_game_icon_lazy_downloader().downloadFinished.connect(self._onLazyImageDownloaded)
+        self.setupImage(row.image_path)
+        self.setupLayout()
+        self.setFixedSize(self.TILE_WIDTH, self.TILE_HEIGHT)
+        self.setToolTip(row.title)
+
+    def setupImage(self, image_path: str | None):
+        if not image_path:
+            self.imageLabel.hide()
+            return
+
+        if self._applyImagePixmap(image_path):
+            self._lazyDownloadPending = False
+            return
+
+        self.imageLabel.hide()
+        if not self._lazyDownloadPending:
+            self._lazyDownloadPending = True
+            _get_game_icon_lazy_downloader().request(image_path)
+
+    def _applyImagePixmap(self, image_path: str) -> bool:
+        pixmap = QPixmap(str(basePATH / 'assets' / Path(image_path)))
+        if pixmap.isNull():
+            return False
+
+        scaled_pixmap = pixmap.scaled(
+            self.ICON_SIZE,
+            self.ICON_SIZE,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.imageLabel.setPixmap(scaled_pixmap)
+        self.imageLabel.setFixedSize(self.ICON_SIZE, self.ICON_SIZE)
+        self.imageLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.imageLabel.show()
+        return True
+
+    def _onLazyImageDownloaded(self, image_path: str, success: bool) -> None:
+        if image_path != self._image_path:
+            return
+
+        self._lazyDownloadPending = False
+        if not success:
+            return
+
+        self._applyImagePixmap(image_path)
+
+    @staticmethod
+    def _elide_text(label: BodyLabel | StrongBodyLabel, text: str, width: int) -> str:
+        return label.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, width)
+
+    @staticmethod
+    def _summary_text(character_display: CharacterDisplayData | None) -> str:
+        if character_display is None:
+            return ''
+
+        level_text = '' if character_display.level is None else str(character_display.level)
+        max_level_text = '' if character_display.max_level is None else str(character_display.max_level)
+        chain_text = '' if character_display.chain is None else str(character_display.chain)
+
+        if level_text and max_level_text:
+            summary = f'{level_text}/{max_level_text}'
+        elif level_text:
+            summary = level_text
+        elif max_level_text:
+            summary = f'?/{max_level_text}'
+        else:
+            summary = ''
+
+        if chain_text:
+            return f'{summary} ({chain_text})' if summary else f'({chain_text})'
+        return summary
+
+    def setupLayout(self):
+        vBoxLayout = QVBoxLayout(self)
+        vBoxLayout.setSpacing(4)
+        vBoxLayout.setContentsMargins(10, 10, 10, 10)
+
+        available_width = self.TILE_WIDTH - 24
+
+        self.imageLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        vBoxLayout.addWidget(self.imageLabel, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+        self.nameLabel.setText(self._elide_text(self.nameLabel, self.row.title, available_width))
+        self.nameLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        vBoxLayout.addWidget(self.nameLabel)
+
+        summary_text = self._summary_text(self._characterDisplay)
+        if summary_text:
+            self.summaryLabel.setText(summary_text)
+            self.summaryLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            vBoxLayout.addWidget(self.summaryLabel)
+        else:
+            self.summaryLabel.hide()
+
+        rarity_color = _grid_tile_rarity_color(self._characterDisplay.rarity if self._characterDisplay else None)
+        self.rarityLine.setFixedHeight(4)
+        self.rarityLine.setStyleSheet(
+            f'background-color: {rarity_color.name()}; border-radius: 2px;'
+        )
+        vBoxLayout.addWidget(self.rarityLine)
+        vBoxLayout.addStretch()
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mouseReleaseEvent(e)
+
+    def setSelected(self, selected: bool):
+        if selected == self._selected:
+            return
+
+        self._selected = selected
+        self.update()
+
+    def paintEvent(self, e):
+        super().paintEvent(e)
+        if not self._selected:
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        pen = QPen(QColor(0, 120, 212, 230))
+        pen.setWidth(1)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(self.rect().adjusted(1, 1, -2, -2), 8, 8)
+        painter.end()
+
+
 class InventoryInterface(ScrollArea):
     """Scrollable result grid."""
 
@@ -531,7 +684,7 @@ class InventoryInterface(ScrollArea):
         self._currentSearchText = ''
         self._searchBox: LineEdit | None = None
         self._resultsLayout: QVBoxLayout | None = None
-        self._resultCards: list[ResultCard | TileCard | WeaponTileCard] = []
+        self._resultCards: list[ResultCard | TileCard | WeaponTileCard | CharacterTileCard] = []
         self._detailsCard: CardWidget | None = None
         self._detailsLayout: QVBoxLayout | None = None
         self._visibleRows: tuple[InventoryRow, ...] = ()
@@ -810,7 +963,7 @@ class InventoryInterface(ScrollArea):
             layout.addWidget(title)
 
         display_kind = section.rows[0].display_kind if section.rows else 'card'
-        is_grid_tile = display_kind in {'tile', 'weapon_tile'}
+        is_grid_tile = display_kind in {'tile', 'weapon_tile', 'character_tile'}
         columns = 6 if is_grid_tile else 3
 
         sectionWidget = QWidget(self.contentWidget)
@@ -822,7 +975,9 @@ class InventoryInterface(ScrollArea):
 
         for index, row in enumerate(section.rows):
             if display_kind == 'weapon_tile':
-                card: ResultCard | TileCard | WeaponTileCard = WeaponTileCard(row, sectionWidget)
+                card: ResultCard | TileCard | WeaponTileCard | CharacterTileCard = WeaponTileCard(row, sectionWidget)
+            elif display_kind == 'character_tile':
+                card = CharacterTileCard(row, sectionWidget)
             elif display_kind == 'tile':
                 card = TileCard(row, sectionWidget)
             else:

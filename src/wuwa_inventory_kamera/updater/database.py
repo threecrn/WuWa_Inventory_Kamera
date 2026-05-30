@@ -292,12 +292,12 @@ class BaseDataUpdater:
 			return None
 		return asset_path.split('/Image/', 1)[1].rsplit('.', 1)[0] + '.png'
 
-	def _loadCharacterPortraits(self) -> dict[int, str]:
+	def _loadCharacterCatalogMetadata(self) -> dict[int, dict[str, Any]]:
 		role_info = self.loadJson('RoleInfo.json')
 		if not isinstance(role_info, list):
 			return {}
 
-		portraits: dict[int, str] = {}
+		metadata: dict[int, dict[str, Any]] = {}
 		for entry in role_info:
 			if not isinstance(entry, dict):
 				continue
@@ -311,13 +311,25 @@ class BaseDataUpdater:
 			if not isinstance(identifier, int) or identifier >= 5000:
 				continue
 
+			record = metadata.setdefault(identifier, {})
 			image_path = self._extractImagePath(entry.get('RoleHeadIcon'))
-			if image_path is None or not image_path.startswith('IconRoleHead80/'):
-				continue
+			if image_path is not None and image_path.startswith('IconRoleHead80/') and 'image' not in record:
+				record['image'] = image_path
 
-			portraits.setdefault(identifier, image_path)
+			rarity = entry.get('ItemQualityId', entry.get('QualityId'))
+			if isinstance(rarity, str):
+				try:
+					rarity = int(rarity)
+				except ValueError:
+					rarity = None
+			if isinstance(rarity, int) and 'rarity' not in record:
+				record['rarity'] = rarity
 
-		return portraits
+		return {
+			identifier: record
+			for identifier, record in metadata.items()
+			if record
+		}
 
 	def _buildLocaleRecord(self, display_name: str, *, normalized: str) -> dict[str, Any]:
 		aliases: list[str] = []
@@ -773,7 +785,7 @@ class BaseDataUpdater:
 			return {}
 
 	def updateCharacters(self) -> None:
-		character_portraits = self._loadCharacterPortraits()
+		character_metadata = self._loadCharacterCatalogMetadata()
 		data = self._updatePatternCategory(
 			compat_filename=None,
 			catalog_filename='characters.json',
@@ -785,11 +797,7 @@ class BaseDataUpdater:
 			catalog_entry_builder=lambda identifier, text_key, _display_name, _match: {
 				'id': identifier,
 				'text_key': text_key,
-				**(
-					{'image': character_portraits[identifier]}
-					if identifier in character_portraits
-					else {}
-				),
+				**character_metadata.get(identifier, {}),
 			},
 		)
 		self._removeLegacyCompatFile('characters.json')

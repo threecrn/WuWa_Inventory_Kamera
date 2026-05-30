@@ -48,6 +48,16 @@ class WeaponDisplayData:
 
 
 @dataclass(frozen=True)
+class CharacterDisplayData:
+    """Structured display data used by the character inventory grid."""
+
+    level: object | None = None
+    max_level: object | None = None
+    chain: object | None = None
+    rarity: object | None = None
+
+
+@dataclass(frozen=True)
 class InventoryRow:
     """UI-facing row rendered by the result viewer."""
 
@@ -58,6 +68,7 @@ class InventoryRow:
     image_path: str | None = None
     display_kind: str = 'card'  # 'card' or 'tile'
     weapon_display: WeaponDisplayData | None = None
+    character_display: CharacterDisplayData | None = None
 
 
 @dataclass(frozen=True)
@@ -146,12 +157,16 @@ class MetadataResolver:
         character_mapping = scraping_data.getCharactersID(language_code)
         self._characters_by_id = self._build_name_lookup(character_mapping, prettify=True)
         self._characters_by_key = self._build_name_key_lookup(character_mapping, prettify=True)
+        self._character_rarity_by_id = self._load_character_rarity_lookup(language_code)
         generated_characters_by_id, generated_characters_by_key = self._build_generated_name_lookups(
             'characters.json',
             language_code=language_code,
         )
         self._characters_by_id.update(generated_characters_by_id)
         self._characters_by_key.update(generated_characters_by_key)
+        self._character_info_by_id, self._character_info_by_key = self._build_generated_character_info_lookups(
+            language_code=language_code,
+        )
 
         echo_mapping = scraping_data.getEchoesID(language_code)
         self._echoes_by_id = self._build_name_lookup(echo_mapping, prettify=True)
@@ -250,7 +265,7 @@ class MetadataResolver:
             if not display_name:
                 continue
 
-            record = {'name': display_name}
+            record: dict[str, object] = {'name': display_name}
             for field in fields:
                 value = info.get(field)
                 if value is not None:
@@ -282,6 +297,90 @@ class MetadataResolver:
             result_by_id[str(info['id'])] = display_name
             result_by_key[str(canonical_key)] = display_name
         return result_by_id, result_by_key
+
+    @classmethod
+    def _build_generated_character_info_lookups(
+        cls,
+        *,
+        language_code: str,
+    ) -> tuple[dict[str, dict], dict[str, dict]]:
+        catalog = _load_generated_catalog('characters.json')
+        locale = _load_generated_locale('characters.json', language_code)
+        if not catalog or not locale:
+            return {}, {}
+
+        rarity_by_id = cls._load_character_rarity_lookup(language_code)
+        result_by_id: dict[str, dict] = {}
+        result_by_key: dict[str, dict] = {}
+        for canonical_key, info in catalog.items():
+            if not isinstance(info, dict) or 'id' not in info:
+                continue
+
+            display_name = cls._extract_display_text(locale.get(canonical_key))
+            if not display_name:
+                continue
+
+            identifier = str(info['id'])
+            record: dict[str, object] = {'name': display_name}
+
+            image = cls._coerce_image(info.get('image'))
+            if image is not None:
+                record['image'] = image
+
+            rarity = info.get('rarity')
+            if rarity is None:
+                rarity = rarity_by_id.get(identifier)
+            if rarity is not None:
+                record['rarity'] = rarity
+
+            result_by_id[identifier] = record
+            result_by_key[str(canonical_key)] = record
+
+        return result_by_id, result_by_key
+
+    @classmethod
+    def _load_character_rarity_lookup(cls, language_code: str) -> dict[str, int]:
+        candidates = (
+            basePATH / 'data' / 'raw' / language_code / 'RoleInfo.json',
+            basePATH / 'data' / language_code / 'RoleInfo.json',
+            basePATH / 'data' / 'raw' / 'en' / 'RoleInfo.json',
+            basePATH / 'data' / 'en' / 'RoleInfo.json',
+        )
+
+        for path in candidates:
+            payload = _load_json_file(path)
+            if not isinstance(payload, list):
+                continue
+
+            result: dict[str, int] = {}
+            for entry in payload:
+                if not isinstance(entry, dict):
+                    continue
+                identifier = cls._coerce_identifier(entry.get('Id'))
+                rarity = _coerce_int(entry.get('ItemQualityId'))
+                if rarity is None:
+                    rarity = _coerce_int(entry.get('QualityId'))
+                if identifier is None or rarity is None:
+                    continue
+                result[str(identifier)] = rarity
+
+            if result:
+                return result
+
+        return {}
+
+    @staticmethod
+    def _coerce_identifier(value: object) -> int | None:
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            try:
+                return int(value)
+            except ValueError:
+                return None
+        return None
 
     @classmethod
     def _build_generated_key_name_lookup(cls, locale_filename: str, *, language_code: str) -> dict[str, str]:
@@ -333,6 +432,17 @@ class MetadataResolver:
     def resolve_character(self, character_id: object) -> str:
         character_key = str(character_id)
         return self._characters_by_id.get(character_key) or self._characters_by_key.get(character_key) or self._fallback_name(character_key, 'Character')
+
+    def resolve_character_display(self, character_id: object) -> tuple[str, str | None, object | None]:
+        character_key = str(character_id)
+        info = self._character_info_by_id.get(character_key) or self._character_info_by_key.get(character_key)
+        if info:
+            return (
+                str(info.get('name', character_key)),
+                self._coerce_image(info.get('image')),
+                info.get('rarity'),
+            )
+        return self.resolve_character(character_id), None, self._character_rarity_by_id.get(character_key)
 
     def resolve_echo(self, echo_id: object) -> str:
         echo_key = str(echo_id)
@@ -774,6 +884,10 @@ def _build_character_rows(payload: dict, resolver: MetadataResolver) -> tuple[In
         if not isinstance(details, dict):
             continue
 
+        character_ref = details.get('character_key', character_id)
+        character_name, image_path, rarity = resolver.resolve_character_display(character_ref)
+        max_level = _max_level_from_ascension(details.get('ascension'))
+
         body_lines: list[str] = []
         summary = _join_non_empty_parts(
             _format_level(details.get('level')),
@@ -801,7 +915,7 @@ def _build_character_rows(payload: dict, resolver: MetadataResolver) -> tuple[In
 
         rows.append(
             InventoryRow(
-                title=resolver.resolve_character(character_id),
+                title=character_name,
                 subtitle=(
                     f'Character Key: {details.get("character_key")}'
                     if details.get('character_key')
@@ -809,6 +923,14 @@ def _build_character_rows(payload: dict, resolver: MetadataResolver) -> tuple[In
                 ),
                 body_lines=tuple(body_lines),
                 details_lines=_build_character_details(character_id, details, resolver),
+                image_path=image_path,
+                display_kind='character_tile',
+                character_display=CharacterDisplayData(
+                    level=details.get('level'),
+                    max_level=max_level,
+                    chain=details.get('chain'),
+                    rarity=rarity,
+                ),
             )
         )
     return tuple(rows)
@@ -1168,10 +1290,31 @@ def _select_display_main_stat(
 
 
 def _coerce_int(value: object) -> int | None:
-    try:
+    if isinstance(value, bool):
         return int(value)
-    except (TypeError, ValueError):
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _max_level_from_ascension(value: object) -> int | None:
+    ascension = _coerce_int(value)
+    if ascension is None:
         return None
+    return {
+        6: 90,
+        5: 80,
+        4: 70,
+        3: 60,
+        2: 50,
+        1: 40,
+        0: 20,
+    }.get(ascension)
 
 
 def _normalize_echo_stat_name(stat_name: object) -> str:
