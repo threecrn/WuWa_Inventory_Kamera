@@ -63,9 +63,9 @@ class GridPosition:
         """
         Return the flat index shown in the top-left cell of *page*.
 
-        On a short final page the game cannot scroll a full extra 24 cells,
-        so the last visible page overlaps the previous page and starts at
-        ``total_items - per_page``.
+        On a short final page the game clamps the scroll by rows rather than
+        by individual cells. The final visible page therefore starts at the
+        topmost fully visible row, i.e. ``(total_rows - rows) * cols``.
         """
         per_page = rows * cols
         if total_items is None or total_items <= per_page:
@@ -73,7 +73,9 @@ class GridPosition:
 
         last_page = (total_items - 1) // per_page
         if page == last_page:
-            return max(0, total_items - per_page)
+            total_rows = (total_items + cols - 1) // cols
+            top_row = max(0, total_rows - rows)
+            return top_row * cols
 
         return page * per_page
 
@@ -88,8 +90,8 @@ class GridPosition:
         Compute page/row/col from a flat index.
 
         When *total_items* is provided, the final tail chunk is remapped onto
-        the overlapping last visible page so clicks stay aligned after the
-        final scroll lands short of a full page.
+        the overlapping last visible page using row-based scroll clamping so
+        clicks stay aligned after the final scroll lands short of a full page.
         """
         per_page = rows * cols
         page = index // per_page

@@ -25,8 +25,9 @@ class _FakeNav:
         (30, 24, (1, 3, 0)),
         (30, 29, (1, 3, 5)),
         (50, 47, (1, 3, 5)),
-        (50, 48, (2, 3, 4)),
-        (50, 49, (2, 3, 5)),
+        (50, 48, (2, 3, 0)),
+        (50, 49, (2, 3, 1)),
+        (97, 96, (4, 3, 0)),
     ],
 )
 def test_grid_position_maps_tail_chunk_to_overlapping_final_page(
@@ -61,3 +62,14 @@ def test_grid_navigator_scan_forward_clicks_tail_items_on_overlapping_final_page
     assert nav.clicks[-1] == (3, 5)
     assert visited[24] == GridPosition(page=1, row=3, col=0, scan_index=24)
     assert visited[-1] == GridPosition(page=1, row=3, col=5, scan_index=29)
+
+
+def test_grid_navigator_uses_bottom_left_cell_for_97th_item_on_last_page() -> None:
+    nav = _FakeNav()
+    grid = GridNavigator(nav, total_items=97, total_pages=5)
+
+    count = grid.scan_forward(lambda _pos: True, start_index=96)
+
+    assert count == 1
+    assert nav.scrolls == [(0, 4)]
+    assert nav.clicks == [(3, 0)]
