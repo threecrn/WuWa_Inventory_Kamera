@@ -89,6 +89,11 @@ def test_base_assets_updater_collect_status_reports_existing_and_missing(tmp_pat
     monkeypatch.setattr(assets_module, 'basePATH', tmp_path)
     monkeypatch.setattr(
         assets_module,
+        '_fetch_github_commit_sha',
+        lambda owner, repo, ref: 'game-sha',
+    )
+    monkeypatch.setattr(
+        assets_module,
         '_build_icon_mapping',
         lambda sonata_keys: {'moonlitclouds': 'https://example.test/Icon_moonlitclouds.png'},
     )
@@ -116,6 +121,11 @@ def test_base_assets_updater_downloads_game_and_sonata_assets(tmp_path, monkeypa
 
     monkeypatch.setattr(assets_module, 'basePATH', tmp_path)
     monkeypatch.setattr(assets_module.time, 'sleep', lambda _: None)
+    monkeypatch.setattr(
+        assets_module,
+        '_fetch_github_commit_sha',
+        lambda owner, repo, ref: 'game-sha',
+    )
     monkeypatch.setattr(
         assets_module,
         '_build_icon_mapping',
@@ -161,6 +171,11 @@ def test_base_assets_updater_force_redownloads_existing_assets(tmp_path, monkeyp
     monkeypatch.setattr(assets_module, 'basePATH', tmp_path)
     monkeypatch.setattr(assets_module.time, 'sleep', lambda _: None)
     monkeypatch.setattr(
+        assets_module,
+        '_fetch_github_commit_sha',
+        lambda owner, repo, ref: 'game-sha-new',
+    )
+    monkeypatch.setattr(
         assets_module.BaseAssetsUpdater,
         '_iter_asset_families',
         lambda self: (assets_module._GameIconsAssetFamily(),),
@@ -180,3 +195,133 @@ def test_base_assets_updater_force_redownloads_existing_assets(tmp_path, monkeyp
     updater.run()
 
     assert asset_path.read_bytes() == b'new-asset'
+
+
+def test_base_assets_updater_prunes_stale_managed_files_without_touching_unmanaged(tmp_path, monkeypatch) -> None:
+    _write_json(tmp_path / 'data' / 'catalog' / 'items.json', {})
+    _write_json(tmp_path / 'data' / 'catalog' / 'weapons.json', {})
+
+    stale_path = tmp_path / 'assets' / 'IconA' / 'old.png'
+    stale_path.parent.mkdir(parents=True, exist_ok=True)
+    stale_path.write_bytes(b'old')
+    unrelated_path = tmp_path / 'assets' / 'keep.png'
+    unrelated_path.write_bytes(b'keep')
+    icon_path = tmp_path / 'assets' / 'icon.ico'
+    icon_path.write_bytes(b'icon')
+    _write_json(
+        tmp_path / 'assets' / '.asset_state.json',
+        {
+            'version': 1,
+            'families': {
+                'game-icons': {
+                    'revision': 'old-sha',
+                    'managed_files': ['IconA/old.png'],
+                },
+            },
+        },
+    )
+
+    monkeypatch.setattr(assets_module, 'basePATH', tmp_path)
+    monkeypatch.setattr(assets_module.time, 'sleep', lambda _: None)
+    monkeypatch.setattr(
+        assets_module,
+        '_fetch_github_commit_sha',
+        lambda owner, repo, ref: 'new-sha',
+    )
+    monkeypatch.setattr(
+        assets_module.BaseAssetsUpdater,
+        '_iter_asset_families',
+        lambda self: (assets_module._GameIconsAssetFamily(),),
+    )
+
+    updater = _RecorderUpdater()
+    updater.run()
+
+    assert stale_path.exists() is False
+    assert unrelated_path.read_bytes() == b'keep'
+    assert icon_path.read_bytes() == b'icon'
+
+
+def test_base_assets_updater_revision_change_refreshes_existing_assets(tmp_path, monkeypatch) -> None:
+    _write_json(
+        tmp_path / 'data' / 'catalog' / 'items.json',
+        {
+            'shell_credit': {'id': 1, 'image': 'IconA/T_IconA_ShellCredit_UI.png'},
+        },
+    )
+    _write_json(tmp_path / 'data' / 'catalog' / 'weapons.json', {})
+    _write_json(
+        tmp_path / 'assets' / '.asset_state.json',
+        {
+            'version': 1,
+            'families': {
+                'game-icons': {
+                    'revision': 'old-sha',
+                    'managed_files': ['IconA/T_IconA_ShellCredit_UI.png'],
+                },
+            },
+        },
+    )
+
+    asset_path = tmp_path / 'assets' / 'IconA' / 'T_IconA_ShellCredit_UI.png'
+    asset_path.parent.mkdir(parents=True, exist_ok=True)
+    asset_path.write_bytes(b'old-asset')
+
+    monkeypatch.setattr(assets_module, 'basePATH', tmp_path)
+    monkeypatch.setattr(assets_module.time, 'sleep', lambda _: None)
+    monkeypatch.setattr(
+        assets_module,
+        '_fetch_github_commit_sha',
+        lambda owner, repo, ref: 'new-sha',
+    )
+    monkeypatch.setattr(
+        assets_module.BaseAssetsUpdater,
+        '_iter_asset_families',
+        lambda self: (assets_module._GameIconsAssetFamily(),),
+    )
+
+    payloads = {
+        assets_module._build_game_asset_download_url('IconA/T_IconA_ShellCredit_UI.png'): b'refreshed-asset',
+    }
+
+    def fake_urlopen(request, timeout=60):
+        url = request.full_url if hasattr(request, 'full_url') else str(request)
+        return _FakeResponse(payloads[url])
+
+    monkeypatch.setattr(assets_module.urllib.request, 'urlopen', fake_urlopen)
+
+    updater = _RecorderUpdater()
+    updater.run()
+
+    assert asset_path.read_bytes() == b'refreshed-asset'
+
+
+def test_base_assets_updater_audits_catalog_paths_against_source_manifest(tmp_path, monkeypatch) -> None:
+    _write_json(
+        tmp_path / 'data' / 'catalog' / 'items.json',
+        {
+            'shell_credit': {'id': 1, 'image': 'IconA/T_IconA_ShellCredit_UI.png'},
+            'missing_item': {'id': 2, 'image': 'IconA/T_IconA_Missing_UI.png'},
+        },
+    )
+    _write_json(tmp_path / 'data' / 'catalog' / 'weapons.json', {})
+    manifest_path = tmp_path / 'ls-files-t'
+    manifest_path.write_text(
+        '\n'.join(
+            [
+                'S UI/UIResources/Common/Image/IconA/T_IconA_ShellCredit_UI.png',
+                'S UI/UIResources/Common/Image/IconElement/T_IconElement_Fire_UI.png',
+            ]
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.setattr(assets_module, 'basePATH', tmp_path)
+
+    result = assets_module.BaseAssetsUpdater().audit_game_asset_source_manifest(manifest_path)
+
+    assert result.checked == 2
+    assert result.present == 1
+    assert result.missing == (
+        'UI/UIResources/Common/Image/IconA/T_IconA_Missing_UI.png',
+    )

@@ -14,6 +14,7 @@ The Qt-dependent ``AssetsUpdater`` (with Signal support) remains in
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import json
 import re
 import time
@@ -31,11 +32,13 @@ _GAME_ASSET_REPO_OWNER = '555me'
 _GAME_ASSET_REPO_NAME = 'Wuthering-Waves-GameAssets'
 _GAME_ASSET_REPO_REF = 'main'
 _GAME_ASSET_REPO_IMAGE_ROOT = 'UI/UIResources/Common/Image'
+_GAME_ASSET_COMMITS_API = 'https://api.github.com/repos/{owner}/{repo}/commits/{ref}'
 _GAME_ASSET_RAW_ROOT = (
     f'https://raw.githubusercontent.com/{_GAME_ASSET_REPO_OWNER}/'
     f'{_GAME_ASSET_REPO_NAME}/{_GAME_ASSET_REPO_REF}/'
     f'{_GAME_ASSET_REPO_IMAGE_ROOT}'
 )
+_ASSET_STATE_FILENAME = '.asset_state.json'
 
 # ---------------------------------------------------------------------------
 # Remote sources
@@ -119,6 +122,25 @@ def _build_game_asset_download_url(image_path: str) -> str:
     return f'{_GAME_ASSET_RAW_ROOT}/{urllib.parse.quote(normalized, safe="/")}'
 
 
+def _build_git_commit_api_url(owner: str, repo: str, ref: str) -> str:
+    return _GAME_ASSET_COMMITS_API.format(
+        owner=urllib.parse.quote(owner, safe=''),
+        repo=urllib.parse.quote(repo, safe=''),
+        ref=urllib.parse.quote(ref, safe=''),
+    )
+
+
+def _fetch_github_commit_sha(owner: str, repo: str, ref: str) -> str:
+    url = _build_git_commit_api_url(owner, repo, ref)
+    req = urllib.request.Request(url, headers=_REQUEST_HEADERS)
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        payload = json.loads(resp.read().decode('utf-8'))
+    sha = payload.get('sha') if isinstance(payload, dict) else None
+    if not isinstance(sha, str) or not sha:
+        raise ValueError(f'Unexpected commit payload from {url}')
+    return sha
+
+
 def _api_get(params: dict) -> dict:
     params['format'] = 'json'
     url = _FANDOM_API + '?' + urllib.parse.urlencode(params)
@@ -178,12 +200,41 @@ def _download_binary(url: str, dest: Path) -> None:
         dest.write_bytes(resp.read())
 
 
+def _fingerprint_payload(payload: object) -> str:
+    encoded = json.dumps(payload, ensure_ascii=False, separators=(',', ':'), sort_keys=True).encode('utf-8')
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _load_source_manifest_paths(manifest_path: Path) -> set[str]:
+    entries: set[str] = set()
+    for raw_line in manifest_path.read_text(encoding='utf-8').splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        candidate = line.split(' ', 1)[1] if ' ' in line else line
+        candidate = candidate.strip().replace('\\', '/')
+        if not candidate.startswith(f'{_GAME_ASSET_REPO_IMAGE_ROOT}/'):
+            continue
+        if not candidate.lower().endswith('.png'):
+            continue
+        entries.add(candidate)
+    return entries
+
+
 @dataclass(frozen=True)
 class AssetFamilyStatus:
     family: str
     total: int
     existing: int
     missing: int
+
+
+@dataclass(frozen=True)
+class AssetAuditResult:
+    manifest_path: Path
+    checked: int
+    present: int
+    missing: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -195,20 +246,32 @@ class _AssetDownload:
     delay_seconds: float = 0.0
 
 
+@dataclass(frozen=True)
+class _PreparedAssetFamily:
+    family: str
+    revision: str
+    downloads: tuple[_AssetDownload, ...]
+
+
 class _AssetFamily:
     name = 'assets'
 
-    def prepare_downloads(self, *, data_dir: Path, assets_dir: Path) -> tuple[_AssetDownload, ...]:
+    def prepare_downloads(self, *, data_dir: Path, assets_dir: Path) -> _PreparedAssetFamily:
         raise NotImplementedError
 
 
 class _GameIconsAssetFamily(_AssetFamily):
     name = 'game-icons'
 
-    def prepare_downloads(self, *, data_dir: Path, assets_dir: Path) -> tuple[_AssetDownload, ...]:
+    def prepare_downloads(self, *, data_dir: Path, assets_dir: Path) -> _PreparedAssetFamily:
         manifest = _load_game_asset_manifest(data_dir)
         logger.info('Loaded %d game asset paths from catalogs', len(manifest))
-        return tuple(
+        revision = _fetch_github_commit_sha(
+            _GAME_ASSET_REPO_OWNER,
+            _GAME_ASSET_REPO_NAME,
+            _GAME_ASSET_REPO_REF,
+        )
+        downloads = tuple(
             _AssetDownload(
                 family=self.name,
                 label=image_path,
@@ -218,12 +281,13 @@ class _GameIconsAssetFamily(_AssetFamily):
             )
             for image_path in manifest
         )
+        return _PreparedAssetFamily(family=self.name, revision=revision, downloads=downloads)
 
 
 class _SonataIconsAssetFamily(_AssetFamily):
     name = 'sonata-icons'
 
-    def prepare_downloads(self, *, data_dir: Path, assets_dir: Path) -> tuple[_AssetDownload, ...]:
+    def prepare_downloads(self, *, data_dir: Path, assets_dir: Path) -> _PreparedAssetFamily:
         sonata_keys = _load_sonata_keys(data_dir)
         logger.info('Loaded %d sonata keys', len(sonata_keys))
 
@@ -234,7 +298,7 @@ class _SonataIconsAssetFamily(_AssetFamily):
             logger.warning('No wiki icon found for: %s', ', '.join(sorted(unmatched)))
 
         output_dir = assets_dir / 'IconS'
-        return tuple(
+        downloads = tuple(
             _AssetDownload(
                 family=self.name,
                 label=f'IconS/{key}.png',
@@ -244,6 +308,13 @@ class _SonataIconsAssetFamily(_AssetFamily):
             )
             for key, url in sorted(mapping.items())
         )
+        revision = _fingerprint_payload(
+            {
+                'sonata_keys': sorted(sonata_keys),
+                'mapping': sorted(mapping.items()),
+            }
+        )
+        return _PreparedAssetFamily(family=self.name, revision=revision, downloads=downloads)
 
 
 class _ProgressTracker:
@@ -279,16 +350,53 @@ class BaseAssetsUpdater:
     def __init__(self, *, force: bool = False) -> None:
         self.force = force
 
-    def plan_downloads(self) -> tuple[_AssetDownload, ...]:
+    def _assets_dir(self) -> Path:
+        return basePATH / 'assets'
+
+    def _state_path(self) -> Path:
+        return self._assets_dir() / _ASSET_STATE_FILENAME
+
+    @staticmethod
+    def _base_state() -> dict[str, object]:
+        return {
+            'version': 1,
+            'families': {},
+        }
+
+    def _load_asset_state(self) -> dict[str, object]:
+        try:
+            with open(self._state_path(), 'r', encoding='utf-8') as handle:
+                payload = json.load(handle)
+            if isinstance(payload, dict):
+                return payload
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+        return self._base_state()
+
+    def _save_asset_state(self, state: dict[str, object]) -> None:
+        try:
+            with open(self._state_path(), 'w', encoding='utf-8') as handle:
+                json.dump(state, handle, indent=2, ensure_ascii=False)
+        except Exception as exc:
+            logger.error('Failed to save asset state: %s', exc)
+
+    def _plan_families(self) -> tuple[_PreparedAssetFamily, ...]:
         data_dir = basePATH / 'data'
-        assets_dir = basePATH / 'assets'
-        downloads: list[_AssetDownload] = []
+        assets_dir = self._assets_dir()
+        plans: list[_PreparedAssetFamily] = []
         for family in self._iter_asset_families():
             try:
-                downloads.extend(family.prepare_downloads(data_dir=data_dir, assets_dir=assets_dir))
+                plans.append(family.prepare_downloads(data_dir=data_dir, assets_dir=assets_dir))
             except Exception as exc:
                 logger.error('Failed to prepare %s asset downloads: %s', family.name, exc)
-        return tuple(downloads)
+        return tuple(plans)
+
+    def plan_downloads(self) -> tuple[_AssetDownload, ...]:
+        return tuple(
+            download
+            for plan in self._plan_families()
+            for download in plan.downloads
+        )
 
     def collect_status(self) -> tuple[AssetFamilyStatus, ...]:
         buckets: dict[str, dict[str, int]] = {}
@@ -309,14 +417,38 @@ class BaseAssetsUpdater:
         )
 
     def run(self) -> None:
-        assets_dir = basePATH / 'assets'
+        assets_dir = self._assets_dir()
         assets_dir.mkdir(parents=True, exist_ok=True)
 
-        downloads = self.plan_downloads()
+        state = self._load_asset_state()
+        plans = self._plan_families()
+        refresh_families = self._families_requiring_refresh(plans, state)
+        if refresh_families:
+            logger.info('Refreshing managed families after source revision change: %s', ', '.join(sorted(refresh_families)))
+
+        self._prune_managed_files(plans, state, assets_dir)
+
+        downloads = tuple(download for plan in plans for download in plan.downloads)
         progress = _ProgressTracker(self, len(downloads))
-        self._sync_downloads(downloads, progress)
+        self._sync_downloads(downloads, progress, refresh_families=refresh_families)
+        self._update_state_after_sync(state, plans)
+        self._save_asset_state(state)
 
         self._onFinished()
+
+    def audit_game_asset_source_manifest(self, manifest_path: Path) -> AssetAuditResult:
+        expected_paths = tuple(
+            _build_game_asset_repo_path(image_path)
+            for image_path in _load_game_asset_manifest(basePATH / 'data')
+        )
+        available_paths = _load_source_manifest_paths(manifest_path)
+        missing = tuple(sorted(path for path in expected_paths if path not in available_paths))
+        return AssetAuditResult(
+            manifest_path=manifest_path,
+            checked=len(expected_paths),
+            present=len(expected_paths) - len(missing),
+            missing=missing,
+        )
 
     def _iter_asset_families(self) -> tuple[_AssetFamily, ...]:
         return (
@@ -328,15 +460,19 @@ class BaseAssetsUpdater:
         self,
         downloads: list[_AssetDownload] | tuple[_AssetDownload, ...],
         progress: _ProgressTracker,
+        *,
+        refresh_families: set[str] | None = None,
     ) -> None:
+        families_to_refresh = refresh_families or set()
         for download in downloads:
             progress_label = self._progress_label(download)
-            if download.dest.exists() and not self.force:
+            refresh_existing = self.force or download.family in families_to_refresh
+            if download.dest.exists() and not refresh_existing:
                 logger.debug('Skip (already exists): %s', progress_label)
                 progress.advance(progress_label)
                 continue
 
-            action = 'Refreshing' if self.force and download.dest.exists() else 'Downloading'
+            action = 'Refreshing' if refresh_existing and download.dest.exists() else 'Downloading'
             logger.info('%s %s', action, progress_label)
             try:
                 _download_binary(download.url, download.dest)
@@ -349,6 +485,82 @@ class BaseAssetsUpdater:
     @staticmethod
     def _progress_label(download: _AssetDownload) -> str:
         return f'{download.family}: {download.label}'
+
+    @staticmethod
+    def _family_state(state: dict[str, object], family_name: str) -> dict[str, object]:
+        families = state.get('families')
+        if not isinstance(families, dict):
+            return {}
+        family_state = families.get(family_name)
+        return family_state if isinstance(family_state, dict) else {}
+
+    @staticmethod
+    def _normalize_managed_path(path: object) -> str | None:
+        return _normalize_asset_path(path)
+
+    def _families_requiring_refresh(
+        self,
+        plans: tuple[_PreparedAssetFamily, ...],
+        state: dict[str, object],
+    ) -> set[str]:
+        refresh_families: set[str] = set()
+        for plan in plans:
+            previous_revision = self._family_state(state, plan.family).get('revision')
+            if isinstance(previous_revision, str) and previous_revision and plan.revision and previous_revision != plan.revision:
+                refresh_families.add(plan.family)
+        return refresh_families
+
+    def _prune_managed_files(
+        self,
+        plans: tuple[_PreparedAssetFamily, ...],
+        state: dict[str, object],
+        assets_dir: Path,
+    ) -> None:
+        for plan in plans:
+            previous = self._family_state(state, plan.family).get('managed_files')
+            if not isinstance(previous, list):
+                continue
+            current = {download.label for download in plan.downloads}
+            for raw_path in previous:
+                normalized = self._normalize_managed_path(raw_path)
+                if normalized is None or normalized in current:
+                    continue
+                self._delete_managed_file(assets_dir, normalized)
+
+    def _delete_managed_file(self, assets_dir: Path, relative_path: str) -> None:
+        path = assets_dir / Path(relative_path)
+        if not path.is_file():
+            return
+        try:
+            path.unlink()
+            logger.info('Pruned stale managed asset %s', relative_path)
+        except OSError as exc:
+            logger.error('Failed to prune %s: %s', relative_path, exc)
+            return
+
+        parent = path.parent
+        while parent != assets_dir and parent.exists():
+            try:
+                parent.rmdir()
+            except OSError:
+                break
+            parent = parent.parent
+
+    def _update_state_after_sync(
+        self,
+        state: dict[str, object],
+        plans: tuple[_PreparedAssetFamily, ...],
+    ) -> None:
+        families = state.setdefault('families', {})
+        if not isinstance(families, dict):
+            state['families'] = {}
+            families = state['families']
+
+        for plan in plans:
+            families[plan.family] = {
+                'revision': plan.revision,
+                'managed_files': [download.label for download in plan.downloads],
+            }
 
     def _onProgress(self, file_name: str, percent: float) -> None:
         """Override to receive download progress."""

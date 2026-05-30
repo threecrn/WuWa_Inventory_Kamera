@@ -52,3 +52,4 @@ def test_update_assets_module_invocation_is_supported() -> None:
     assert result.returncode == 0, result.stderr or result.stdout
     assert 'status' in result.stdout
     assert 'update' in result.stdout
+    assert 'audit' in result.stdout
