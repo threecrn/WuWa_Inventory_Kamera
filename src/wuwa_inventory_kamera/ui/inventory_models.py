@@ -71,6 +71,13 @@ class EchoDisplayData:
 
 
 @dataclass(frozen=True)
+class ItemDisplayData:
+    """Structured display data used by the dev-item / resource inventory grid."""
+
+    rarity: object | None = None
+
+
+@dataclass(frozen=True)
 class InventoryRow:
     """UI-facing row rendered by the result viewer."""
 
@@ -83,6 +90,7 @@ class InventoryRow:
     weapon_display: WeaponDisplayData | None = None
     character_display: CharacterDisplayData | None = None
     echo_display: EchoDisplayData | None = None
+    item_display: ItemDisplayData | None = None
 
 
 @dataclass(frozen=True)
@@ -156,6 +164,7 @@ class MetadataResolver:
         )
         self._items_by_id.update(generated_items_by_id)
         self._items_by_key.update(generated_items_by_key)
+        self._item_rarity_by_id = self._load_item_rarity_lookup()
 
         weapon_mapping = scraping_data.getWeaponsID(language_code)
         self._weapons_by_id = self._build_info_lookup(weapon_mapping)
@@ -410,6 +419,28 @@ class MetadataResolver:
         return None
 
     @classmethod
+    def _load_item_rarity_lookup(cls) -> dict[str, int]:
+        candidates = (
+            basePATH / 'data' / 'raw' / 'en' / 'ItemInfo.json',
+        )
+        for path in candidates:
+            payload = _load_json_file(path)
+            if not isinstance(payload, list):
+                continue
+            result: dict[str, int] = {}
+            for entry in payload:
+                if not isinstance(entry, dict):
+                    continue
+                identifier = cls._coerce_identifier(entry.get('Id'))
+                rarity = _coerce_int(entry.get('QualityId'))
+                if identifier is None or rarity is None:
+                    continue
+                result[str(identifier)] = rarity
+            if result:
+                return result
+        return {}
+
+    @classmethod
     def _build_generated_key_name_lookup(cls, locale_filename: str, *, language_code: str) -> dict[str, str]:
         locale = _load_generated_locale(locale_filename, language_code)
         if not locale:
@@ -448,6 +479,14 @@ class MetadataResolver:
         if info:
             return str(info.get('name', item_key)), self._coerce_image(info.get('image'))
         return self._fallback_name(item_key, 'Item'), None
+
+    def resolve_item_display(self, item_id: object) -> tuple[str, str | None, object | None]:
+        item_key = str(item_id)
+        info = self._items_by_id.get(item_key) or self._items_by_key.get(item_key)
+        name = str(info.get('name', item_key)) if info else self._fallback_name(item_key, 'Item')
+        image = self._coerce_image(info.get('image')) if info else None
+        rarity = self._item_rarity_by_id.get(item_key)
+        return name, image, rarity
 
     def resolve_weapon(self, weapon_id: object) -> tuple[str, str | None, object | None]:
         weapon_key = str(weapon_id)
@@ -941,7 +980,7 @@ def _build_item_rows(payload: list, resolver: MetadataResolver) -> tuple[Invento
         if not isinstance(entry, dict) or ('id' not in entry and 'item_key' not in entry):
             continue
         item_ref = entry.get('id', entry.get('item_key'))
-        item_name, image_path = resolver.resolve_item(item_ref)
+        item_name, image_path, rarity = resolver.resolve_item_display(item_ref)
         count = entry.get('count')
         body_lines = (str(count),) if count is not None else ()
         rows.append(
@@ -956,6 +995,7 @@ def _build_item_rows(payload: list, resolver: MetadataResolver) -> tuple[Invento
                 details_lines=_build_item_details(entry),
                 image_path=image_path,
                 display_kind='tile',
+                item_display=ItemDisplayData(rarity=rarity),
             )
         )
     return tuple(rows)

@@ -257,11 +257,13 @@ class TileCard(CardWidget):
         self._selected = False
         self._image_path = row.image_path
         self._lazyDownloadPending = False
+        self._itemDisplay = row.item_display
 
         self.imageLabel = BodyLabel(self)
         self.nameLabel = BodyLabel(self)
         count_text = row.body_lines[0] if row.body_lines else ''
         self.countLabel = BodyLabel(count_text, self)
+        self.rarityLine = QWidget(self)
 
         _get_game_icon_lazy_downloader().downloadFinished.connect(self._onLazyImageDownloaded)
         self.setupImage(row.image_path)
@@ -324,6 +326,15 @@ class TileCard(CardWidget):
         self.nameLabel.setText(elided)
         self.nameLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         vBoxLayout.addWidget(self.nameLabel)
+
+        rarity_color = _grid_tile_rarity_color(
+            self._itemDisplay.rarity if self._itemDisplay is not None else None
+        )
+        self.rarityLine.setFixedHeight(4)
+        self.rarityLine.setStyleSheet(
+            f'background-color: {rarity_color.name()}; border-radius: 2px;'
+        )
+        vBoxLayout.addWidget(self.rarityLine)
 
         if self.row.body_lines:
             self.countLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
