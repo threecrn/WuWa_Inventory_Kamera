@@ -172,8 +172,9 @@ class SessionOrchestrator:
                     break
 
                 logger.info('Running scraper: %s', scraper_name)
-                # Esc to reset before each scraper (matches V1 behaviour)
-                ctrl.press_key('esc', wait=0.5)
+                # Reset via the navigator so its tracked inventory state stays
+                # aligned with the real UI after Esc closes the current panel.
+                nav.close_inventory(wait=0.5)
 
                 try:
                     scraper_result = self._run_scraper(
@@ -185,7 +186,7 @@ class SessionOrchestrator:
                     result[scraper_name] = {'error': f'{scraper_name} failed'}
 
             # Final Esc
-            ctrl.press_key('esc')
+            nav.close_inventory(wait=0.1)
 
         stop.stop()  # clean shutdown of the polling thread
 

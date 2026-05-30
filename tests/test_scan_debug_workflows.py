@@ -1659,6 +1659,10 @@ def test_session_orchestrator_forwards_weapon_thresholds_to_ocr_service(monkeypa
         def is_in_main_menu(self) -> bool:
             return True
 
+        def close_inventory(self, wait: float = 0.5) -> None:
+            _ = wait
+            return None
+
     class _FakeController:
         def press_key(self, *_args, **_kwargs) -> None:
             return None
@@ -1705,6 +1709,123 @@ def test_session_orchestrator_forwards_weapon_thresholds_to_ocr_service(monkeypa
     assert ocr_init['min_level'] == 5
     assert ocr_init['weapon_min_rarity'] == 4
     assert ocr_init['weapon_min_level'] == 0
+
+
+def test_session_orchestrator_keeps_inventory_state_synced_between_echo_and_weapon_scans(
+    monkeypatch,
+) -> None:
+    class _FakeGameWindow:
+        def __init__(self, windowed: bool = False) -> None:
+            self.windowed = windowed
+            self.found = True
+            self.layout = SimpleNamespace(width=1920, height=1080)
+            self.monitor_index = 0
+
+        def activate(self) -> None:
+            return None
+
+    class _FakeController:
+        def __init__(self) -> None:
+            self.navigator: '_FakeNavigator | None' = None
+
+        def click(self, *_args, **_kwargs) -> None:
+            return None
+
+        def press_key(self, key: str, wait: float | None = None) -> None:
+            _ = wait
+            if key == 'esc' and self.navigator is not None:
+                self.navigator.actual_inventory_open = False
+
+    class _FakeNavigator:
+        def __init__(self, ctrl, *_args, **_kwargs) -> None:
+            self.ctrl = ctrl
+            self.ctrl.navigator = self
+            self.actual_inventory_open = False
+            self.tracked_inventory_open = False
+
+        def is_in_main_menu(self) -> bool:
+            return True
+
+        def open_inventory(self, wait: float = 2.0) -> None:
+            _ = wait
+            self.actual_inventory_open = True
+            self.tracked_inventory_open = True
+
+        def close_inventory(self, wait: float = 0.5) -> None:
+            self.ctrl.press_key('esc', wait=wait)
+            self.tracked_inventory_open = False
+
+        def switch_tab(self, _tab, wait: float = 0.5) -> None:
+            _ = wait
+            if not self.tracked_inventory_open:
+                self.open_inventory()
+            elif not self.actual_inventory_open:
+                raise RuntimeError('inventory state desynced')
+
+    class _FakeStopSignal:
+        def __init__(self) -> None:
+            self.event = threading.Event()
+
+        def is_set(self) -> bool:
+            return False
+
+        def stop(self) -> None:
+            return None
+
+    class _FakeOcrService:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            _ = exc_type, exc, tb
+
+    class _FakeEchoWorkflow:
+        def __init__(self, **kwargs) -> None:
+            self.nav = kwargs['nav']
+
+        def run(self, on_progress=None, on_process_progress=None) -> list[dict]:
+            _ = on_progress, on_process_progress
+            self.nav.switch_tab(InventoryTab.ECHOES)
+            return []
+
+    class _FakeWeaponWorkflow:
+        def __init__(self, **kwargs) -> None:
+            self.nav = kwargs['nav']
+            self.tab = kwargs['tab']
+
+        def run(self, on_progress=None) -> list[dict]:
+            _ = on_progress
+            self.nav.switch_tab(self.tab)
+            return []
+
+    monkeypatch.setattr(session_orchestrator_module, 'GameWindow', _FakeGameWindow)
+    monkeypatch.setattr(
+        session_orchestrator_module,
+        'InputController',
+        lambda *args, **kwargs: _FakeController(),
+    )
+    monkeypatch.setattr(session_orchestrator_module, 'GameNavigator', _FakeNavigator)
+    monkeypatch.setattr(session_orchestrator_module, 'StopSignal', _FakeStopSignal)
+    monkeypatch.setattr(session_orchestrator_module, 'OcrService', _FakeOcrService)
+    monkeypatch.setattr(session_orchestrator_module.time, 'sleep', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        'wuwa_inventory_kamera.scraping.scanning.echo_workflow.EchoWorkflow',
+        _FakeEchoWorkflow,
+    )
+    monkeypatch.setattr(
+        'wuwa_inventory_kamera.scraping.scanning.weapon_workflow.WeaponWorkflow',
+        _FakeWeaponWorkflow,
+    )
+
+    orchestrator = SessionOrchestrator(scrapers=['echoes', 'weapons'])
+
+    result = orchestrator.run()
+
+    assert result['echoes'] == []
+    assert result['weapons'] == []
 
 
 def test_stop_signal_stop_does_not_mark_cancellation(monkeypatch) -> None:
