@@ -4,8 +4,9 @@ wuwa_inventory_kamera.updater.assets
 
 Core asset downloader — no GUI/Qt dependencies.
 
-Downloads ``assets/IconS/`` (sonata-set icons) from the Wuthering Waves
-fandom wiki (fair use) using the MediaWiki ``allimages`` API.
+Downloads catalog-driven game UI icons into ``assets/<image path>`` from the
+``Wuthering-Waves-GameAssets`` repository and keeps the existing ``assets/IconS``
+sonata icons synced from the Wuthering Waves fandom wiki.
 
 The Qt-dependent ``AssetsUpdater`` (with Signal support) remains in
 ``updater/assetsUpdater.py`` and subclasses this.
@@ -18,22 +19,32 @@ import time
 import urllib.parse
 import urllib.request
 import logging
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from .. import localization_data as _localization_data
 from ..config.app_config import basePATH
 
 logger = logging.getLogger('AssetsUpdater')
 
+_GAME_ASSET_REPO_OWNER = '555me'
+_GAME_ASSET_REPO_NAME = 'Wuthering-Waves-GameAssets'
+_GAME_ASSET_REPO_REF = 'main'
+_GAME_ASSET_REPO_IMAGE_ROOT = 'UI/UIResources/Common/Image'
+_GAME_ASSET_RAW_ROOT = (
+    f'https://raw.githubusercontent.com/{_GAME_ASSET_REPO_OWNER}/'
+    f'{_GAME_ASSET_REPO_NAME}/{_GAME_ASSET_REPO_REF}/'
+    f'{_GAME_ASSET_REPO_IMAGE_ROOT}'
+)
+
 # ---------------------------------------------------------------------------
-# Fandom wiki API
+# Remote sources
 # ---------------------------------------------------------------------------
 
 _FANDOM_API = 'https://wutheringwaves.fandom.com/api.php'
 
 _REQUEST_HEADERS = {
     'User-Agent': (
-        'WuWaInventoryKamera/1.0 (sonata-icon updater; fair use; '
+        'WuWaInventoryKamera/1.0 (asset updater; fair use; '
         'https://github.com/Psycho-Marcus/WuWa_Inventory_Kamera)'
     ),
 }
@@ -49,6 +60,64 @@ _WIKI_NAME_OVERRIDES: dict[str, str] = {
 def _normalize(name: str) -> str:
     """Lowercase and strip underscores, spaces, hyphens, and apostrophes."""
     return re.sub(r"[_\s\-']", '', name).lower()
+
+
+def _normalize_asset_path(raw_path: object) -> str | None:
+    """Return a safe relative asset path or ``None`` when invalid."""
+    if not isinstance(raw_path, str):
+        return None
+
+    candidate = raw_path.strip().replace('\\', '/')
+    if not candidate:
+        return None
+    if candidate.startswith('/'):
+        return None
+
+    pure_path = PurePosixPath(candidate)
+    parts = pure_path.parts
+    if not parts:
+        return None
+    if any(part in ('', '.', '..') for part in parts):
+        return None
+    if ':' in parts[0]:
+        return None
+    if pure_path.suffix.lower() != '.png':
+        return None
+
+    return pure_path.as_posix()
+
+
+def _load_game_asset_manifest(data_dir: Path) -> tuple[str, ...]:
+    """Return the deduplicated set of catalog-driven game icon paths."""
+    manifest: set[str] = set()
+    for filename in ('items.json', 'weapons.json'):
+        payload = _localization_data.load_json_file(data_dir / 'catalog' / filename)
+        if not isinstance(payload, dict):
+            continue
+        for info in payload.values():
+            if not isinstance(info, dict):
+                continue
+            normalized = _normalize_asset_path(info.get('image'))
+            if normalized:
+                manifest.add(normalized)
+
+    return tuple(sorted(manifest))
+
+
+def _build_game_asset_repo_path(image_path: str) -> str:
+    normalized = _normalize_asset_path(image_path)
+    if normalized is None:
+        raise ValueError(f'Invalid game asset path: {image_path!r}')
+    return f'{_GAME_ASSET_REPO_IMAGE_ROOT}/{normalized}'
+
+
+def _build_game_asset_download_url(image_path: str) -> str:
+    repo_path = _build_game_asset_repo_path(image_path)
+    return (
+        f'https://raw.githubusercontent.com/{_GAME_ASSET_REPO_OWNER}/'
+        f'{_GAME_ASSET_REPO_NAME}/{_GAME_ASSET_REPO_REF}/'
+        f'{urllib.parse.quote(repo_path, safe="/")}'
+    )
 
 
 def _api_get(params: dict) -> dict:
@@ -103,6 +172,26 @@ def _build_icon_mapping(sonata_keys: set[str]) -> dict[str, str]:
     return mapping
 
 
+def _download_binary(url: str, dest: Path) -> None:
+    req = urllib.request.Request(url, headers=_REQUEST_HEADERS)
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(resp.read())
+
+
+class _ProgressTracker:
+    def __init__(self, updater: BaseAssetsUpdater, total: int) -> None:
+        self._updater = updater
+        self._total = total
+        self._completed = 0
+
+    def advance(self, label: str) -> None:
+        if self._total <= 0:
+            return
+        self._completed += 1
+        self._updater._onProgress(label, self._completed / self._total * 100)
+
+
 # ---------------------------------------------------------------------------
 # BaseAssetsUpdater
 # ---------------------------------------------------------------------------
@@ -110,54 +199,88 @@ def _build_icon_mapping(sonata_keys: set[str]) -> dict[str, str]:
 class BaseAssetsUpdater:
     """Qt-free asset downloader.
 
-    Downloads ``assets/IconS/`` from the Wuthering Waves fandom wiki.
-    Subclass and override :meth:`_onProgress` / :meth:`_onFinished` for
-    lifecycle notifications (e.g. Qt signals).
+    Downloads catalog-driven game icons into ``assets/`` and keeps
+    ``assets/IconS/`` synced from the Wuthering Waves fandom wiki. Subclass and
+    override :meth:`_onProgress` / :meth:`_onFinished` for lifecycle
+    notifications (e.g. Qt signals).
     """
 
     def run(self) -> None:
-        output_dir: Path = basePATH / 'assets' / 'IconS'
-        output_dir.mkdir(parents=True, exist_ok=True)
+        assets_dir = basePATH / 'assets'
+        assets_dir.mkdir(parents=True, exist_ok=True)
 
+        data_dir = basePATH / 'data'
         try:
-            sonata_keys = _load_sonata_keys(basePATH / 'data')
+            game_manifest = _load_game_asset_manifest(data_dir)
         except Exception as exc:
-            logger.error('Failed to load sonata keys: %s', exc)
-            self._onFinished()
-            return
+            logger.error('Failed to load game asset manifest: %s', exc)
+            game_manifest = ()
 
-        logger.info('Loaded %d sonata keys', len(sonata_keys))
+        logger.info('Loaded %d game asset paths from catalogs', len(game_manifest))
 
+        sonata_mapping: dict[str, str] = {}
         try:
-            mapping = _build_icon_mapping(sonata_keys)
+            sonata_keys = _load_sonata_keys(data_dir)
+            logger.info('Loaded %d sonata keys', len(sonata_keys))
+            sonata_mapping = _build_icon_mapping(sonata_keys)
+            logger.info('Matched %d / %d sonata icons', len(sonata_mapping), len(sonata_keys))
+            unmatched = sonata_keys - set(sonata_mapping)
+            if unmatched:
+                logger.warning('No wiki icon found for: %s', ', '.join(sorted(unmatched)))
         except Exception as exc:
-            logger.error('Failed to fetch icon list from wiki: %s', exc)
-            self._onFinished()
-            return
+            logger.error('Failed to build sonata icon mapping: %s', exc)
 
-        logger.info('Matched %d / %d sonata icons', len(mapping), len(sonata_keys))
-        unmatched = sonata_keys - set(mapping)
-        if unmatched:
-            logger.warning('No wiki icon found for: %s', ', '.join(sorted(unmatched)))
-
-        total = len(mapping)
-        for idx, (key, url) in enumerate(sorted(mapping.items()), start=1):
-            dest = output_dir / f'{key}.png'
-            if dest.exists():
-                logger.debug('Skip (already exists): %s', dest.name)
-                continue
-            label = f'IconS/{dest.name}'
-            logger.info('Downloading %s', label)
-            try:
-                req = urllib.request.Request(url, headers=_REQUEST_HEADERS)
-                with urllib.request.urlopen(req, timeout=60) as resp:
-                    dest.write_bytes(resp.read())
-                self._onProgress(label, idx / total * 100)
-            except Exception as exc:
-                logger.error('Failed to download %s: %s', url, exc)
-            time.sleep(0.3)
+        progress = _ProgressTracker(self, len(game_manifest) + len(sonata_mapping))
+        self._sync_game_assets(game_manifest, assets_dir, progress)
+        self._sync_sonata_assets(sonata_mapping, assets_dir / 'IconS', progress)
 
         self._onFinished()
+
+    def _sync_game_assets(
+        self,
+        manifest: tuple[str, ...],
+        assets_dir: Path,
+        progress: _ProgressTracker,
+    ) -> None:
+        for image_path in manifest:
+            dest = assets_dir / Path(image_path)
+            label = image_path
+            if dest.exists():
+                logger.debug('Skip (already exists): %s', label)
+                progress.advance(label)
+                continue
+
+            url = _build_game_asset_download_url(image_path)
+            logger.info('Downloading %s', label)
+            try:
+                _download_binary(url, dest)
+            except Exception as exc:
+                logger.error('Failed to download %s: %s', url, exc)
+            progress.advance(label)
+            time.sleep(0.1)
+
+    def _sync_sonata_assets(
+        self,
+        mapping: dict[str, str],
+        output_dir: Path,
+        progress: _ProgressTracker,
+    ) -> None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        for key, url in sorted(mapping.items()):
+            dest = output_dir / f'{key}.png'
+            label = f'IconS/{dest.name}'
+            if dest.exists():
+                logger.debug('Skip (already exists): %s', label)
+                progress.advance(label)
+                continue
+
+            logger.info('Downloading %s', label)
+            try:
+                _download_binary(url, dest)
+            except Exception as exc:
+                logger.error('Failed to download %s: %s', url, exc)
+            progress.advance(label)
+            time.sleep(0.3)
 
     def _onProgress(self, file_name: str, percent: float) -> None:
         """Override to receive download progress."""
