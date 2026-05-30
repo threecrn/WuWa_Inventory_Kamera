@@ -1294,11 +1294,12 @@ def test_character_workflow_selects_first_character_after_opening_panel(monkeypa
 
     workflow.run()
 
-    assert events[:5] == [
+    assert events[:6] == [
         ('press_key', 'c', None, 2.0),
         ('click', 10, 20, 0.7),
         ('scroll', -1, None, None),
         ('scroll', 0.25, None, None),
+        ('click', 10, 20, 0.7),
         ('click', 1, 2, 0.8),
     ]
 

@@ -180,9 +180,20 @@ class CharacterWorkflow:
         ctrl.press_key(self._resonator_key, wait=2.0)
         _click_character_slot(0)
 
-        # 
+        # Flush the sidebar's hidden over-scroll deficit before the first real
+        # page scroll. When the character panel opens from the main screen, the
+        # right-hand list can already be sitting at the edge with buffered
+        # overscroll still "owed" in the opposite direction. Without this small
+        # nudge, the next attempt to scroll the list can be partially eaten by
+        # that buffer instead of moving a full page.
         ctrl.scroll(-1)
         ctrl.scroll(0.25)
+
+        # Re-select the first visible slot after the wheel nudge. The list can
+        # open with a stale selection, and the overscroll flush only stabilizes
+        # the sidebar scroll position; it does not guarantee the first slot is
+        # still the active resonator when section 0 is captured.
+        _click_character_slot(0)
 
         slots_per_page = int(getattr(ch, 'visibleSlots', _DEFAULT_SLOTS_PER_PAGE))
 
