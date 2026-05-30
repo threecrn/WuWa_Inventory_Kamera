@@ -212,7 +212,21 @@ def merge_inventory_exports(existing: Any, incoming: Any) -> dict[str, int]:
 def serialize_character_export(payload: Any) -> Any:
     if _is_error_payload(payload):
         return deepcopy(payload)
-    return deepcopy(payload) if isinstance(payload, dict) else payload
+    if not isinstance(payload, dict):
+        return payload
+
+    serialized = deepcopy(payload)
+    for details in serialized.values():
+        if not isinstance(details, dict):
+            continue
+        weapon = details.get('weapon')
+        if not isinstance(weapon, dict):
+            continue
+        weapon_id = weapon.get('id')
+        normalized_weapon_id = _extract_lookup_id(weapon_id)
+        if normalized_weapon_id is not None:
+            weapon['id'] = normalized_weapon_id
+    return serialized
 
 
 def serialize_achievement_export(payload: Any) -> Any:
@@ -264,6 +278,12 @@ def _looks_like_legacy_weapon_entry(entry: Any) -> bool:
         return False
     details = next(iter(entry.values()))
     return isinstance(details, dict) and any(key in details for key in ('level', 'ascension', 'rank'))
+
+
+def _extract_lookup_id(value: Any) -> Any:
+    if isinstance(value, dict) and 'id' in value:
+        return value.get('id')
+    return value
 
 
 def _weapon_ascension_from_max_level(max_level: Any) -> int:

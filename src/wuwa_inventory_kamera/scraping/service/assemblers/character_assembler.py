@@ -37,6 +37,12 @@ _LEVEL_PAIR_RE = re.compile(r'(\d+)\s*/\s*(\d+)')
 _ASCENSION_LEVELS = (20, 40, 50, 60, 70, 80, 90)
 
 
+def _extract_lookup_id(value):
+    if isinstance(value, dict) and 'id' in value:
+        return value.get('id')
+    return value
+
+
 def _get_data():
     from ...data import getCharactersID, getWeaponsID, getDefinedText
 
@@ -166,7 +172,7 @@ class CharAssembler:
             name_text = tokens_to_string(token_map['weaponName'], divisor='').lower().strip()
             close = get_close_matches(name_text, weaponsID, n=1, cutoff=0.8)
             result['weaponName'] = close[0] if close else name_text
-            result['weaponId'] = weaponsID.get(result['weaponName'])
+            result['weaponId'] = _extract_lookup_id(weaponsID.get(result['weaponName']))
             if close:
                 logger.debug(
                     'Character %d — weapon name matched: %r -> %r (id=%r)',

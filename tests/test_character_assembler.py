@@ -80,6 +80,42 @@ def test_character_assembler_logs_weapon_name_matching(caplog, monkeypatch) -> N
     ) in caplog.text
 
 
+def test_character_assembler_extracts_scalar_weapon_id_from_metadata_lookup(monkeypatch) -> None:
+    monkeypatch.setattr(
+        character_assembler_module,
+        '_get_data',
+        lambda: ({}, {
+            'everbrightpolestar': {
+                'id': 21020076,
+                'name': 'Everbright Polestar',
+                'image': 'IconWeapon/T_IconWeapon21020076_UI.png',
+                'rarity': 5,
+            }
+        }, {}),
+    )
+
+    assembler = CharAssembler()
+    capture = CharCapture(
+        char_index=7,
+        section=1,
+        crops={
+            'weaponName': np.zeros((1, 1, 3), dtype=np.uint8),
+            'weaponLevel': np.zeros((1, 1, 3), dtype=np.uint8),
+            'weaponRank': np.zeros((1, 1, 3), dtype=np.uint8),
+        },
+    )
+
+    result = assembler.assemble(
+        capture,
+        [_token(0, 0, 'Everbright'), _token(2, 0, 'Polestar')],
+        [_token(0, 0, '90/90')],
+        [_token(0, 0, '1')],
+    )
+
+    assert result.fields['weaponName'] == 'everbrightpolestar'
+    assert result.fields['weaponId'] == 21020076
+
+
 def test_character_assembler_parses_resonator_ascension_from_level_pair(monkeypatch) -> None:
     monkeypatch.setattr(
         character_assembler_module,

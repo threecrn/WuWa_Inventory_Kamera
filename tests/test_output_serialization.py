@@ -83,3 +83,34 @@ def test_serialize_scan_result_adds_inventory_and_converts_sections() -> None:
             }
         }
     ]
+
+
+def test_serialize_character_export_restores_scalar_weapon_id() -> None:
+    payload = {
+        '1210': {
+            '_name': 'aemeath',
+            'character_key': 'aemeath',
+            'level': 90,
+            'ascension': 6,
+            'weapon': {
+                'id': {
+                    'id': 21020076,
+                    'name': 'Everbright Polestar',
+                    'image': 'IconWeapon/T_IconWeapon21020076_UI.png',
+                    'rarity': 5,
+                },
+                'weapon_key': 'everbrightpolestar',
+                'level': 90,
+                'ascension': 6,
+                'rank': 1,
+            },
+            'echoes': {},
+            'skills': {},
+            'chain': 3,
+        }
+    }
+
+    serialized = output_serialization.serialize_character_export(payload)
+
+    assert serialized['1210']['weapon']['id'] == 21020076
+    assert serialized['1210']['weapon']['weapon_key'] == 'everbrightpolestar'
