@@ -137,6 +137,16 @@ def test_load_inventory_document_normalizes_echo_export(monkeypatch) -> None:
     assert row.title == 'Bell Borne Geochelone'
     assert row.subtitle == 'Echo ID: 310000010'
     assert row.image_path == 'IconMonsterHead/T_IconMonsterHead_015_UI.png'
+    assert row.display_kind == 'echo_tile'
+    assert row.echo_display == inventory_models.EchoDisplayData(
+        level=25,
+        cost=4,
+        rarity=5,
+        main_stat='Healing Bonus 26.4%',
+        equipped='Shorekeeper',
+        sonata_name='Moonlit Clouds',
+        sonata_icon_path='IconS/moonlitclouds.png',
+    )
     assert 'Lv. 25 | Tune 5 | Rarity 5' in row.body_lines
     assert 'Sonata: Moonlit Clouds' in row.body_lines
     assert 'Cost: 4' in row.body_lines
@@ -336,6 +346,16 @@ def test_load_inventory_document_normalizes_keyed_echo_export() -> None:
     row = document.sections[0].rows[0]
     assert row.title == 'Bell Borne Geochelone'
     assert row.subtitle == 'Echo Key: bellbornegeochelone'
+    assert row.display_kind == 'echo_tile'
+    assert row.echo_display == inventory_models.EchoDisplayData(
+        level=25,
+        cost=None,
+        rarity=5,
+        main_stat='Healing Bonus 26.4%',
+        equipped='Shorekeeper',
+        sonata_name='Moonlitclouds',
+        sonata_icon_path='IconS/moonlitclouds.png',
+    )
     assert 'Sonata: Moonlitclouds' in row.body_lines
     assert 'Equipped: Shorekeeper' in row.body_lines
     assert 'Echo Key: bellbornegeochelone' in row.details_lines

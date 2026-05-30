@@ -58,6 +58,19 @@ class CharacterDisplayData:
 
 
 @dataclass(frozen=True)
+class EchoDisplayData:
+    """Structured display data used by the echo inventory grid."""
+
+    level: object | None = None
+    cost: object | None = None
+    rarity: object | None = None
+    main_stat: str = ''
+    equipped: str = ''
+    sonata_name: str = ''
+    sonata_icon_path: str | None = None
+
+
+@dataclass(frozen=True)
 class InventoryRow:
     """UI-facing row rendered by the result viewer."""
 
@@ -66,9 +79,10 @@ class InventoryRow:
     body_lines: tuple[str, ...] = field(default_factory=tuple)
     details_lines: tuple[str, ...] = field(default_factory=tuple)
     image_path: str | None = None
-    display_kind: str = 'card'  # 'card' or 'tile'
+    display_kind: str = 'card'  # 'card', 'tile', 'echo_tile', 'weapon_tile', 'character_tile'
     weapon_display: WeaponDisplayData | None = None
     character_display: CharacterDisplayData | None = None
+    echo_display: EchoDisplayData | None = None
 
 
 @dataclass(frozen=True)
@@ -197,6 +211,11 @@ class MetadataResolver:
             'sonatas.json',
             language_code=language_code,
         )
+        self._sonata_keys_by_name = {
+            self._normalize_lookup_text(display_name): canonical_key
+            for canonical_key, display_name in self._sonatas_by_key.items()
+            if display_name
+        }
 
     @staticmethod
     def _build_info_lookup(mapping: dict) -> dict[str, dict]:
@@ -413,6 +432,10 @@ class MetadataResolver:
             return text.title()
         return text[:1].upper() + text[1:]
 
+    @staticmethod
+    def _normalize_lookup_text(value: object) -> str:
+        return ''.join(char for char in str(value).strip().lower() if char.isalnum())
+
     @classmethod
     def _fallback_name(cls, raw_ref: str, prefix: str) -> str:
         if raw_ref and not raw_ref.isdigit():
@@ -485,6 +508,24 @@ class MetadataResolver:
     def resolve_sonata(self, sonata_key: object) -> str:
         sonata_ref = str(sonata_key)
         return self._sonatas_by_key.get(sonata_ref, self._fallback_name(sonata_ref, 'Sonata'))
+
+    def resolve_sonata_icon_path(self, sonata_key: object) -> str | None:
+        sonata_ref = str(sonata_key).strip()
+        if not sonata_ref:
+            return None
+        if sonata_ref in self._sonatas_by_key:
+            return f'IconS/{sonata_ref}.png'
+
+        normalized = self._normalize_lookup_text(sonata_ref)
+        if normalized in self._sonatas_by_key:
+            return f'IconS/{normalized}.png'
+
+        canonical_key = self._sonata_keys_by_name.get(normalized)
+        if canonical_key:
+            return f'IconS/{canonical_key}.png'
+        if normalized:
+            return f'IconS/{normalized}.png'
+        return None
 
     @staticmethod
     def _coerce_image(image_path: object) -> str | None:
@@ -768,18 +809,21 @@ def _build_echo_rows(payload: list, resolver: MetadataResolver) -> tuple[Invento
             body_lines.append(summary)
 
         sonata_ref = details.get('sonata_key') or details.get('sonata')
-        if sonata_ref:
-            body_lines.append(f'Sonata: {resolver.resolve_sonata(sonata_ref)}')
+        sonata_name = resolver.resolve_sonata(sonata_ref) if sonata_ref else ''
+        if sonata_name:
+            body_lines.append(f'Sonata: {sonata_name}')
 
         cost = details.get('_cost')
         if cost is not None:
             body_lines.append(f'Cost: {cost}')
 
         equipped = details.get('_equipped')
-        if equipped:
-            body_lines.append(f'Equipped: {resolver.resolve_character(equipped)}')
+        equipped_name = resolver.resolve_character(equipped) if equipped else ''
+        if equipped_name:
+            body_lines.append(f'Equipped: {equipped_name}')
 
         main_stat = _format_main_stat(details)
+        primary_main_stat = _format_echo_primary_main_stat(details)
         stats = details.get('stats')
         if main_stat:
             body_lines.append(main_stat)
@@ -800,6 +844,16 @@ def _build_echo_rows(payload: list, resolver: MetadataResolver) -> tuple[Invento
                 body_lines=tuple(body_lines),
                 details_lines=_build_echo_details(echo_id, details, resolver),
                 image_path=image_path,
+                display_kind='echo_tile',
+                echo_display=EchoDisplayData(
+                    level=details.get('level'),
+                    cost=cost,
+                    rarity=details.get('rarity'),
+                    main_stat=primary_main_stat or '',
+                    equipped=equipped_name,
+                    sonata_name=sonata_name,
+                    sonata_icon_path=resolver.resolve_sonata_icon_path(sonata_ref),
+                ),
             )
         )
     return tuple(rows)
@@ -1243,6 +1297,13 @@ _FIXED_MAIN_BY_COST: dict[int, str] = {1: 'hp', 3: 'atk', 4: 'atk'}
 
 
 def _format_main_stat(details: object) -> str | None:
+    main_stat = _format_echo_primary_main_stat(details)
+    if main_stat is None:
+        return None
+    return f'Main: {main_stat}'
+
+
+def _format_echo_primary_main_stat(details: object) -> str | None:
     if not isinstance(details, dict):
         return None
     main_stats = _iter_echo_stat_items(details.get('stats'), 'main')
@@ -1250,7 +1311,7 @@ def _format_main_stat(details: object) -> str | None:
     if selected is None:
         return None
     stat_name, stat_value = selected
-    return f'Main: {stat_name} {stat_value}'
+    return f'{stat_name} {stat_value}'
 
 
 def _iter_echo_stat_items(stats: object, bucket: str) -> tuple[tuple[object, object], ...]:

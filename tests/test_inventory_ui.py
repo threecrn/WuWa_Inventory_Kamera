@@ -16,9 +16,17 @@ pytest.importorskip('qfluentwidgets')
 from PySide6.QtWidgets import QApplication
 
 from wuwa_inventory_kamera.ui import inventory as inventory_module
-from wuwa_inventory_kamera.ui.inventory import CharacterTileCard, InventoryInterface, ResultCard, TileCard, WeaponTileCard
+from wuwa_inventory_kamera.ui.inventory import (
+    CharacterTileCard,
+    EchoTileCard,
+    InventoryInterface,
+    ResultCard,
+    TileCard,
+    WeaponTileCard,
+)
 from wuwa_inventory_kamera.ui.inventory_models import (
     CharacterDisplayData,
+    EchoDisplayData,
     InventoryDocument,
     InventoryRow,
     InventorySection,
@@ -114,6 +122,32 @@ def _build_character_tile_document() -> InventoryDocument:
         kind='test',
         title='Characters',
         sections=(InventorySection(title='Characters', rows=rows),),
+    )
+
+
+def _build_echo_tile_document(*, image_path: str, sonata_icon_path: str) -> InventoryDocument:
+    rows = tuple(
+        InventoryRow(
+            title=f'Extremely Long Echo Name {index}',
+            subtitle=f'Echo ID: 3100000{index}',
+            image_path=image_path,
+            display_kind='echo_tile',
+            echo_display=EchoDisplayData(
+                level=25,
+                cost=4,
+                rarity=5,
+                main_stat='Healing Bonus 26.4%',
+                equipped=f'Shorekeeper {index}' if index % 2 else '',
+                sonata_name='Moonlit Clouds',
+                sonata_icon_path=sonata_icon_path,
+            ),
+        )
+        for index in range(1, 8)
+    )
+    return InventoryDocument(
+        kind='test',
+        title='Echoes',
+        sections=(InventorySection(title='Echoes', rows=rows),),
     )
 
 
@@ -387,6 +421,58 @@ def test_character_section_uses_character_tile_cards_with_six_column_wrap(qapp: 
     assert first_card.nameLabel.text().endswith('…')
     assert first_card.summaryLabel.text() == '90/90 (2)'
     assert '#e8a1ff' in first_card.rarityLine.styleSheet()
+    assert sixth_card.y() == first_card.y()
+    assert seventh_card.y() > first_card.y()
+
+    interface.hide()
+    interface.deleteLater()
+    qapp.processEvents()
+
+
+def test_echo_section_uses_echo_tile_cards_with_six_column_wrap(
+    qapp: QApplication,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    image_path = 'IconMonsterHead/T_IconMonsterHead_015_UI.png'
+    sonata_icon_path = 'IconS/moonlitclouds.png'
+    echo_icon_file = tmp_path / 'assets' / 'IconMonsterHead' / 'T_IconMonsterHead_015_UI.png'
+    sonata_icon_file = tmp_path / 'assets' / 'IconS' / 'moonlitclouds.png'
+    echo_icon_file.parent.mkdir(parents=True, exist_ok=True)
+    sonata_icon_file.parent.mkdir(parents=True, exist_ok=True)
+    echo_icon_file.write_bytes(_PNG_BYTES)
+    sonata_icon_file.write_bytes(_PNG_BYTES)
+
+    monkeypatch.setattr(inventory_module, 'basePATH', tmp_path)
+
+    interface = InventoryInterface()
+    set_document = cast(Any, getattr(interface, '_InventoryInterface__setDocument'))
+    set_document(_build_echo_tile_document(image_path=image_path, sonata_icon_path=sonata_icon_path))
+    interface.resize(1400, 800)
+    interface.show()
+    qapp.processEvents()
+
+    assert len(interface._resultCards) == 7
+    assert all(isinstance(card, EchoTileCard) for card in interface._resultCards)
+
+    first_card = cast(EchoTileCard, interface._resultCards[0])
+    second_card = cast(EchoTileCard, interface._resultCards[1])
+    sixth_card = cast(EchoTileCard, interface._resultCards[5])
+    seventh_card = cast(EchoTileCard, interface._resultCards[6])
+
+    assert first_card.width() == EchoTileCard.TILE_WIDTH
+    assert first_card.height() == EchoTileCard.TILE_HEIGHT
+    assert first_card.nameLabel.text() != first_card.row.title
+    assert first_card.nameLabel.text().endswith('…')
+    assert first_card.summaryLabel.text() == '+25 (4)'
+    assert first_card.mainStatLabel.text() == 'Healing Bonus 26.4%'
+    assert first_card.equippedLabel.text() == 'Equipped: Shorekeeper 1'
+    assert second_card.equippedLabel.text() == ' '
+    assert '#fffab0' in first_card.rarityLine.styleSheet()
+    assert first_card.sonataIconLabel.isHidden() is False
+    pixmap = first_card.sonataIconLabel.pixmap()
+    assert pixmap is not None
+    assert pixmap.isNull() is False
     assert sixth_card.y() == first_card.y()
     assert seventh_card.y() > first_card.y()
 

@@ -31,6 +31,7 @@ from .config import cfg
 from ..config.app_config import basePATH
 from .inventory_models import (
     CharacterDisplayData,
+    EchoDisplayData,
     InventoryDocument,
     InventoryRow,
     InventorySection,
@@ -330,6 +331,218 @@ class TileCard(CardWidget):
                 'QLabel { background: rgba(0,0,0,50); border-radius: 4px; padding: 2px 4px; }'
             )
             vBoxLayout.addWidget(self.countLabel)
+
+        vBoxLayout.addStretch()
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mouseReleaseEvent(e)
+
+    def setSelected(self, selected: bool):
+        if selected == self._selected:
+            return
+
+        self._selected = selected
+        self.update()
+
+    def paintEvent(self, e):
+        super().paintEvent(e)
+        if not self._selected:
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        pen = QPen(QColor(0, 120, 212, 230))
+        pen.setWidth(1)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(self.rect().adjusted(1, 1, -2, -2), 8, 8)
+        painter.end()
+
+
+class EchoTileCard(CardWidget):
+    """Compact fixed-size echo tile for the inventory viewer."""
+
+    TILE_WIDTH = _GRID_TILE_WIDTH
+    TILE_HEIGHT = 210
+    ICON_SIZE = 64
+    SONATA_ICON_SIZE = 16
+
+    clicked = Signal()
+
+    def __init__(self, row: InventoryRow, parent=None):
+        super().__init__(parent)
+        self.row = row
+        self._selected = False
+        self._image_path = row.image_path
+        self._lazyDownloadPending = False
+        self._echoDisplay = row.echo_display
+        self._hasSonataIcon = False
+
+        self.imageLabel = BodyLabel(self)
+        self.nameLabel = StrongBodyLabel(self)
+        self.summaryRow = QWidget(self)
+        self.sonataIconLabel = BodyLabel(self.summaryRow)
+        self.summaryLabel = BodyLabel(self.summaryRow)
+        self.rarityLine = QWidget(self)
+        self.mainStatLabel = BodyLabel(self)
+        self.equippedLabel = BodyLabel(self)
+
+        _get_game_icon_lazy_downloader().downloadFinished.connect(self._onLazyImageDownloaded)
+        self.setupImage(row.image_path)
+        self._hasSonataIcon = self._applySonataIconPixmap(
+            self._echoDisplay.sonata_icon_path if self._echoDisplay is not None else None
+        )
+        self.setupLayout()
+        self.setFixedSize(self.TILE_WIDTH, self.TILE_HEIGHT)
+        self.setToolTip(row.title)
+
+    def setupImage(self, image_path: str | None):
+        if not image_path:
+            self.imageLabel.hide()
+            return
+
+        if self._applyImagePixmap(image_path):
+            self._lazyDownloadPending = False
+            return
+
+        self.imageLabel.hide()
+        if not self._lazyDownloadPending:
+            self._lazyDownloadPending = True
+            _get_game_icon_lazy_downloader().request(image_path)
+
+    def _applyImagePixmap(self, image_path: str) -> bool:
+        pixmap = QPixmap(str(basePATH / 'assets' / Path(image_path)))
+        if pixmap.isNull():
+            return False
+
+        scaled_pixmap = pixmap.scaled(
+            self.ICON_SIZE,
+            self.ICON_SIZE,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.imageLabel.setPixmap(scaled_pixmap)
+        self.imageLabel.setFixedSize(self.ICON_SIZE, self.ICON_SIZE)
+        self.imageLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.imageLabel.show()
+        return True
+
+    def _applySonataIconPixmap(self, image_path: str | None) -> bool:
+        if not image_path:
+            self.sonataIconLabel.hide()
+            return False
+
+        pixmap = QPixmap(str(basePATH / 'assets' / Path(image_path)))
+        if pixmap.isNull():
+            self.sonataIconLabel.hide()
+            return False
+
+        scaled_pixmap = pixmap.scaled(
+            self.SONATA_ICON_SIZE,
+            self.SONATA_ICON_SIZE,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.sonataIconLabel.setPixmap(scaled_pixmap)
+        self.sonataIconLabel.setFixedSize(self.SONATA_ICON_SIZE, self.SONATA_ICON_SIZE)
+        self.sonataIconLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.sonataIconLabel.setToolTip(
+            self._echoDisplay.sonata_name if self._echoDisplay is not None else ''
+        )
+        self.sonataIconLabel.show()
+        return True
+
+    def _onLazyImageDownloaded(self, image_path: str, success: bool) -> None:
+        if image_path != self._image_path:
+            return
+
+        self._lazyDownloadPending = False
+        if not success:
+            return
+
+        self._applyImagePixmap(image_path)
+
+    @staticmethod
+    def _elide_text(label: BodyLabel | StrongBodyLabel, text: str, width: int) -> str:
+        return label.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, width)
+
+    @staticmethod
+    def _summary_text(echo_display: EchoDisplayData | None) -> str:
+        if echo_display is None:
+            return ''
+
+        level_text = '' if echo_display.level is None else f'+{echo_display.level}'
+        if echo_display.cost is None:
+            return level_text
+        cost_text = f'({echo_display.cost})'
+        if level_text:
+            return f'{level_text} {cost_text}'
+        return cost_text
+
+    def setupLayout(self):
+        vBoxLayout = QVBoxLayout(self)
+        vBoxLayout.setSpacing(4)
+        vBoxLayout.setContentsMargins(10, 10, 10, 10)
+
+        available_width = self.TILE_WIDTH - 24
+
+        self.imageLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        vBoxLayout.addWidget(self.imageLabel, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+        self.nameLabel.setText(self._elide_text(self.nameLabel, self.row.title, available_width))
+        self.nameLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        vBoxLayout.addWidget(self.nameLabel)
+
+        summaryLayout = QHBoxLayout(self.summaryRow)
+        summaryLayout.setContentsMargins(0, 0, 0, 0)
+        summaryLayout.setSpacing(4)
+        summaryLayout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        if self._hasSonataIcon:
+            summaryLayout.addWidget(self.sonataIconLabel, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        summary_text = self._summary_text(self._echoDisplay)
+        if summary_text:
+            self.summaryLabel.setText(summary_text)
+            self.summaryLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            summaryLayout.addWidget(self.summaryLabel, alignment=Qt.AlignmentFlag.AlignCenter)
+        else:
+            self.summaryLabel.hide()
+
+        if self._hasSonataIcon or summary_text:
+            vBoxLayout.addWidget(self.summaryRow)
+        else:
+            self.summaryRow.hide()
+
+        rarity_color = _grid_tile_rarity_color(self._echoDisplay.rarity if self._echoDisplay else None)
+        self.rarityLine.setFixedHeight(4)
+        self.rarityLine.setStyleSheet(
+            f'background-color: {rarity_color.name()}; border-radius: 2px;'
+        )
+        vBoxLayout.addWidget(self.rarityLine)
+
+        main_stat_text = self._echoDisplay.main_stat if self._echoDisplay is not None else ''
+        if main_stat_text:
+            self.mainStatLabel.setText(main_stat_text)
+            self.mainStatLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.mainStatLabel.setWordWrap(True)
+            vBoxLayout.addWidget(self.mainStatLabel)
+        else:
+            self.mainStatLabel.hide()
+
+        equipped_name = self._echoDisplay.equipped if self._echoDisplay is not None else ''
+        equipped_text = f'Equipped: {equipped_name}' if equipped_name else ''
+        self.equippedLabel.setText(equipped_text or ' ')
+        self.equippedLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        if equipped_text:
+            self.equippedLabel.setWordWrap(True)
+            self.equippedLabel.setFixedHeight((self.equippedLabel.fontMetrics().height() * 2) + 4)
+        else:
+            self.equippedLabel.setWordWrap(False)
+            self.equippedLabel.setFixedHeight(self.equippedLabel.fontMetrics().height() + 4)
+        vBoxLayout.addWidget(self.equippedLabel)
 
         vBoxLayout.addStretch()
 
@@ -686,7 +899,7 @@ class InventoryInterface(ScrollArea):
         self._currentSearchText = ''
         self._searchBox: LineEdit | None = None
         self._resultsLayout: QVBoxLayout | None = None
-        self._resultCards: list[ResultCard | TileCard | WeaponTileCard | CharacterTileCard] = []
+        self._resultCards: list[ResultCard | TileCard | EchoTileCard | WeaponTileCard | CharacterTileCard] = []
         self._detailsCard: CardWidget | None = None
         self._detailsLayout: QVBoxLayout | None = None
         self._detailsPaneHeightSyncPending = False
@@ -980,7 +1193,7 @@ class InventoryInterface(ScrollArea):
             layout.addWidget(title)
 
         display_kind = section.rows[0].display_kind if section.rows else 'card'
-        is_grid_tile = display_kind in {'tile', 'weapon_tile', 'character_tile'}
+        is_grid_tile = display_kind in {'tile', 'echo_tile', 'weapon_tile', 'character_tile'}
         columns = 6 if is_grid_tile else 3
 
         sectionWidget = QWidget(self.contentWidget)
@@ -993,8 +1206,10 @@ class InventoryInterface(ScrollArea):
             sectionGrid.setColumnStretch(columns, 1)
 
         for index, row in enumerate(section.rows):
-            if display_kind == 'weapon_tile':
-                card: ResultCard | TileCard | WeaponTileCard | CharacterTileCard = WeaponTileCard(row, sectionWidget)
+            if display_kind == 'echo_tile':
+                card: ResultCard | TileCard | EchoTileCard | WeaponTileCard | CharacterTileCard = EchoTileCard(row, sectionWidget)
+            elif display_kind == 'weapon_tile':
+                card = WeaponTileCard(row, sectionWidget)
             elif display_kind == 'character_tile':
                 card = CharacterTileCard(row, sectionWidget)
             elif display_kind == 'tile':
