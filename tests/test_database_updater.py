@@ -88,7 +88,7 @@ def test_update_files_uses_sha_state_for_normalized_multitext(tmp_path: Path, mo
 			return {'sha': 'sha-weapons', 'size': 200, 'download_url': 'https://example.test/weapons'}
 		if 'BinData/role/roleinfo.json' in url:
 			return {'sha': 'sha-roles', 'size': 200, 'download_url': 'https://example.test/roles'}
-		if 'BinData/monster/monsterinfo.json' in url:
+		if 'BinData/monster_Info/monsterinfo.json' in url:
 			return {'sha': 'sha-monsters', 'size': 200, 'download_url': 'https://example.test/monsters'}
 		raise AssertionError(f'unexpected url: {url}')
 
@@ -114,7 +114,7 @@ def test_update_files_uses_sha_state_for_normalized_multitext(tmp_path: Path, mo
 	]
 	assert any('Textmaps/en/multi_text/MultiText.json' in url for url in requested_urls)
 	assert any('BinData/role/roleinfo.json' in url for url in requested_urls)
-	assert any('BinData/monster/monsterinfo.json' in url for url in requested_urls)
+	assert any('BinData/monster_Info/monsterinfo.json' in url for url in requested_urls)
 	assert _raw_path(tmp_path, 'en', 'MultiText.json').is_file()
 	assert _raw_path(tmp_path, 'en', 'ItemInfo.json').is_file()
 	assert _raw_path(tmp_path, 'en', 'WeaponConf.json').is_file()
@@ -174,6 +174,14 @@ def test_init_migrates_legacy_raw_files_into_data_raw(tmp_path: Path, monkeypatc
 	assert not (tmp_path / 'data' / 'en' / 'RoleInfo.json').exists()
 	assert not (tmp_path / 'data' / 'en' / 'MonsterInfo.json').exists()
 	assert not (tmp_path / 'data' / 'en' / '.updater_state.json').exists()
+
+
+def test_base_data_updater_defaults_to_arikatsu_source(tmp_path: Path, monkeypatch) -> None:
+	_prepare_workspace(tmp_path, monkeypatch)
+
+	updater = BaseDataUpdater(lang='English')
+
+	assert updater.source == 'arikatsu'
 
 
 def test_update_items_overwrites_existing_outputs(tmp_path: Path, monkeypatch) -> None:

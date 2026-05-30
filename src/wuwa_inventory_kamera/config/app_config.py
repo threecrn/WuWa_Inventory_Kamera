@@ -55,7 +55,7 @@ class AppConfig:
         self.resonatorKeybind: str = 'C'
         self.roverName: str = 'Rover'
         self.checkUpdateAtStartUp: bool = True
-        self.dataSource: str = 'Dimbreath'
+        self.dataSource: str = 'Arikatsu'
 
         # Scanner thresholds
         self.echoMinRarity: int = 1

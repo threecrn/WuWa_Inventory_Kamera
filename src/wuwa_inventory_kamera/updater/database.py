@@ -82,7 +82,7 @@ class BaseDataUpdater:
 	"""
 
 	API = 'https://api.github.com/repos/{owner}/{repo}/contents/{path}'
-	DEFAULT_SOURCE = 'dimbreath'
+	DEFAULT_SOURCE = 'arikatsu'
 	SOURCES = {
 		'dimbreath': SourceConfig(
 			owner='Dimbreath',
@@ -105,7 +105,7 @@ class BaseDataUpdater:
 				FileConfig(['BinData', 'item'], 'iteminfo.json', 'ItemInfo.json'),
 				FileConfig(['BinData', 'weapon'], 'weaponconf.json', 'WeaponConf.json'),
 				FileConfig(['BinData', 'role'], 'roleinfo.json', 'RoleInfo.json'),
-				FileConfig(['BinData', 'monster'], 'monsterinfo.json', 'MonsterInfo.json'),
+				FileConfig(['BinData', 'monster_Info'], 'monsterinfo.json', 'MonsterInfo.json'),
 			),
 		),
 	}

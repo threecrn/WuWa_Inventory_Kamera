@@ -181,7 +181,7 @@ class SettingInterface(ScrollArea):
             FIF.UPDATE,
             self.tr('Game data source'),
             self.tr('Choose which upstream repository provides ItemInfo, WeaponConf, RoleInfo, MonsterInfo, and MultiText updates.'),
-            ['Dimbreath', 'Arikatsu'],
+            ['Arikatsu', 'Dimbreath'],
             self.advancedGroup,
         )
 

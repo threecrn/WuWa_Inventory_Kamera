@@ -113,8 +113,8 @@ class Config(QConfig):
     exportFolder = ConfigItem("Folders", "Export", "export", FolderValidator())
     checkUpdateAtStartUp = ConfigItem("Update", "CheckUpdateAtStartUp", True, BoolValidator())
     dataSource = OptionsConfigItem(
-        'Update', 'DataSource', 'Dimbreath',
-        OptionsValidator(['Dimbreath', 'Arikatsu']),
+        'Update', 'DataSource', 'Arikatsu',
+        OptionsValidator(['Arikatsu', 'Dimbreath']),
     )
 
     # In-Game
