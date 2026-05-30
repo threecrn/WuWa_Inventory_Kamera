@@ -408,7 +408,7 @@ def test_weapon_section_uses_weapon_tile_cards_with_six_column_wrap(qapp: QAppli
     assert first_card.nameLabel.text() != first_card.row.title
     assert first_card.nameLabel.text().endswith('…')
     assert first_card.summaryLabel.text() == '90/90 (1)'
-    assert first_card.equippedLabel.text() == 'Equipped: Shorekeeper 1'
+    assert first_card.equippedLabel.text() == 'By: Shorekeeper 1'
     assert '#fffab0' in first_card.rarityLine.styleSheet()
     assert sixth_card.y() == first_card.y()
     assert seventh_card.y() > first_card.y()
@@ -485,7 +485,7 @@ def test_echo_section_uses_echo_tile_cards_with_six_column_wrap(
     assert first_card.costLabel.text() == '(4)'
     assert first_card.levelLabel.text() == '+25'
     assert first_card.mainStatLabel.text() == 'Healing Bonus 26.4%'
-    assert first_card.equippedLabel.text() == 'Equipped: Shorekeeper 1'
+    assert first_card.equippedLabel.text() == 'By: Shorekeeper 1'
     assert second_card.equippedLabel.text() == ' '
     assert '#fffab0' in first_card.rarityLine.styleSheet()
     assert first_card.sonataIconLabel.isHidden() is False
