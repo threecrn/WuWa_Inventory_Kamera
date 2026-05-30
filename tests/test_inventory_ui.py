@@ -130,6 +130,19 @@ def _details_texts(interface: InventoryInterface) -> list[str]:
     return texts
 
 
+def _layout_texts(layout) -> list[str]:
+    texts: list[str] = []
+    for index in range(layout.count()):
+        item = layout.itemAt(index)
+        widget = item.widget() if item is not None else None
+        if widget is None:
+            continue
+        text = getattr(widget, 'text', None)
+        if callable(text):
+            texts.append(cast(str, text()))
+    return texts
+
+
 def _wait_until(qapp: QApplication, predicate, *, timeout: float = 2.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -202,6 +215,89 @@ def test_details_pane_renders_to_the_right_of_results(qapp: QApplication) -> Non
     details_left = interface._detailsCard.mapTo(interface, interface._detailsCard.rect().topLeft()).x()
 
     assert details_left > first_card_right
+
+    interface.hide()
+    interface.deleteLater()
+    qapp.processEvents()
+
+
+def test_inventory_view_omits_document_title_header(qapp: QApplication) -> None:
+    interface = InventoryInterface()
+    set_document = cast(Any, getattr(interface, '_InventoryInterface__setDocument'))
+    set_document(
+        InventoryDocument(
+            kind='test',
+            title='inventory_wuwainventorykamera.json',
+            message_lines=('Loaded inventory export.',),
+        )
+    )
+    qapp.processEvents()
+
+    assert _layout_texts(interface.contentLayout) == ['Loaded inventory export.']
+
+    interface.hide()
+    interface.deleteLater()
+    qapp.processEvents()
+
+
+def test_details_pane_uses_compact_content_height(qapp: QApplication) -> None:
+    interface = InventoryInterface()
+    set_document = cast(Any, getattr(interface, '_InventoryInterface__setDocument'))
+    set_document(_build_document())
+    interface.resize(1400, 800)
+    interface.show()
+    qapp.processEvents()
+
+    assert interface._detailsCard is not None
+    assert interface._detailsCard.height() < interface.height() // 2
+
+    interface.hide()
+    interface.deleteLater()
+    qapp.processEvents()
+
+
+def test_details_pane_expands_for_wrapped_details_after_selection(qapp: QApplication) -> None:
+    interface = InventoryInterface()
+    set_document = cast(Any, getattr(interface, '_InventoryInterface__setDocument'))
+    set_document(
+        InventoryDocument(
+            kind='test',
+            title='Inventory',
+            sections=(
+                InventorySection(
+                    title='Echoes',
+                    rows=(
+                        InventoryRow(title='Bell', details_lines=('short line',)),
+                        InventoryRow(
+                            title='Feilian',
+                            details_lines=(
+                                'Very long detail line that should wrap across the fixed details pane width and remain readable without collapsing into a tiny clipped block.',
+                                'Second very long detail line that should also wrap and still keep the details panel tall enough to show the text.',
+                                'Third line for extra height.',
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+    )
+    interface.resize(1400, 800)
+    interface.show()
+    qapp.processEvents()
+
+    assert interface._detailsCard is not None
+    initial_height = interface._detailsCard.height()
+    on_row_selected = cast(Any, getattr(interface, '_InventoryInterface__onRowSelected'))
+    on_row_selected(1)
+    qapp.processEvents()
+
+    assert interface._detailsCard.height() >= initial_height + 80
+    assert interface._detailsLayout is not None
+    for index in range(1, interface._detailsLayout.count()):
+        item = interface._detailsLayout.itemAt(index)
+        widget = item.widget() if item is not None else None
+        assert widget is not None
+        assert widget.height() > 0
 
     interface.hide()
     interface.deleteLater()

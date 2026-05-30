@@ -600,14 +600,13 @@ def load_inventory_session(session_path: str | Path) -> InventoryDocument:
         )
 
     scan_result_path = folder / _SESSION_SCAN_RESULT
-    session_prefix = f'Session folder: {folder_name}'
 
     if scan_result_path.exists():
         document = load_inventory_file(scan_result_path)
         if document.kind != 'error':
-            return _prepend_message_line(document, session_prefix)
+            return document
 
-    message_lines: list[str] = [session_prefix]
+    message_lines: list[str] = []
     if scan_result_path.exists():
         message_lines.extend(_prefix_message_lines(_SESSION_SCAN_RESULT, load_inventory_file(scan_result_path).message_lines))
 

@@ -13,7 +13,7 @@ import threading
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QWidget, QFileDialog, QGridLayout, QHBoxLayout, QLayout,
@@ -689,6 +689,7 @@ class InventoryInterface(ScrollArea):
         self._resultCards: list[ResultCard | TileCard | WeaponTileCard | CharacterTileCard] = []
         self._detailsCard: CardWidget | None = None
         self._detailsLayout: QVBoxLayout | None = None
+        self._detailsPaneHeightSyncPending = False
         self._visibleRows: tuple[InventoryRow, ...] = ()
         self._currentDocument = InventoryDocument(kind='empty', title='', message_lines=())
         self._currentSourcePath: Path | None = None
@@ -843,10 +844,6 @@ class InventoryInterface(ScrollArea):
         self._detailsLayout = None
         self._visibleRows = ()
         self.__clearLayout(self.contentLayout)
-
-        if document.title:
-            title = StrongBodyLabel(document.title, self.contentWidget)
-            self.contentLayout.addWidget(title)
 
         for message in document.message_lines:
             label = BodyLabel(message, self.contentWidget)
@@ -1026,7 +1023,7 @@ class InventoryInterface(ScrollArea):
 
         self.__updateDetailsPane(self._visibleRows[selected_row_index])
 
-    def __addDetailsPane(self, layout: QLayout):
+    def __addDetailsPane(self, layout: QHBoxLayout):
         detailsCard = CardWidget(self.contentWidget)
         detailsCard.setFixedWidth(_DETAILS_PANE_WIDTH)
         detailsLayout = QVBoxLayout(detailsCard)
@@ -1038,7 +1035,23 @@ class InventoryInterface(ScrollArea):
 
         self._detailsCard = detailsCard
         self._detailsLayout = detailsLayout
-        layout.addWidget(detailsCard)
+        self.__scheduleDetailsPaneHeightSync()
+        layout.addWidget(detailsCard, 0, Qt.AlignmentFlag.AlignTop)
+
+    def __scheduleDetailsPaneHeightSync(self):
+        if self._detailsPaneHeightSyncPending:
+            return
+
+        self._detailsPaneHeightSyncPending = True
+        QTimer.singleShot(0, self.__syncDetailsPaneHeight)
+
+    def __syncDetailsPaneHeight(self):
+        self._detailsPaneHeightSyncPending = False
+        if self._detailsCard is None or self._detailsLayout is None:
+            return
+
+        self._detailsLayout.activate()
+        self._detailsCard.setFixedHeight(self._detailsCard.sizeHint().height())
 
     def __updateDetailsPane(self, row: InventoryRow):
         if self._detailsCard is None or self._detailsLayout is None:
@@ -1065,6 +1078,8 @@ class InventoryInterface(ScrollArea):
             label = BodyLabel(line, self._detailsCard)
             label.setWordWrap(True)
             self._detailsLayout.addWidget(label)
+
+        self.__scheduleDetailsPaneHeightSync()
 
     def __clearLayout(self, layout: QLayout):
         while layout.count():

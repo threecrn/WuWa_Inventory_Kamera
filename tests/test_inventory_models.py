@@ -574,8 +574,7 @@ def test_load_inventory_session_prefers_scan_result(tmp_path) -> None:
     document = inventory_models.load_inventory_session(session_dir)
 
     assert document.kind == 'scan_session'
-    assert document.message_lines[0] == 'Session folder: 2026-05-28_120000'
-    assert document.message_lines[1] == 'Session: 2026-05-28_120000'
+    assert document.message_lines == ('Session: 2026-05-28_120000',)
     assert [section.title for section in document.sections] == ['Characters']
 
 
@@ -599,7 +598,7 @@ def test_load_inventory_session_aggregates_standalone_exports(tmp_path) -> None:
     document = inventory_models.load_inventory_session(session_dir)
 
     assert document.kind == 'scan_session'
-    assert document.message_lines == ('Session folder: 2026-05-28_130000',)
+    assert document.message_lines == ()
     assert [section.title for section in document.sections] == ['Echoes', 'Inventory', 'Achievements']
 
 
