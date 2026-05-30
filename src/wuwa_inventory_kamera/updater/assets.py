@@ -14,6 +14,7 @@ The Qt-dependent ``AssetsUpdater`` (with Signal support) remains in
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 import hashlib
 import json
 import re
@@ -253,6 +254,40 @@ def _load_game_asset_source_map(data_dir: Path) -> dict[str, str]:
     return mapping
 
 
+@lru_cache(maxsize=4)
+def _load_game_asset_source_map_cached(data_dir_key: str) -> dict[str, str]:
+    return _load_game_asset_source_map(Path(data_dir_key))
+
+
+def _get_game_asset_source_map(data_dir: Path) -> dict[str, str]:
+    return _load_game_asset_source_map_cached(str(data_dir))
+
+
+def ensure_game_asset_cached(
+    image_path: str,
+    *,
+    data_dir: Path | None = None,
+    assets_dir: Path | None = None,
+) -> Path:
+    """Ensure one game icon exists in the local cache and return its path."""
+    normalized = _normalize_asset_path(image_path)
+    if normalized is None:
+        raise ValueError(f'Invalid game asset path: {image_path!r}')
+
+    resolved_assets_dir = assets_dir if assets_dir is not None else basePATH / 'assets'
+    dest = resolved_assets_dir / Path(normalized)
+    if dest.is_file():
+        return dest
+
+    resolved_data_dir = data_dir if data_dir is not None else basePATH / 'data'
+    source_map = _get_game_asset_source_map(resolved_data_dir)
+    url = _build_game_asset_download_url_from_repo_path(
+        _resolve_game_asset_repo_path(normalized, source_map)
+    )
+    _download_binary(url, dest)
+    return dest
+
+
 def _resolve_game_asset_repo_path(image_path: str, source_map: dict[str, str]) -> str:
     normalized = _normalize_asset_path(image_path)
     if normalized is None:
@@ -325,7 +360,7 @@ class _GameIconsAssetFamily(_AssetFamily):
 
     def prepare_downloads(self, *, data_dir: Path, assets_dir: Path) -> _PreparedAssetFamily:
         manifest = _load_game_asset_manifest(data_dir)
-        source_map = _load_game_asset_source_map(data_dir)
+        source_map = _get_game_asset_source_map(data_dir)
         logger.info('Loaded %d game asset paths from catalogs', len(manifest))
         if source_map:
             logger.info('Loaded %d raw source-path overrides for game assets', len(source_map))
@@ -502,7 +537,7 @@ class BaseAssetsUpdater:
         self._onFinished()
 
     def audit_game_asset_source_manifest(self, manifest_path: Path) -> AssetAuditResult:
-        source_map = _load_game_asset_source_map(basePATH / 'data')
+        source_map = _get_game_asset_source_map(basePATH / 'data')
         expected_paths = tuple(
             f'{_GAME_ASSET_UI_ROOT}/{_resolve_game_asset_repo_path(image_path, source_map)}'
             for image_path in _load_game_asset_manifest(basePATH / 'data')

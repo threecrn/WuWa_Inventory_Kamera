@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QWidget, QFileDialog, QGridLayout, QHBoxLayout, QLayout,
@@ -34,8 +35,53 @@ from .inventory_models import (
     load_inventory_file,
     load_inventory_session,
 )
+from ..updater import assets as _assets
 
 logger = logging.getLogger('InventoryInterface')
+
+
+class _LazyGameIconDownloader(QObject):
+    downloadFinished = Signal(str, bool)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._in_flight: set[str] = set()
+        self._lock = threading.Lock()
+
+    def request(self, image_path: str) -> None:
+        with self._lock:
+            if image_path in self._in_flight:
+                return
+            self._in_flight.add(image_path)
+
+        worker = threading.Thread(
+            target=self._download,
+            args=(image_path,),
+            daemon=True,
+        )
+        worker.start()
+
+    def _download(self, image_path: str) -> None:
+        success = False
+        try:
+            cached_path = _assets.ensure_game_asset_cached(image_path)
+            success = cached_path.is_file()
+        except Exception as exc:
+            logger.warning('Failed lazy thumbnail download for %s: %s', image_path, exc)
+        finally:
+            with self._lock:
+                self._in_flight.discard(image_path)
+            self.downloadFinished.emit(image_path, success)
+
+
+_lazy_game_icon_downloader: _LazyGameIconDownloader | None = None
+
+
+def _get_game_icon_lazy_downloader() -> _LazyGameIconDownloader:
+    global _lazy_game_icon_downloader
+    if _lazy_game_icon_downloader is None:
+        _lazy_game_icon_downloader = _LazyGameIconDownloader()
+    return _lazy_game_icon_downloader
 
 
 class ResultCard(CardWidget):
@@ -47,12 +93,15 @@ class ResultCard(CardWidget):
         super().__init__(parent)
         self.row = row
         self._selected = False
+        self._image_path = row.image_path
+        self._lazyDownloadPending = False
 
         self.imageLabel = BodyLabel(self)
         self.titleLabel = StrongBodyLabel(row.title, self)
         self.subtitleLabel = BodyLabel(row.subtitle, self)
         self.bodyLabels = [BodyLabel(line, self) for line in row.body_lines]
 
+        _get_game_icon_lazy_downloader().downloadFinished.connect(self._onLazyImageDownloaded)
         self.setupImage(row.image_path)
         self.setupLayout()
 
@@ -61,10 +110,19 @@ class ResultCard(CardWidget):
             self.imageLabel.hide()
             return
 
+        if self._applyImagePixmap(image_path):
+            self._lazyDownloadPending = False
+            return
+
+        self.imageLabel.hide()
+        if not self._lazyDownloadPending:
+            self._lazyDownloadPending = True
+            _get_game_icon_lazy_downloader().request(image_path)
+
+    def _applyImagePixmap(self, image_path: str) -> bool:
         pixmap = QPixmap(str(basePATH / 'assets' / Path(image_path)))
         if pixmap.isNull():
-            self.imageLabel.hide()
-            return
+            return False
 
         scaled_pixmap = pixmap.scaled(
             64,
@@ -76,11 +134,25 @@ class ResultCard(CardWidget):
         self.imageLabel.setFixedSize(64, 64)
         self.imageLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.imageLabel.show()
+        return True
+
+    def _onLazyImageDownloaded(self, image_path: str, success: bool) -> None:
+        if image_path != self._image_path:
+            return
+
+        self._lazyDownloadPending = False
+        if not success:
+            return
+
+        if self._applyImagePixmap(image_path):
+            self.updateGeometry()
+            layout = self.layout()
+            if layout is not None:
+                layout.invalidate()
 
     def setupLayout(self):
         vBoxLayout = QVBoxLayout(self)
-        if not self.imageLabel.isHidden():
-            vBoxLayout.addWidget(self.imageLabel, alignment=Qt.AlignmentFlag.AlignCenter)
+        vBoxLayout.addWidget(self.imageLabel, alignment=Qt.AlignmentFlag.AlignCenter)
 
         self.titleLabel.setWordWrap(True)
         vBoxLayout.addWidget(self.titleLabel)

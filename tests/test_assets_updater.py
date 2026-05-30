@@ -97,6 +97,38 @@ def test_load_game_asset_manifest_ignores_non_runtime_catalogs(tmp_path) -> None
     )
 
 
+def test_ensure_game_asset_cached_downloads_single_icon(tmp_path, monkeypatch) -> None:
+    _write_json(
+        tmp_path / 'data' / 'raw' / 'en' / 'ItemInfo.json',
+        [
+            {
+                'Id': 1,
+                'Icon': '/Game/Aki/UI/UIResources/UiActivity/Image/Activity30/MotoDIY/T_MotoDIYStickerIcon69.T_MotoDIYStickerIcon69',
+            }
+        ],
+    )
+
+    monkeypatch.setattr(assets_module, 'basePATH', tmp_path)
+
+    ui_activity_url = assets_module._build_game_asset_download_url_from_repo_path(
+        'UiActivity/Image/Activity30/MotoDIY/T_MotoDIYStickerIcon69.png'
+    )
+    payloads = {
+        ui_activity_url: b'activity-asset',
+    }
+
+    def fake_urlopen(request, timeout=60):
+        url = request.full_url if hasattr(request, 'full_url') else str(request)
+        return _FakeResponse(payloads[url])
+
+    monkeypatch.setattr(assets_module.urllib.request, 'urlopen', fake_urlopen)
+
+    cached = assets_module.ensure_game_asset_cached('Activity30/MotoDIY/T_MotoDIYStickerIcon69.png')
+
+    assert cached == tmp_path / 'assets' / 'Activity30' / 'MotoDIY' / 'T_MotoDIYStickerIcon69.png'
+    assert cached.read_bytes() == b'activity-asset'
+
+
 def test_base_assets_updater_uses_explicit_game_and_sonata_families() -> None:
     assert [family.name for family in assets_module.BaseAssetsUpdater()._iter_asset_families()] == [
         'game-icons',
