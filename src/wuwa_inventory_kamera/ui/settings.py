@@ -180,7 +180,7 @@ class SettingInterface(ScrollArea):
             cfg.dataSource,
             FIF.UPDATE,
             self.tr('Game data source'),
-            self.tr('Choose which upstream repository provides ItemInfo, WeaponConf, and MultiText updates.'),
+            self.tr('Choose which upstream repository provides ItemInfo, WeaponConf, RoleInfo, and MultiText updates.'),
             ['Dimbreath', 'Arikatsu'],
             self.advancedGroup,
         )

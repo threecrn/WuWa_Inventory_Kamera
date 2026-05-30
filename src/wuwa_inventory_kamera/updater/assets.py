@@ -40,7 +40,7 @@ _GAME_ASSET_RAW_ROOT = (
     f'{_GAME_ASSET_REPO_NAME}/{_GAME_ASSET_REPO_REF}/'
     f'{_GAME_ASSET_UI_ROOT}'
 )
-_GAME_ICON_RUNTIME_CATALOGS = ('items.json', 'weapons.json')
+_GAME_ICON_RUNTIME_CATALOGS = ('items.json', 'weapons.json', 'characters.json')
 _ASSET_STATE_FILENAME = '.asset_state.json'
 
 # ---------------------------------------------------------------------------
@@ -95,7 +95,7 @@ def _normalize_asset_path(raw_path: object) -> str | None:
 
 
 def _load_game_asset_manifest(data_dir: Path) -> tuple[str, ...]:
-    """Return the deduplicated item and weapon image paths the app can render."""
+    """Return the deduplicated runtime image paths the app can render."""
     manifest: set[str] = set()
     for filename in _GAME_ICON_RUNTIME_CATALOGS:
         payload = _localization_data.load_json_file(data_dir / 'catalog' / filename)

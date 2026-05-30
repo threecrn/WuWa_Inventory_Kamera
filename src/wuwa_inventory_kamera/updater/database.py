@@ -49,6 +49,7 @@ class BaseDataUpdater:
 		'MultiText.json',
 		'ItemInfo.json',
 		'WeaponConf.json',
+		'RoleInfo.json',
 		'.updater_state.json',
 	)
 	_CATALOG_FILENAMES = (
@@ -90,6 +91,7 @@ class BaseDataUpdater:
 				FileConfig(['TextMap', '{lang}'], 'MultiText.json'),
 				FileConfig(['ConfigDB'], 'ItemInfo.json'),
 				FileConfig(['ConfigDB'], 'WeaponConf.json'),
+				FileConfig(['ConfigDB'], 'RoleInfo.json'),
 			),
 		),
 		'arikatsu': SourceConfig(
@@ -100,6 +102,7 @@ class BaseDataUpdater:
 				FileConfig(['Textmaps', '{lang}', 'multi_text'], 'MultiText.json'),
 				FileConfig(['BinData', 'item'], 'iteminfo.json', 'ItemInfo.json'),
 				FileConfig(['BinData', 'weapon'], 'weaponconf.json', 'WeaponConf.json'),
+				FileConfig(['BinData', 'role'], 'roleinfo.json', 'RoleInfo.json'),
 			),
 		),
 	}
@@ -284,6 +287,38 @@ class BaseDataUpdater:
 			if isinstance(key, str) and isinstance(value, str)
 		}
 
+	def _extractImagePath(self, asset_path: Any) -> Optional[str]:
+		if not isinstance(asset_path, str) or '/Image/' not in asset_path:
+			return None
+		return asset_path.split('/Image/', 1)[1].rsplit('.', 1)[0] + '.png'
+
+	def _loadCharacterPortraits(self) -> dict[int, str]:
+		role_info = self.loadJson('RoleInfo.json')
+		if not isinstance(role_info, list):
+			return {}
+
+		portraits: dict[int, str] = {}
+		for entry in role_info:
+			if not isinstance(entry, dict):
+				continue
+
+			identifier = entry.get('Id')
+			if isinstance(identifier, str):
+				try:
+					identifier = int(identifier)
+				except ValueError:
+					continue
+			if not isinstance(identifier, int) or identifier >= 5000:
+				continue
+
+			image_path = self._extractImagePath(entry.get('RoleHeadIcon'))
+			if image_path is None or not image_path.startswith('IconRoleHead80/'):
+				continue
+
+			portraits.setdefault(identifier, image_path)
+
+		return portraits
+
 	def _buildLocaleRecord(self, display_name: str, *, normalized: str) -> dict[str, Any]:
 		aliases: list[str] = []
 		for alias in (normalized,):
@@ -381,6 +416,7 @@ class BaseDataUpdater:
 		compat_key_builder,
 		canonical_key_builder,
 		normalized_builder,
+		catalog_entry_builder=None,
 	) -> dict:
 		output_label = compat_filename or locale_filename
 		logger.info('Generating %s...', output_label)
@@ -416,10 +452,15 @@ class BaseDataUpdater:
 					continue
 
 				if self._isCanonicalLanguage():
-					catalog_data[canonical_key] = {
+					catalog_entry = {
 						'id': identifier,
 						'text_key': text_key,
 					}
+					if catalog_entry_builder is not None:
+						catalog_entry = catalog_entry_builder(identifier, text_key, display_name, match)
+					if catalog_entry is None:
+						continue
+					catalog_data[canonical_key] = catalog_entry
 
 				locale_data[canonical_key] = self._buildLocaleRecord(
 					display_name,
@@ -732,6 +773,7 @@ class BaseDataUpdater:
 			return {}
 
 	def updateCharacters(self) -> None:
+		character_portraits = self._loadCharacterPortraits()
 		data = self._updatePatternCategory(
 			compat_filename=None,
 			catalog_filename='characters.json',
@@ -740,6 +782,15 @@ class BaseDataUpdater:
 			compat_key_builder=lambda text, match: self._normalizeText(text) if int(match.group(1)) < 5000 else None,
 			canonical_key_builder=lambda text, match: self._normalizeText(text) if int(match.group(1)) < 5000 else None,
 			normalized_builder=lambda text, _: self._normalizeText(text),
+			catalog_entry_builder=lambda identifier, text_key, _display_name, _match: {
+				'id': identifier,
+				'text_key': text_key,
+				**(
+					{'image': character_portraits[identifier]}
+					if identifier in character_portraits
+					else {}
+				),
+			},
 		)
 		self._removeLegacyCompatFile('characters.json')
 		self._afterUpdateCharacters(data)
