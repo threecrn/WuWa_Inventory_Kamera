@@ -2,16 +2,17 @@
 
 This document proposes how to restore game asset support in the current app without returning to the old pre-fork implementation.
 
-The goal is to make the current app populate the local `assets/` cache with the item and weapon PNGs already referenced by the generated catalogs, while preserving the current architecture and keeping binary assets out of git.
+The goal is to let the inventory viewer lazily populate the local `assets/` cache with the item and weapon PNGs it actually needs, while preserving the current architecture, keeping binary assets out of git, and retaining a manual full-cache prewarm path for repair or offline preparation.
 
 ## Scope
 
 Primary scope:
 
 - restore item and weapon thumbnail support for the current app
-- limit `game-icons` syncing to the image paths currently referenced by the generated item and weapon catalogs
+- prefer viewer-driven lazy downloads for `game-icons` instead of bulk startup syncing
+- keep a manual full-manifest prewarm path for repair and offline preparation
 - keep the existing sonata icon updater working
-- reuse the current startup order: data update first, asset update second
+- keep the current data update path ahead of metadata resolution
 - keep downloaded assets as a disposable local cache under `assets/`
 
 Out of scope for the first pass:
@@ -27,7 +28,7 @@ The current app still has most of the plumbing needed for game asset support.
 
 1. The loading flow already runs assets after data.
    - `src/wuwa_inventory_kamera/ui/loading.py` runs `BaseDataUpdater` first and `BaseAssetsUpdater` second.
-   - That ordering is correct for a catalog-driven asset updater because the image manifest can be derived from the freshly updated catalogs.
+  - That ordering remains useful for data refresh and optional prewarm work, but a lazy viewer flow only requires the catalogs to exist before the viewer asks for a thumbnail.
 
 2. The data updater still emits relative image paths.
    - `src/wuwa_inventory_kamera/updater/database.py` still derives `image` values from upstream `Icon` fields.
@@ -39,6 +40,7 @@ The current app still has most of the plumbing needed for game asset support.
    - `src/wuwa_inventory_kamera/scraping/data.py` preserves `image` in the in-memory compatibility maps.
    - `src/wuwa_inventory_kamera/ui/inventory_models.py` resolves item and weapon metadata including `image_path`.
    - `src/wuwa_inventory_kamera/ui/inventory.py` loads thumbnails from `basePATH / 'assets' / image_path`.
+  - When a local file is missing today, the viewer simply hides the thumbnail; that is the gap a lazy cache-repair path should close.
 
 4. The repo still treats assets as a cache.
    - `.gitignore` ignores `/assets/*` and whitelists only `/assets/icon.ico`.
@@ -96,7 +98,7 @@ Recommended families:
 - `game-icons`
   - source: `Wuthering-Waves-GameAssets`
   - local target: `assets/IconA/...`, `assets/IconRup/...`, etc.
-  - purpose: inventory thumbnails and any future item/weapon UI artwork
+  - purpose: inventory thumbnails fetched on demand, plus optional manual prewarm for the same cache
 
 - `sonata-icons`
   - source: current Fandom wiki workflow
@@ -108,11 +110,31 @@ Recommended families:
   - local target: `assets/icon.ico`
   - purpose: main window / loading screen icon
 
-The orchestrator should update `game-icons` and `sonata-icons`, but leave `icon.ico` untouched.
+The orchestrator should continue to manage `sonata-icons` and optional `game-icons` prewarm work, but viewer-demanded single-file downloads should reuse the same shared path and source helpers.
 
-### 2. Make the game icon updater manifest-driven
+### 2. Make game icon delivery viewer-driven by default
 
-Do not hard-code folder lists as the old app did. Build the manifest from the current generated catalogs.
+The default runtime behavior should be lazy, not bulk.
+
+Recommended viewer algorithm:
+
+1. Resolve a row's existing `image_path` from the generated item or weapon metadata.
+2. If `assets/<image_path>` already exists, render it immediately.
+3. If the file is missing, queue a background download for that single normalized path.
+4. Show a placeholder or empty image state while the request is in flight.
+5. Refresh the affected row or widget when the file lands in the cache.
+6. De-duplicate concurrent requests by normalized `image_path` so repeated rows do not trigger repeated downloads.
+
+Benefits:
+
+- only downloads what a user actually opens in the viewer
+- avoids blocking startup on 1000+ item-driven cache fills
+- preserves the existing `assets/<image_path>` cache contract
+- still lets the cache warm naturally over time across sessions
+
+### 3. Keep the catalog manifest for manual prewarm and audit
+
+Do not hard-code folder lists as the old app did. Build the full prewarm manifest from the current generated catalogs, but reserve it for manual repair, offline preparation, and audit rather than the default startup path.
 
 Recommended manifest algorithm:
 
@@ -123,23 +145,23 @@ Recommended manifest algorithm:
 5. Reject anything that tries to escape the assets root.
 6. De-duplicate into a sorted manifest.
 
-Current default boundary:
+Manual prewarm boundary:
 
 - include every catalog-backed item and weapon image the app can currently render
 - implicitly cover `inventory`, `devItems`, `resources`, and `shell` rows because those views reuse item image paths
 - exclude characters, echoes, achievements, sonatas, stats, and skills because the current generated data and runtime UI do not consume image paths for those families
-- do not shrink the default manifest to only the user's current export files or latest scan results; that would be a narrower optional mode, not the shipping default
+- do not use this full manifest as the default viewer-time startup policy
 
 Benefits:
 
-- only downloads what the current app can actually use
-- follows the current generated catalog contract instead of reviving old hard-coded folders
+- keeps repair and offline-prewarm behavior tied to the current generated catalog contract instead of reviving old hard-coded folders
 - automatically adapts when new items or weapons appear in the data catalogs
-- avoids downloading unused folders like `IconA160` unless the catalogs begin referencing them
+- keeps audit and status commands meaningful
+- avoids forcing every startup to download the whole current catalog image set
 
-### 3. Map catalog paths to the new source repo layout
+### 4. Map catalog paths to the new source repo layout
 
-For `game-icons`, the path translator should be deterministic:
+For `game-icons`, the path translator should be deterministic for both lazy single-file fetches and manual full-manifest prewarm:
 
 - local asset relative path: `<image_path>`
 - source repo relative path: `UI/UIResources/Common/Image/<image_path>`
@@ -153,7 +175,7 @@ IconA/T_IconA_AccountExp_UI.png
 -> UI/UIResources/Common/Image/IconA/T_IconA_AccountExp_UI.png
 ```
 
-### 4. Use a remote source adapter, not the scratchpad checkout
+### 5. Use a remote source adapter, not the scratchpad checkout
 
 The shipping updater should not read from `scratchpad/asset-repo/...` because packaged users will not have that directory.
 
@@ -167,7 +189,7 @@ Recommended development-only option:
 - optionally allow a local source root override for testing against the sparse checkout
 - use that only in a CLI or debug path, not as the default runtime behavior
 
-### 5. Preserve the current `IconS` updater as a separate source
+### 6. Preserve the current `IconS` updater as a separate source
 
 Because `Wuthering-Waves-GameAssets` does not expose `IconS`, the current sonata updater should remain in place during the first implementation.
 
@@ -184,61 +206,79 @@ This keeps existing sonata matching stable while restoring game thumbnails.
 ### Existing files to update
 
 - `src/wuwa_inventory_kamera/updater/assets.py`
-  - convert from single-purpose `IconS` downloader into a small orchestrator plus family-specific helpers
+  - expose shared single-file game-icon resolution and download helpers, plus manual prewarm and audit logic
+
+- `src/wuwa_inventory_kamera/ui/inventory.py`
+  - detect missing local thumbnails, queue lazy downloads, and refresh the viewer when the cache is repaired
 
 - `src/wuwa_inventory_kamera/ui/loading.py`
-  - keep current data-then-assets flow
-  - make sure progress labels can identify which family is downloading
+  - keep current data update flow
+  - avoid blocking startup on full `game-icons` prewarm by default
+  - keep startup asset work limited to lightweight tasks such as sonata support if still needed
   - honor `checkUpdateAtStartUp` instead of always running updates
 
 - `updater/assetsUpdater.py`
-  - keep as the Qt compatibility wrapper around the refactored base updater
+  - keep as the Qt compatibility wrapper around the refactored base updater and shared lazy-download helpers
 
 ### Recommended new files
 
 - `src/wuwa_inventory_kamera/updater/asset_manifest.py`
-  - build the manifest of required `game-icons` from generated catalogs
+  - build the manual prewarm manifest of required `game-icons` from generated catalogs
 
 - `src/wuwa_inventory_kamera/updater/asset_sources.py`
   - source-specific path resolution and download helpers
   - one adapter for the GitHub game-assets repo
   - one adapter for the existing Fandom `IconS` source
 
+- `src/wuwa_inventory_kamera/ui/asset_cache.py`
+  - small Qt-aware queue or cache-repair helper for viewer-triggered lazy downloads
+
 - `src/wuwa_inventory_kamera/cli/update_assets.py`
-  - manual `status` / `update` / `--force` entry point for repair and testing outside the GUI
+  - manual `status` / `update` / `--force` entry point for prewarm, repair, and testing outside the GUI
 
 The exact file split can change, but the important part is to separate:
 
-- manifest building
+- lazy cache lookup and in-flight de-duplication
+- manifest building for manual prewarm
 - source resolution
-- sync orchestration
+- single-file and bulk download orchestration
 - Qt progress signaling
 
 ## Update Policy
 
-### MVP policy
+### Default runtime policy
 
-For the first pass, keep update behavior simple and pragmatic.
+For the first pass, keep the default runtime behavior simple and lazy.
 
-- if a manifest file is missing locally, download it
-- if `--force` is requested, redownload it
-- if a manifest entry disappears from the catalogs, optionally prune it only if it belongs to a managed family
+- if the viewer needs `assets/<image_path>` and the file exists locally, render it immediately
+- if the viewer needs `assets/<image_path>` and the file is missing, fetch just that file in the background
+- write successful downloads back into the normal `assets/<image_path>` cache
+- do not bulk-sync the full `game-icons` manifest during startup by default
 
 Why this is acceptable for MVP:
 
-- newly added game assets appear under new filenames, so missing-file sync restores the primary broken behavior
-- the inventory viewer only needs the files referenced by the current catalogs
+- the user only pays network cost for assets they actually open
+- the viewer only needs the files referenced by the current rows being rendered
 - this avoids turning startup into a full repository synchronization step
+- the cache still becomes more complete over time without special migration work
+
+### Manual prewarm policy
+
+Keep an explicit full-cache repair path for users who want it.
+
+- `wuwa-assets update` may still download the full current item and weapon manifest
+- if `--force` is requested, redownload those files
+- if a manifest entry disappears from the catalogs, optionally prune it only if it belongs to a managed prewarm family
 
 ### Hardening after MVP
 
-If same-name asset replacements become a real problem, add source revision tracking later.
+If lazy viewer fetches or manual prewarm become more complex, harden them incrementally.
 
 Options, in order of preference:
 
-1. track the upstream repo commit SHA and invalidate a managed-family state file when it changes
-2. persist per-file metadata such as size or hash for managed assets
-3. add a one-shot tool that audits local cache vs source repo state on demand
+1. de-duplicate in-flight viewer downloads and add a short retry backoff for recent failures
+2. optionally prefetch the current document's item and weapon image set after a result file is opened
+3. track the upstream repo commit SHA and managed-family state for explicit manual prewarm and audit flows
 
 Do not repeat the old file-count heuristic.
 
@@ -252,13 +292,19 @@ Recommended behavior:
 
 - if `checkUpdateAtStartUp` is true:
   - run data updater
-  - then run asset updater
+  - then run only lightweight startup asset work if still needed, such as sonata support
+  - do not block startup on full `game-icons` prewarm
 - if it is false:
   - skip both network update phases and proceed to the main window
 
+Recommended lazy-download behavior:
+
+- do not tie viewer-triggered missing-thumbnail fetches to `checkUpdateAtStartUp`
+- treat viewer lazy downloads as runtime cache repair rather than startup synchronization
+
 Optional later improvement:
 
-- split the setting into separate data and asset toggles if users need finer control
+- split the setting into separate toggles for startup data update, sonata prewarm, viewer lazy downloads, and full `game-icons` prewarm if users need finer control
 
 ## Development Use Of The Sparse Checkout
 
@@ -281,19 +327,22 @@ Recommended non-use:
 
 Add focused tests for:
 
-- manifest extraction from generated `items.json` and `weapons.json`
+- lazy viewer request handling for a missing thumbnail
+- de-duplication of repeated requests for the same `image_path`
+- manifest extraction from generated `items.json` and `weapons.json` for manual prewarm
 - path normalization and path traversal rejection
 - translation from local `image` path to source repo path
-- orchestrator behavior when one family succeeds and another fails
-- `checkUpdateAtStartUp` gating in the loading flow
+- manual prewarm orchestration behavior when one family succeeds and another fails
+- `checkUpdateAtStartUp` gating in the loading flow without bulk `game-icons` startup sync
 
 ### Integration tests
 
 Use temporary directories and mocked download helpers to verify:
 
-- missing manifest entries are downloaded to the correct local paths
-- existing files are skipped in normal mode
-- `--force` redownloads files
+- opening the viewer with a missing image downloads just that file to the correct local path
+- repeated opens do not trigger duplicate in-flight downloads for the same path
+- existing files are skipped once the cache contains them
+- `wuwa-assets update --force` still redownloads files in manual prewarm mode
 - managed prune logic does not delete `assets/icon.ico` or unrelated files
 
 ### Manual validation
@@ -303,22 +352,23 @@ Manual smoke test after implementation:
 1. remove cached item and weapon icons from `assets/`
 2. run the app from repo root
 3. let data update finish
-4. confirm the asset phase downloads game icon files under `assets/IconA`, `assets/IconRup`, and other referenced families
-5. open the inventory viewer and verify item and weapon thumbnails render again
-6. run an echo flow and verify `IconS` sonata matching still works
+4. open the inventory viewer on an export with item or weapon rows
+5. confirm only the viewed thumbnails are downloaded under `assets/` and begin rendering without a restart
+6. run `wuwa-assets update` and confirm manual full-cache prewarm still works when desired
+7. run an echo flow and verify `IconS` sonata matching still works
 
 ## Suggested Implementation Phases
 
-### Phase 1: Restore the core contract
+### Phase 1: Restore the core contract with lazy viewer fetches
 
-- replace the sonata-only `BaseAssetsUpdater` with a family orchestrator
-- add manifest extraction from generated item and weapon catalogs
+- extract shared single-image game-icon fetch helpers from the existing path contract
 - add deterministic path translation into `UI/UIResources/Common/Image/...`
-- download missing game icon files into `assets/`
+- teach the inventory viewer to queue missing thumbnail downloads into `assets/`
+- refresh viewer rows when the local cache is repaired
 
 Success condition:
 
-- the inventory viewer renders thumbnails again from the existing `image_path` contract
+- opening an inventory export with an empty cache downloads only the needed item or weapon thumbnails and renders them from the existing `image_path` contract
 
 ### Phase 2: Preserve and isolate sonata support
 
@@ -332,31 +382,33 @@ Success condition:
 ### Phase 3: Startup and CLI ergonomics
 
 - honor `checkUpdateAtStartUp`
-- add a manual CLI for status, repair, and forced refresh
-- improve progress labels so the loading screen shows which asset family is active
+- add a manual CLI for status, prewarm, repair, and forced refresh
+- remove bulk `game-icons` startup syncing from the default loading path
+- keep any startup progress labels focused on the remaining lightweight asset work
 
 Success condition:
 
-- users can repair assets without deleting the whole cache and restarting blindly
+- users can let the viewer repair missing thumbnails lazily or run an explicit prewarm command when they want the whole cache populated
 
 ### Phase 4: Hardening
 
-- add prune rules for managed families
-- optionally add source revision tracking
+- add in-flight de-duplication and retry backoff for lazy viewer fetches
+- optionally add current-document prefetch and managed prune rules for explicit prewarm flows
 - add a developer audit tool to compare catalog references against the asset repo path space
 
 Success condition:
 
-- the updater is predictable, testable, and does not silently drift from the catalogs
+- the lazy cache repair path is predictable, testable, and the manual prewarm path does not silently drift from the catalogs
 
 ## Recommended MVP Decision
 
 Implement the smallest version that closes the current functional gap:
 
 - keep `IconS` as-is
-- derive required game icon paths from the generated catalogs
-- download those files from `Wuthering-Waves-GameAssets` into the existing `assets/<image_path>` layout
-- wire the refactored updater into the existing startup path
-- honor `checkUpdateAtStartUp`
+- reuse the existing generated `image_path` contract and source mapping helpers
+- let the inventory viewer lazy-download missing item and weapon thumbnails into the existing `assets/<image_path>` layout
+- keep `wuwa-assets update` as an explicit full-manifest prewarm or repair command
+- do not block startup on bulk `game-icons` sync
+- honor `checkUpdateAtStartUp` for the remaining startup network phases
 
-That restores the missing game asset support in the current app without reviving the old folder-count sync model and without coupling runtime behavior to the scratchpad checkout.
+That restores the missing game asset support in the current app without reviving the old folder-count sync model, without forcing 1000+ startup downloads, and without coupling runtime behavior to the scratchpad checkout.
