@@ -158,6 +158,14 @@ def test_load_inventory_document_normalizes_weapon_export() -> None:
     row = document.sections[0].rows[0]
     assert row.title == 'Emerald of Genesis'
     assert row.image_path == 'IconWeapon/emerald.png'
+    assert row.display_kind == 'weapon_tile'
+    assert row.weapon_display == inventory_models.WeaponDisplayData(
+        level=90,
+        max_level=90,
+        rank=1,
+        rarity=5,
+        equipped='Shorekeeper',
+    )
     assert 'Lv. 90 | Max 90 | Rank 1 | Rarity 5' in row.body_lines
     assert 'Equipped: Shorekeeper' in row.body_lines
 
@@ -194,6 +202,14 @@ def test_load_inventory_document_normalizes_keyed_weapon_export() -> None:
     row = document.sections[0].rows[0]
     assert row.title == 'Emerald of Genesis'
     assert row.subtitle == 'Weapon Key: emeraldofgenesis'
+    assert row.display_kind == 'weapon_tile'
+    assert row.weapon_display == inventory_models.WeaponDisplayData(
+        level=90,
+        max_level=90,
+        rank=1,
+        rarity=5,
+        equipped='Shorekeeper',
+    )
     assert 'Lv. 90 | Max 90 | Rank 1 | Rarity 5' in row.body_lines
     assert 'Equipped: Shorekeeper' in row.body_lines
     assert 'Weapon Key: emeraldofgenesis' in row.details_lines

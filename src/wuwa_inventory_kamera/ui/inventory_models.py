@@ -37,6 +37,17 @@ _SESSION_EXPORT_FILES: tuple[str, ...] = (
 
 
 @dataclass(frozen=True)
+class WeaponDisplayData:
+    """Structured display data used by the weapon inventory grid."""
+
+    level: object | None = None
+    max_level: object | None = None
+    rank: object | None = None
+    rarity: object | None = None
+    equipped: str = ''
+
+
+@dataclass(frozen=True)
 class InventoryRow:
     """UI-facing row rendered by the result viewer."""
 
@@ -46,6 +57,7 @@ class InventoryRow:
     details_lines: tuple[str, ...] = field(default_factory=tuple)
     image_path: str | None = None
     display_kind: str = 'card'  # 'card' or 'tile'
+    weapon_display: WeaponDisplayData | None = None
 
 
 @dataclass(frozen=True)
@@ -685,8 +697,9 @@ def _build_weapon_rows(payload: list, resolver: MetadataResolver) -> tuple[Inven
             body_lines.append(summary)
 
         equipped = details.get('_equipped')
-        if equipped:
-            body_lines.append(f'Equipped: {resolver.resolve_character(equipped)}')
+        equipped_name = resolver.resolve_character(equipped) if equipped else ''
+        if equipped_name:
+            body_lines.append(f'Equipped: {equipped_name}')
 
         rows.append(
             InventoryRow(
@@ -699,6 +712,14 @@ def _build_weapon_rows(payload: list, resolver: MetadataResolver) -> tuple[Inven
                 body_lines=tuple(body_lines),
                 details_lines=_build_weapon_details(weapon_id, details, rarity),
                 image_path=image_path,
+                display_kind='weapon_tile',
+                weapon_display=WeaponDisplayData(
+                    level=details.get('level'),
+                    max_level=details.get('maxLevel'),
+                    rank=details.get('rank'),
+                    rarity=rarity,
+                    equipped=equipped_name,
+                ),
             )
         )
     return tuple(rows)

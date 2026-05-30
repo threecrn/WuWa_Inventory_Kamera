@@ -16,8 +16,13 @@ pytest.importorskip('qfluentwidgets')
 from PySide6.QtWidgets import QApplication
 
 from wuwa_inventory_kamera.ui import inventory as inventory_module
-from wuwa_inventory_kamera.ui.inventory import InventoryInterface, ResultCard, TileCard
-from wuwa_inventory_kamera.ui.inventory_models import InventoryDocument, InventoryRow, InventorySection
+from wuwa_inventory_kamera.ui.inventory import InventoryInterface, ResultCard, TileCard, WeaponTileCard
+from wuwa_inventory_kamera.ui.inventory_models import (
+    InventoryDocument,
+    InventoryRow,
+    InventorySection,
+    WeaponDisplayData,
+)
 
 
 _PNG_BYTES = base64.b64decode(
@@ -62,6 +67,30 @@ def _build_tile_document() -> InventoryDocument:
         kind='test',
         title='Inventory',
         sections=(InventorySection(title='Resources', rows=rows),),
+    )
+
+
+def _build_weapon_tile_document() -> InventoryDocument:
+    rows = tuple(
+        InventoryRow(
+            title=f'Extremely Long Weapon Name {index}',
+            subtitle=f'Weapon ID: 2101007{index}',
+            body_lines=('Lv. 90 | Max 90 | Rank 1 | Rarity 5', f'Equipped: Shorekeeper {index}'),
+            display_kind='weapon_tile',
+            weapon_display=WeaponDisplayData(
+                level=90,
+                max_level=90,
+                rank=1,
+                rarity=5,
+                equipped=f'Shorekeeper {index}',
+            ),
+        )
+        for index in range(1, 8)
+    )
+    return InventoryDocument(
+        kind='test',
+        title='Weapons',
+        sections=(InventorySection(title='Weapons', rows=rows),),
     )
 
 
@@ -155,6 +184,36 @@ def test_tile_section_uses_tile_cards_with_six_column_wrap(qapp: QApplication) -
     assert first_card.countLabel.text() == '1'
     assert first_card.nameLabel.text() != first_card.row.title
     assert first_card.nameLabel.text().endswith('…')
+    assert sixth_card.y() == first_card.y()
+    assert seventh_card.y() > first_card.y()
+
+    interface.hide()
+    interface.deleteLater()
+    qapp.processEvents()
+
+
+def test_weapon_section_uses_weapon_tile_cards_with_six_column_wrap(qapp: QApplication) -> None:
+    interface = InventoryInterface()
+    set_document = cast(Any, getattr(interface, '_InventoryInterface__setDocument'))
+    set_document(_build_weapon_tile_document())
+    interface.resize(1400, 800)
+    interface.show()
+    qapp.processEvents()
+
+    assert len(interface._resultCards) == 7
+    assert all(isinstance(card, WeaponTileCard) for card in interface._resultCards)
+
+    first_card = cast(WeaponTileCard, interface._resultCards[0])
+    sixth_card = cast(WeaponTileCard, interface._resultCards[5])
+    seventh_card = cast(WeaponTileCard, interface._resultCards[6])
+
+    assert first_card.width() == WeaponTileCard.TILE_WIDTH
+    assert first_card.height() == WeaponTileCard.TILE_HEIGHT
+    assert first_card.nameLabel.text() != first_card.row.title
+    assert first_card.nameLabel.text().endswith('…')
+    assert first_card.summaryLabel.text() == '90/90 (1)'
+    assert first_card.equippedLabel.text() == 'Equipped: Shorekeeper 1'
+    assert '#fffab0' in first_card.rarityLine.styleSheet()
     assert sixth_card.y() == first_card.y()
     assert seventh_card.y() > first_card.y()
 
