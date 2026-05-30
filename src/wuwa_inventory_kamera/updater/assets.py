@@ -31,12 +31,13 @@ logger = logging.getLogger('AssetsUpdater')
 _GAME_ASSET_REPO_OWNER = '555me'
 _GAME_ASSET_REPO_NAME = 'Wuthering-Waves-GameAssets'
 _GAME_ASSET_REPO_REF = 'main'
+_GAME_ASSET_UI_ROOT = 'UI/UIResources'
 _GAME_ASSET_REPO_IMAGE_ROOT = 'UI/UIResources/Common/Image'
 _GAME_ASSET_COMMITS_API = 'https://api.github.com/repos/{owner}/{repo}/commits/{ref}'
 _GAME_ASSET_RAW_ROOT = (
     f'https://raw.githubusercontent.com/{_GAME_ASSET_REPO_OWNER}/'
     f'{_GAME_ASSET_REPO_NAME}/{_GAME_ASSET_REPO_REF}/'
-    f'{_GAME_ASSET_REPO_IMAGE_ROOT}'
+    f'{_GAME_ASSET_UI_ROOT}'
 )
 _ASSET_STATE_FILENAME = '.asset_state.json'
 
@@ -112,14 +113,18 @@ def _build_game_asset_repo_path(image_path: str) -> str:
     normalized = _normalize_asset_path(image_path)
     if normalized is None:
         raise ValueError(f'Invalid game asset path: {image_path!r}')
-    return f'{_GAME_ASSET_REPO_IMAGE_ROOT}/{normalized}'
+    return f'Common/Image/{normalized}'
+
+
+def _build_game_asset_download_url_from_repo_path(repo_path: str) -> str:
+    normalized = _normalize_asset_path(repo_path)
+    if normalized is None:
+        raise ValueError(f'Invalid game asset repo path: {repo_path!r}')
+    return f'{_GAME_ASSET_RAW_ROOT}/{urllib.parse.quote(normalized, safe="/")}'
 
 
 def _build_game_asset_download_url(image_path: str) -> str:
-    normalized = _normalize_asset_path(image_path)
-    if normalized is None:
-        raise ValueError(f'Invalid game asset path: {image_path!r}')
-    return f'{_GAME_ASSET_RAW_ROOT}/{urllib.parse.quote(normalized, safe="/")}'
+    return _build_game_asset_download_url_from_repo_path(_build_game_asset_repo_path(image_path))
 
 
 def _build_git_commit_api_url(owner: str, repo: str, ref: str) -> str:
@@ -200,6 +205,60 @@ def _download_binary(url: str, dest: Path) -> None:
         dest.write_bytes(resp.read())
 
 
+def _find_raw_asset_source_file(data_dir: Path, filename: str) -> Path | None:
+    raw_root = data_dir / 'raw'
+    preferred = raw_root / 'en' / filename
+    if preferred.is_file():
+        return preferred
+    for candidate in sorted(raw_root.glob(f'*/{filename}')):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _extract_game_asset_source_paths(unreal_icon_path: object) -> tuple[str, str] | None:
+    if not isinstance(unreal_icon_path, str):
+        return None
+    if '/UI/UIResources/' not in unreal_icon_path:
+        return None
+    repo_tail = unreal_icon_path.split('/UI/UIResources/', 1)[1].rsplit('.', 1)[0] + '.png'
+    if '/Image/' not in repo_tail:
+        return None
+    local_tail = repo_tail.split('/Image/', 1)[1]
+    normalized_local = _normalize_asset_path(local_tail)
+    normalized_repo = _normalize_asset_path(repo_tail)
+    if normalized_local is None or normalized_repo is None:
+        return None
+    return normalized_local, normalized_repo
+
+
+def _load_game_asset_source_map(data_dir: Path) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for filename in ('ItemInfo.json', 'WeaponConf.json'):
+        raw_path = _find_raw_asset_source_file(data_dir, filename)
+        if raw_path is None:
+            continue
+        payload = _localization_data.load_json_file(raw_path)
+        if not isinstance(payload, list):
+            continue
+        for entry in payload:
+            if not isinstance(entry, dict):
+                continue
+            extracted = _extract_game_asset_source_paths(entry.get('Icon'))
+            if extracted is None:
+                continue
+            local_path, repo_path = extracted
+            mapping.setdefault(local_path, repo_path)
+    return mapping
+
+
+def _resolve_game_asset_repo_path(image_path: str, source_map: dict[str, str]) -> str:
+    normalized = _normalize_asset_path(image_path)
+    if normalized is None:
+        raise ValueError(f'Invalid game asset path: {image_path!r}')
+    return source_map.get(normalized, _build_game_asset_repo_path(normalized))
+
+
 def _fingerprint_payload(payload: object) -> str:
     encoded = json.dumps(payload, ensure_ascii=False, separators=(',', ':'), sort_keys=True).encode('utf-8')
     return hashlib.sha256(encoded).hexdigest()
@@ -213,7 +272,7 @@ def _load_source_manifest_paths(manifest_path: Path) -> set[str]:
             continue
         candidate = line.split(' ', 1)[1] if ' ' in line else line
         candidate = candidate.strip().replace('\\', '/')
-        if not candidate.startswith(f'{_GAME_ASSET_REPO_IMAGE_ROOT}/'):
+        if not candidate.startswith(f'{_GAME_ASSET_UI_ROOT}/'):
             continue
         if not candidate.lower().endswith('.png'):
             continue
@@ -265,7 +324,10 @@ class _GameIconsAssetFamily(_AssetFamily):
 
     def prepare_downloads(self, *, data_dir: Path, assets_dir: Path) -> _PreparedAssetFamily:
         manifest = _load_game_asset_manifest(data_dir)
+        source_map = _load_game_asset_source_map(data_dir)
         logger.info('Loaded %d game asset paths from catalogs', len(manifest))
+        if source_map:
+            logger.info('Loaded %d raw source-path overrides for game assets', len(source_map))
         revision = _fetch_github_commit_sha(
             _GAME_ASSET_REPO_OWNER,
             _GAME_ASSET_REPO_NAME,
@@ -275,7 +337,9 @@ class _GameIconsAssetFamily(_AssetFamily):
             _AssetDownload(
                 family=self.name,
                 label=image_path,
-                url=_build_game_asset_download_url(image_path),
+                url=_build_game_asset_download_url_from_repo_path(
+                    _resolve_game_asset_repo_path(image_path, source_map)
+                ),
                 dest=assets_dir / Path(image_path),
                 delay_seconds=0.1,
             )
@@ -437,8 +501,9 @@ class BaseAssetsUpdater:
         self._onFinished()
 
     def audit_game_asset_source_manifest(self, manifest_path: Path) -> AssetAuditResult:
+        source_map = _load_game_asset_source_map(basePATH / 'data')
         expected_paths = tuple(
-            _build_game_asset_repo_path(image_path)
+            f'{_GAME_ASSET_UI_ROOT}/{_resolve_game_asset_repo_path(image_path, source_map)}'
             for image_path in _load_game_asset_manifest(basePATH / 'data')
         )
         available_paths = _load_source_manifest_paths(manifest_path)

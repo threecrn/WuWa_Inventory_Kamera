@@ -155,6 +155,56 @@ def test_base_assets_updater_downloads_game_and_sonata_assets(tmp_path, monkeypa
     ]
 
 
+def test_base_assets_updater_uses_raw_ui_activity_source_path(tmp_path, monkeypatch) -> None:
+    _write_json(
+        tmp_path / 'data' / 'catalog' / 'items.json',
+        {
+            'moto_sticker': {'id': 1, 'image': 'Activity30/MotoDIY/T_MotoDIYStickerIcon69.png'},
+        },
+    )
+    _write_json(tmp_path / 'data' / 'catalog' / 'weapons.json', {})
+    _write_json(
+        tmp_path / 'data' / 'raw' / 'en' / 'ItemInfo.json',
+        [
+            {
+                'Id': 1,
+                'Icon': '/Game/Aki/UI/UIResources/UiActivity/Image/Activity30/MotoDIY/T_MotoDIYStickerIcon69.T_MotoDIYStickerIcon69',
+            }
+        ],
+    )
+
+    monkeypatch.setattr(assets_module, 'basePATH', tmp_path)
+    monkeypatch.setattr(assets_module.time, 'sleep', lambda _: None)
+    monkeypatch.setattr(
+        assets_module,
+        '_fetch_github_commit_sha',
+        lambda owner, repo, ref: 'game-sha',
+    )
+    monkeypatch.setattr(
+        assets_module.BaseAssetsUpdater,
+        '_iter_asset_families',
+        lambda self: (assets_module._GameIconsAssetFamily(),),
+    )
+
+    ui_activity_url = assets_module._build_game_asset_download_url_from_repo_path(
+        'UiActivity/Image/Activity30/MotoDIY/T_MotoDIYStickerIcon69.png'
+    )
+    payloads = {
+        ui_activity_url: b'activity-asset',
+    }
+
+    def fake_urlopen(request, timeout=60):
+        url = request.full_url if hasattr(request, 'full_url') else str(request)
+        return _FakeResponse(payloads[url])
+
+    monkeypatch.setattr(assets_module.urllib.request, 'urlopen', fake_urlopen)
+
+    updater = _RecorderUpdater()
+    updater.run()
+
+    assert (tmp_path / 'assets' / 'Activity30' / 'MotoDIY' / 'T_MotoDIYStickerIcon69.png').read_bytes() == b'activity-asset'
+
+
 def test_base_assets_updater_force_redownloads_existing_assets(tmp_path, monkeypatch) -> None:
     _write_json(
         tmp_path / 'data' / 'catalog' / 'items.json',
@@ -324,4 +374,43 @@ def test_base_assets_updater_audits_catalog_paths_against_source_manifest(tmp_pa
     assert result.present == 1
     assert result.missing == (
         'UI/UIResources/Common/Image/IconA/T_IconA_Missing_UI.png',
+    )
+
+
+def test_base_assets_updater_audit_uses_raw_ui_activity_source_paths(tmp_path, monkeypatch) -> None:
+    _write_json(
+        tmp_path / 'data' / 'catalog' / 'items.json',
+        {
+            'moto_present': {'id': 1, 'image': 'Activity30/MotoDIY/T_MotoDIYStickerIcon69.png'},
+            'moto_missing': {'id': 2, 'image': 'Activity30/MotoDIY/T_MotoDIYStickerIcon84.png'},
+        },
+    )
+    _write_json(tmp_path / 'data' / 'catalog' / 'weapons.json', {})
+    _write_json(
+        tmp_path / 'data' / 'raw' / 'en' / 'ItemInfo.json',
+        [
+            {
+                'Id': 1,
+                'Icon': '/Game/Aki/UI/UIResources/UiActivity/Image/Activity30/MotoDIY/T_MotoDIYStickerIcon69.T_MotoDIYStickerIcon69',
+            },
+            {
+                'Id': 2,
+                'Icon': '/Game/Aki/UI/UIResources/UiActivity/Image/Activity30/MotoDIY/T_MotoDIYStickerIcon84.T_MotoDIYStickerIcon84',
+            },
+        ],
+    )
+    manifest_path = tmp_path / 'ls-files-t'
+    manifest_path.write_text(
+        'S UI/UIResources/UiActivity/Image/Activity30/MotoDIY/T_MotoDIYStickerIcon69.png\n',
+        encoding='utf-8',
+    )
+
+    monkeypatch.setattr(assets_module, 'basePATH', tmp_path)
+
+    result = assets_module.BaseAssetsUpdater().audit_game_asset_source_manifest(manifest_path)
+
+    assert result.checked == 2
+    assert result.present == 1
+    assert result.missing == (
+        'UI/UIResources/UiActivity/Image/Activity30/MotoDIY/T_MotoDIYStickerIcon84.png',
     )
