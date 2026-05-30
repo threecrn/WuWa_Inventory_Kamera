@@ -210,6 +210,125 @@ class ResultCard(CardWidget):
         painter.end()
 
 
+class TileCard(CardWidget):
+    """Compact icon + name + count tile for resources and inventory items."""
+
+    TILE_WIDTH = 150
+    TILE_HEIGHT = 140
+    ICON_SIZE = 64
+
+    clicked = Signal()
+
+    def __init__(self, row: InventoryRow, parent=None):
+        super().__init__(parent)
+        self.row = row
+        self._selected = False
+        self._image_path = row.image_path
+        self._lazyDownloadPending = False
+
+        self.imageLabel = BodyLabel(self)
+        self.nameLabel = BodyLabel(self)
+        count_text = row.body_lines[0] if row.body_lines else ''
+        self.countLabel = BodyLabel(count_text, self)
+
+        _get_game_icon_lazy_downloader().downloadFinished.connect(self._onLazyImageDownloaded)
+        self.setupImage(row.image_path)
+        self.setupLayout()
+        self.setFixedSize(self.TILE_WIDTH, self.TILE_HEIGHT)
+        self.setToolTip(row.title)
+
+    def setupImage(self, image_path: str | None):
+        if not image_path:
+            self.imageLabel.hide()
+            return
+
+        if self._applyImagePixmap(image_path):
+            self._lazyDownloadPending = False
+            return
+
+        self.imageLabel.hide()
+        if not self._lazyDownloadPending:
+            self._lazyDownloadPending = True
+            _get_game_icon_lazy_downloader().request(image_path)
+
+    def _applyImagePixmap(self, image_path: str) -> bool:
+        pixmap = QPixmap(str(basePATH / 'assets' / Path(image_path)))
+        if pixmap.isNull():
+            return False
+
+        scaled_pixmap = pixmap.scaled(
+            self.ICON_SIZE,
+            self.ICON_SIZE,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.imageLabel.setPixmap(scaled_pixmap)
+        self.imageLabel.setFixedSize(self.ICON_SIZE, self.ICON_SIZE)
+        self.imageLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.imageLabel.show()
+        return True
+
+    def _onLazyImageDownloaded(self, image_path: str, success: bool) -> None:
+        if image_path != self._image_path:
+            return
+
+        self._lazyDownloadPending = False
+        if not success:
+            return
+
+        self._applyImagePixmap(image_path)
+
+    def setupLayout(self):
+        vBoxLayout = QVBoxLayout(self)
+        vBoxLayout.setSpacing(4)
+        vBoxLayout.setContentsMargins(8, 8, 8, 8)
+
+        self.imageLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        vBoxLayout.addWidget(self.imageLabel, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+        available_width = self.TILE_WIDTH - 20
+        fm = self.nameLabel.fontMetrics()
+        elided = fm.elidedText(self.row.title, Qt.TextElideMode.ElideRight, available_width)
+        self.nameLabel.setText(elided)
+        self.nameLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        vBoxLayout.addWidget(self.nameLabel)
+
+        if self.row.body_lines:
+            self.countLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.countLabel.setStyleSheet(
+                'QLabel { background: rgba(0,0,0,50); border-radius: 4px; padding: 2px 4px; }'
+            )
+            vBoxLayout.addWidget(self.countLabel)
+
+        vBoxLayout.addStretch()
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mouseReleaseEvent(e)
+
+    def setSelected(self, selected: bool):
+        if selected == self._selected:
+            return
+
+        self._selected = selected
+        self.update()
+
+    def paintEvent(self, e):
+        super().paintEvent(e)
+        if not self._selected:
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        pen = QPen(QColor(0, 120, 212, 230))
+        pen.setWidth(1)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(self.rect().adjusted(1, 1, -2, -2), 8, 8)
+        painter.end()
+
+
 class InventoryInterface(ScrollArea):
     """Scrollable result grid."""
 
@@ -498,14 +617,21 @@ class InventoryInterface(ScrollArea):
             title = StrongBodyLabel(f'{section.title} ({len(section.rows)})', self.contentWidget)
             layout.addWidget(title)
 
+        is_tile = bool(section.rows) and section.rows[0].display_kind == 'tile'
+        columns = 6 if is_tile else 3
+
         sectionWidget = QWidget(self.contentWidget)
         sectionGrid = QGridLayout(sectionWidget)
         sectionGrid.setContentsMargins(0, 0, 0, 0)
-        sectionGrid.setSpacing(10)
+        sectionGrid.setSpacing(8 if is_tile else 10)
+        if is_tile:
+            sectionGrid.setColumnStretch(columns, 1)
 
-        columns = 3
         for index, row in enumerate(section.rows):
-            card = ResultCard(row, sectionWidget)
+            if is_tile:
+                card: ResultCard | TileCard = TileCard(row, sectionWidget)
+            else:
+                card = ResultCard(row, sectionWidget)
             card.clicked.connect(lambda idx=index: self.__onRowSelected(idx))
             self._resultCards.append(card)
             sectionGrid.addWidget(card, index // columns, index % columns)

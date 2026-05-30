@@ -45,6 +45,7 @@ class InventoryRow:
     body_lines: tuple[str, ...] = field(default_factory=tuple)
     details_lines: tuple[str, ...] = field(default_factory=tuple)
     image_path: str | None = None
+    display_kind: str = 'card'  # 'card' or 'tile'
 
 
 @dataclass(frozen=True)
@@ -711,9 +712,10 @@ def _build_inventory_rows(payload: dict, resolver: MetadataResolver) -> tuple[In
             InventoryRow(
                 title=item_name,
                 subtitle=f'Item ID: {item_id}',
-                body_lines=(f'Count: {amount}',),
+                body_lines=(str(amount),),
                 details_lines=(f'Item ID: {item_id}', f'Count: {amount}'),
                 image_path=image_path,
+                display_kind='tile',
             )
         )
     return tuple(rows)
@@ -727,7 +729,7 @@ def _build_item_rows(payload: list, resolver: MetadataResolver) -> tuple[Invento
         item_ref = entry.get('id', entry.get('item_key'))
         item_name, image_path = resolver.resolve_item(item_ref)
         count = entry.get('count')
-        body_lines = (f'Count: {count}',) if count is not None else ()
+        body_lines = (str(count),) if count is not None else ()
         rows.append(
             InventoryRow(
                 title=item_name,
@@ -739,6 +741,7 @@ def _build_item_rows(payload: list, resolver: MetadataResolver) -> tuple[Invento
                 body_lines=body_lines,
                 details_lines=_build_item_details(entry),
                 image_path=image_path,
+                display_kind='tile',
             )
         )
     return tuple(rows)
@@ -811,9 +814,10 @@ def _build_shell_rows(payload: dict, resolver: MetadataResolver) -> tuple[Invent
             InventoryRow(
                 title=item_name,
                 subtitle=f'Item ID: {item_id}',
-                body_lines=(f'Count: {amount}',),
+                body_lines=(str(amount),),
                 details_lines=(f'Item ID: {item_id}', f'Count: {amount}'),
                 image_path=image_path,
+                display_kind='tile',
             )
         )
     return tuple(rows)
