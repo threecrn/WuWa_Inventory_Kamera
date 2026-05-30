@@ -357,9 +357,12 @@ class MetadataResolver:
                 if not isinstance(entry, dict):
                     continue
                 identifier = cls._coerce_identifier(entry.get('Id'))
-                rarity = _coerce_int(entry.get('ItemQualityId'))
+                # Prefer the resonator's own QualityId. Some upstream RoleInfo
+                # rows carry a mismatched ItemQualityId for related item data
+                # (for example Lynae 1509 has QualityId=5 but ItemQualityId=4).
+                rarity = _coerce_int(entry.get('QualityId'))
                 if rarity is None:
-                    rarity = _coerce_int(entry.get('QualityId'))
+                    rarity = _coerce_int(entry.get('ItemQualityId'))
                 if identifier is None or rarity is None:
                     continue
                 result[str(identifier)] = rarity

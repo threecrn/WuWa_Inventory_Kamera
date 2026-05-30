@@ -331,7 +331,8 @@ def test_update_characters_writes_catalog_image_and_rarity_from_roleinfo(tmp_pat
 			{
 				'Id': 1102,
 				'Name': 'RoleInfo_1102_Name',
-				'QualityId': 4,
+				'QualityId': 5,
+				'ItemQualityId': 4,
 				'RoleHeadIcon': '/Game/Aki/UI/UIResources/Common/Image/IconRoleHead80/T_IconRoleHead80_14_UI.T_IconRoleHead80_14_UI',
 			},
 			{
@@ -354,7 +355,7 @@ def test_update_characters_writes_catalog_image_and_rarity_from_roleinfo(tmp_pat
 			'id': 1102,
 			'text_key': 'RoleInfo_1102_Name',
 			'image': 'IconRoleHead80/T_IconRoleHead80_14_UI.png',
-			'rarity': 4,
+			'rarity': 5,
 		},
 	}
 	assert character_locale == {

@@ -9,6 +9,7 @@ import wuwa_inventory_kamera.ui.inventory_models as inventory_models
 
 _REAL_LOAD_GENERATED_CATALOG = inventory_models._load_generated_catalog
 _REAL_LOAD_GENERATED_LOCALE = inventory_models._load_generated_locale
+_REAL_LOAD_CHARACTER_RARITY_LOOKUP = inventory_models.MetadataResolver._load_character_rarity_lookup.__func__
 
 
 def _write_json(path, payload) -> None:
@@ -522,6 +523,25 @@ def test_metadata_resolver_prefers_generated_localized_metadata(tmp_path, monkey
     assert resolver.resolve_achievement(9001) == '最初の一歩'
     assert resolver.resolve_achievement('firststeps') == '最初の一歩'
     assert resolver.resolve_sonata('moonlitclouds') == '月を窺う軽雲'
+
+
+def test_load_character_rarity_lookup_prefers_qualityid_over_itemqualityid(tmp_path, monkeypatch) -> None:
+    _write_json(
+        tmp_path / 'data' / 'raw' / 'en' / 'RoleInfo.json',
+        [
+            {
+                'Id': 1509,
+                'QualityId': 5,
+                'ItemQualityId': 4,
+            }
+        ],
+    )
+
+    monkeypatch.setattr(inventory_models, 'basePATH', tmp_path)
+
+    rarity_by_id = _REAL_LOAD_CHARACTER_RARITY_LOOKUP(inventory_models.MetadataResolver, 'ja')
+
+    assert rarity_by_id == {'1509': 5}
 
 
 def test_load_inventory_session_prefers_scan_result(tmp_path) -> None:

@@ -316,7 +316,9 @@ class BaseDataUpdater:
 			if image_path is not None and image_path.startswith('IconRoleHead80/') and 'image' not in record:
 				record['image'] = image_path
 
-			rarity = entry.get('ItemQualityId', entry.get('QualityId'))
+			# Prefer the character QualityId. Upstream RoleInfo sometimes stores a
+			# different ItemQualityId for linked item metadata such as wavebands.
+			rarity = entry.get('QualityId', entry.get('ItemQualityId'))
 			if isinstance(rarity, str):
 				try:
 					rarity = int(rarity)
