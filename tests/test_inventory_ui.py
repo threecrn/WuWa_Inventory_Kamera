@@ -24,6 +24,7 @@ from wuwa_inventory_kamera.ui.inventory import (
     TileCard,
     WeaponTileCard,
 )
+
 from wuwa_inventory_kamera.ui.inventory_models import (
     CharacterDisplayData,
     EchoDisplayData,
@@ -481,7 +482,8 @@ def test_echo_section_uses_echo_tile_cards_with_six_column_wrap(
     assert first_card.height() == EchoTileCard.TILE_HEIGHT
     assert first_card.nameLabel.text() != first_card.row.title
     assert first_card.nameLabel.text().endswith('…')
-    assert first_card.summaryLabel.text() == '+25 (4)'
+    assert first_card.costLabel.text() == '(4)'
+    assert first_card.levelLabel.text() == '+25'
     assert first_card.mainStatLabel.text() == 'Healing Bonus 26.4%'
     assert first_card.equippedLabel.text() == 'Equipped: Shorekeeper 1'
     assert second_card.equippedLabel.text() == ' '

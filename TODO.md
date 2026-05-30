@@ -13,6 +13,7 @@
 
 ## Near-Term Follow-Up
 
+- [ ] inventory tab: detail pane height too large for characters/echoes -> vertical scrolling
 - [ ] Re-evaluate the extra RapidOCR fallback pass (`fallback_text_score`) and remove it if it has no measurable value.
 - [ ] Finish OCR region-spec cleanup.
   - [x] Remove the `sig_downscale` compatibility alias if older TOML files no longer need it.

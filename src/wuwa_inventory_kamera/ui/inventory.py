@@ -382,9 +382,9 @@ class EchoTileCard(CardWidget):
 
         self.imageLabel = BodyLabel(self)
         self.nameLabel = StrongBodyLabel(self)
-        self.summaryRow = QWidget(self)
-        self.sonataIconLabel = BodyLabel(self.summaryRow)
-        self.summaryLabel = BodyLabel(self.summaryRow)
+        self.sonataIconLabel = BodyLabel(self)
+        self.costLabel = BodyLabel(self)
+        self.levelLabel = BodyLabel(self)
         self.rarityLine = QWidget(self)
         self.mainStatLabel = BodyLabel(self)
         self.equippedLabel = BodyLabel(self)
@@ -468,62 +468,67 @@ class EchoTileCard(CardWidget):
     def _elide_text(label: BodyLabel | StrongBodyLabel, text: str, width: int) -> str:
         return label.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, width)
 
-    @staticmethod
-    def _summary_text(echo_display: EchoDisplayData | None) -> str:
-        if echo_display is None:
-            return ''
-
-        level_text = '' if echo_display.level is None else f'+{echo_display.level}'
-        if echo_display.cost is None:
-            return level_text
-        cost_text = f'({echo_display.cost})'
-        if level_text:
-            return f'{level_text} {cost_text}'
-        return cost_text
-
     def setupLayout(self):
         vBoxLayout = QVBoxLayout(self)
         vBoxLayout.setSpacing(4)
         vBoxLayout.setContentsMargins(10, 10, 10, 10)
 
         available_width = self.TILE_WIDTH - 24
+        ed = self._echoDisplay
 
-        self.imageLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        vBoxLayout.addWidget(self.imageLabel, alignment=Qt.AlignmentFlag.AlignHCenter)
-
+        # ── Name ─────────────────────────────────────────────────────────
         self.nameLabel.setText(self._elide_text(self.nameLabel, self.row.title, available_width))
         self.nameLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         vBoxLayout.addWidget(self.nameLabel)
 
-        summaryLayout = QHBoxLayout(self.summaryRow)
-        summaryLayout.setContentsMargins(0, 0, 0, 0)
-        summaryLayout.setSpacing(4)
-        summaryLayout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # ── Icon row: [sonata ↙] [echo icon] [cost ↗ / level ↘] ─────────
+        iconRow = QWidget(self)
+        iconRow.setFixedHeight(self.ICON_SIZE)
+        hLayout = QHBoxLayout(iconRow)
+        hLayout.setContentsMargins(0, 0, 0, 0)
+        hLayout.setSpacing(4)
 
+        # Left column — sonata icon pinned to bottom
+        leftCol = QWidget(iconRow)
+        leftColLayout = QVBoxLayout(leftCol)
+        leftColLayout.setContentsMargins(0, 0, 0, 0)
+        leftColLayout.setSpacing(0)
+        leftColLayout.addStretch()
         if self._hasSonataIcon:
-            summaryLayout.addWidget(self.sonataIconLabel, alignment=Qt.AlignmentFlag.AlignCenter)
-
-        summary_text = self._summary_text(self._echoDisplay)
-        if summary_text:
-            self.summaryLabel.setText(summary_text)
-            self.summaryLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            summaryLayout.addWidget(self.summaryLabel, alignment=Qt.AlignmentFlag.AlignCenter)
+            leftColLayout.addWidget(self.sonataIconLabel, alignment=Qt.AlignmentFlag.AlignHCenter)
         else:
-            self.summaryLabel.hide()
+            self.sonataIconLabel.hide()
+        hLayout.addWidget(leftCol, 1)
 
-        if self._hasSonataIcon or summary_text:
-            vBoxLayout.addWidget(self.summaryRow)
+        # Centre — echo icon
+        self.imageLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hLayout.addWidget(self.imageLabel, 0, Qt.AlignmentFlag.AlignCenter)
+
+        # Right column — cost above level, both pinned to bottom
+        cost_text  = f'({ed.cost})'  if ed is not None and ed.cost  is not None else ''
+        level_text = f'+{ed.level}' if ed is not None and ed.level is not None else ''
+
+        rightCol = QWidget(iconRow)
+        rightColLayout = QVBoxLayout(rightCol)
+        rightColLayout.setContentsMargins(0, 0, 0, 0)
+        rightColLayout.setSpacing(0)
+        rightColLayout.addStretch()
+        if cost_text:
+            self.costLabel.setText(cost_text)
+            rightColLayout.addWidget(self.costLabel)
         else:
-            self.summaryRow.hide()
+            self.costLabel.hide()
+        if level_text:
+            self.levelLabel.setText(level_text)
+            rightColLayout.addWidget(self.levelLabel)
+        else:
+            self.levelLabel.hide()
+        hLayout.addWidget(rightCol, 1)
 
-        rarity_color = _grid_tile_rarity_color(self._echoDisplay.rarity if self._echoDisplay else None)
-        self.rarityLine.setFixedHeight(4)
-        self.rarityLine.setStyleSheet(
-            f'background-color: {rarity_color.name()}; border-radius: 2px;'
-        )
-        vBoxLayout.addWidget(self.rarityLine)
+        vBoxLayout.addWidget(iconRow)
 
-        main_stat_text = self._echoDisplay.main_stat if self._echoDisplay is not None else ''
+        # ── Main stat (before hline) ──────────────────────────────────────
+        main_stat_text = ed.main_stat if ed is not None else ''
         if main_stat_text:
             self.mainStatLabel.setText(main_stat_text)
             self.mainStatLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -532,7 +537,16 @@ class EchoTileCard(CardWidget):
         else:
             self.mainStatLabel.hide()
 
-        equipped_name = self._echoDisplay.equipped if self._echoDisplay is not None else ''
+        # ── Rarity hline (after main stat) ────────────────────────────────
+        rarity_color = _grid_tile_rarity_color(ed.rarity if ed is not None else None)
+        self.rarityLine.setFixedHeight(4)
+        self.rarityLine.setStyleSheet(
+            f'background-color: {rarity_color.name()}; border-radius: 2px;'
+        )
+        vBoxLayout.addWidget(self.rarityLine)
+
+        # ── Equipped ──────────────────────────────────────────────────────
+        equipped_name = ed.equipped if ed is not None else ''
         equipped_text = f'Equipped: {equipped_name}' if equipped_name else ''
         self.equippedLabel.setText(equipped_text or ' ')
         self.equippedLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
