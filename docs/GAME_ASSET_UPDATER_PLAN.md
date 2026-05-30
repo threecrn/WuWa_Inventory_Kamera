@@ -22,13 +22,31 @@ Out of scope for the first pass:
 - replacing the current `IconS` Fandom workflow unless a better canonical source is identified later
 - building a generalized art browser for all game UI assets
 
+## Current Status
+
+The core lazy-download design is now implemented.
+
+Landed so far:
+
+- `BaseAssetsUpdater` manages explicit `game-icons` and `sonata-icons` families, and `wuwa-assets update` remains the full-manifest prewarm and repair path
+- the inventory viewer lazily repairs missing item and weapon thumbnails with shared single-file cache helpers
+- lazy thumbnail downloads de-duplicate in-flight requests, apply a short retry backoff after failures, and use a bounded worker pool instead of one thread per requested path
+- opening an inventory export now prefetches missing thumbnails for the current document, including rows outside the initially selected section
+- startup now honors `checkUpdateAtStartUp` and limits asset startup work to lightweight `sonata-icons` work instead of bulk `game-icons` prewarm
+- managed asset state, revision tracking, prune rules, and audit flow are already in place for the explicit manual prewarm path
+
+Remaining follow-up is incremental rather than foundational:
+
+- split startup and runtime asset toggles further only if users actually need finer control
+- move the lazy asset queue into its own module later only if the UI-side helper grows enough to justify the split
+
 ## What The Current App Already Does
 
 The current app still has most of the plumbing needed for game asset support.
 
 1. The loading flow already runs assets after data.
-   - `src/wuwa_inventory_kamera/ui/loading.py` runs `BaseDataUpdater` first and `BaseAssetsUpdater` second.
-  - That ordering remains useful for data refresh and optional prewarm work, but a lazy viewer flow only requires the catalogs to exist before the viewer asks for a thumbnail.
+  - `src/wuwa_inventory_kamera/ui/loading.py` runs `BaseDataUpdater` first and then a startup-scoped `BaseAssetsUpdater` pass.
+  - that startup asset pass now honors `checkUpdateAtStartUp` and is limited to lightweight `sonata-icons` work
 
 2. The data updater still emits relative image paths.
    - `src/wuwa_inventory_kamera/updater/database.py` still derives `image` values from upstream `Icon` fields.
@@ -40,15 +58,15 @@ The current app still has most of the plumbing needed for game asset support.
    - `src/wuwa_inventory_kamera/scraping/data.py` preserves `image` in the in-memory compatibility maps.
    - `src/wuwa_inventory_kamera/ui/inventory_models.py` resolves item and weapon metadata including `image_path`.
    - `src/wuwa_inventory_kamera/ui/inventory.py` loads thumbnails from `basePATH / 'assets' / image_path`.
-  - When a local file is missing today, the viewer simply hides the thumbnail; that is the gap a lazy cache-repair path should close.
+  - when a local file is missing, the viewer now queues a lazy cache repair, refreshes the card when the file lands, and prefetches the rest of the current document's missing thumbnail set in the background
 
 4. The repo still treats assets as a cache.
    - `.gitignore` ignores `/assets/*` and whitelists only `/assets/icon.ico`.
    - That is still the correct repo policy for downloaded game assets.
 
-5. The current asset updater is too narrow.
-   - `src/wuwa_inventory_kamera/updater/assets.py` only downloads `assets/IconS/*.png` from the Fandom wiki.
-   - That covers sonata matching but not item or weapon thumbnails.
+5. The asset updater already spans the two runtime asset sources.
+  - `src/wuwa_inventory_kamera/updater/assets.py` manages full-manifest `game-icons` prewarm from the game asset repo plus `assets/IconS/*.png` sync from the Fandom wiki.
+  - the loading flow now filters that shared updater down to `sonata-icons` at startup, while the viewer and CLI continue to use the broader shared helpers
 
 ## What The Sparse Asset Repo Tells Us
 
@@ -124,6 +142,10 @@ Recommended viewer algorithm:
 4. Show a placeholder or empty image state while the request is in flight.
 5. Refresh the affected row or widget when the file lands in the cache.
 6. De-duplicate concurrent requests by normalized `image_path` so repeated rows do not trigger repeated downloads.
+
+Current implementation note:
+
+- the viewer now does this, with a bounded worker pool, short failure backoff, and current-document prefetch on file load
 
 Benefits:
 
@@ -220,7 +242,9 @@ This keeps existing sonata matching stable while restoring game thumbnails.
 - `updater/assetsUpdater.py`
   - keep as the Qt compatibility wrapper around the refactored base updater and shared lazy-download helpers
 
-### Recommended new files
+### Optional later file splits
+
+The current implementation kept the lazy queue and shared helpers in the existing modules, which was the smaller change. If those files grow further, the following splits are still reasonable refactors rather than missing prerequisites.
 
 - `src/wuwa_inventory_kamera/updater/asset_manifest.py`
   - build the manual prewarm manifest of required `game-icons` from generated catalogs
@@ -272,27 +296,21 @@ Keep an explicit full-cache repair path for users who want it.
 
 ### Hardening after MVP
 
-If lazy viewer fetches or manual prewarm become more complex, harden them incrementally.
+Most of the originally planned hardening work is now landed:
 
-Options, in order of preference:
+- in-flight viewer downloads are de-duplicated and use a short retry backoff after failures
+- opening a result file prefetches the current document's missing item and weapon thumbnails in the background
+- explicit manual prewarm and audit flows already track upstream revision and managed-family state
 
-1. de-duplicate in-flight viewer downloads and add a short retry backoff for recent failures
-2. optionally prefetch the current document's item and weapon image set after a result file is opened
-3. track the upstream repo commit SHA and managed-family state for explicit manual prewarm and audit flows
-
-Do not repeat the old file-count heuristic.
+Remaining hardening should stay incremental and policy-driven. Do not repeat the old file-count heuristic.
 
 ## Startup And Settings Behavior
 
-The current app has a `checkUpdateAtStartUp` setting, but the loading path still always runs the updaters.
-
-That should be fixed as part of this work.
-
-Recommended behavior:
+Current behavior:
 
 - if `checkUpdateAtStartUp` is true:
   - run data updater
-  - then run only lightweight startup asset work if still needed, such as sonata support
+  - then run only lightweight startup asset work, currently `sonata-icons`
   - do not block startup on full `game-icons` prewarm
 - if it is false:
   - skip both network update phases and proceed to the main window
@@ -325,10 +343,12 @@ Recommended non-use:
 
 ### Unit tests
 
-Add focused tests for:
+Focused coverage now exists for:
 
 - lazy viewer request handling for a missing thumbnail
 - de-duplication of repeated requests for the same `image_path`
+- short retry backoff after a failed lazy thumbnail request
+- current-document prefetch for non-visible section images after a result file is opened
 - manifest extraction from generated `items.json` and `weapons.json` for manual prewarm
 - path normalization and path traversal rejection
 - translation from local `image` path to source repo path
@@ -361,16 +381,21 @@ Manual smoke test after implementation:
 
 ### Phase 1: Restore the core contract with lazy viewer fetches
 
+Status: landed
+
 - extract shared single-image game-icon fetch helpers from the existing path contract
 - add deterministic path translation into `UI/UIResources/Common/Image/...`
 - teach the inventory viewer to queue missing thumbnail downloads into `assets/`
 - refresh viewer rows when the local cache is repaired
+- prefetch the current document's missing thumbnail set after a result file is opened
 
 Success condition:
 
 - opening an inventory export with an empty cache downloads only the needed item or weapon thumbnails and renders them from the existing `image_path` contract
 
 ### Phase 2: Preserve and isolate sonata support
+
+Status: landed
 
 - move the current Fandom logic behind a dedicated `sonata-icons` family updater
 - keep `assets/IconS` behavior unchanged from the caller perspective
@@ -380,6 +405,8 @@ Success condition:
 - `SonataIconMatcher` still loads `assets/IconS/*.png` without any behavior change
 
 ### Phase 3: Startup and CLI ergonomics
+
+Status: landed for the current scope
 
 - honor `checkUpdateAtStartUp`
 - add a manual CLI for status, prewarm, repair, and forced refresh
@@ -392,8 +419,10 @@ Success condition:
 
 ### Phase 4: Hardening
 
+Status: landed for the current scope
+
 - add in-flight de-duplication and retry backoff for lazy viewer fetches
-- optionally add current-document prefetch and managed prune rules for explicit prewarm flows
+- add current-document prefetch and managed prune rules for explicit prewarm flows
 - add a developer audit tool to compare catalog references against the asset repo path space
 
 Success condition:
@@ -402,13 +431,14 @@ Success condition:
 
 ## Recommended MVP Decision
 
-Implement the smallest version that closes the current functional gap:
+The current app now follows the intended MVP direction:
 
 - keep `IconS` as-is
 - reuse the existing generated `image_path` contract and source mapping helpers
 - let the inventory viewer lazy-download missing item and weapon thumbnails into the existing `assets/<image_path>` layout
+- prefetch the current document's missing thumbnails through the same lazy cache path after an export is opened
 - keep `wuwa-assets update` as an explicit full-manifest prewarm or repair command
 - do not block startup on bulk `game-icons` sync
 - honor `checkUpdateAtStartUp` for the remaining startup network phases
 
-That restores the missing game asset support in the current app without reviving the old folder-count sync model, without forcing 1000+ startup downloads, and without coupling runtime behavior to the scratchpad checkout.
+That closes the original functional gap without reviving the old folder-count sync model, without forcing 1000+ startup downloads, and without coupling runtime behavior to the scratchpad checkout. Remaining work is optional refinement rather than restoring missing core behavior.

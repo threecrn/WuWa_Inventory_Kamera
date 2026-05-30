@@ -6,6 +6,7 @@ Inventory viewer — load and inspect JSON result files.
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import logging
 import os
 import threading
@@ -41,6 +42,7 @@ from ..updater import assets as _assets
 logger = logging.getLogger('InventoryInterface')
 
 _LAZY_DOWNLOAD_FAILURE_BACKOFF_SECONDS = 15.0
+_LAZY_DOWNLOAD_MAX_WORKERS = 4
 
 
 class _LazyGameIconDownloader(QObject):
@@ -51,6 +53,10 @@ class _LazyGameIconDownloader(QObject):
         self._in_flight: set[str] = set()
         self._failed_at: dict[str, float] = {}
         self._lock = threading.Lock()
+        self._executor = ThreadPoolExecutor(
+            max_workers=_LAZY_DOWNLOAD_MAX_WORKERS,
+            thread_name_prefix='wuwa-game-icon',
+        )
 
     def request(self, image_path: str) -> None:
         with self._lock:
@@ -63,12 +69,7 @@ class _LazyGameIconDownloader(QObject):
                     return
             self._in_flight.add(image_path)
 
-        worker = threading.Thread(
-            target=self._download,
-            args=(image_path,),
-            daemon=True,
-        )
-        worker.start()
+        self._executor.submit(self._download, image_path)
 
     def _download(self, image_path: str) -> None:
         success = False
@@ -345,7 +346,23 @@ class InventoryInterface(ScrollArea):
         self._currentSectionIndex = 0
         self._currentRowIndex = 0
         self._currentSearchText = ''
+        self.__prefetchDocumentImages(document)
         self.__renderCurrentDocument()
+
+    def __prefetchDocumentImages(self, document: InventoryDocument):
+        downloader = _get_game_icon_lazy_downloader()
+        queued_paths: set[str] = set()
+        assets_dir = basePATH / 'assets'
+
+        for section in document.sections:
+            for row in section.rows:
+                image_path = row.image_path
+                if not image_path or image_path in queued_paths:
+                    continue
+                if (assets_dir / Path(image_path)).is_file():
+                    continue
+                queued_paths.add(image_path)
+                downloader.request(image_path)
 
     def __renderCurrentDocument(self):
         document = self._currentDocument

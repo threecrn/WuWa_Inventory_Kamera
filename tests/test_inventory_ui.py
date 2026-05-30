@@ -73,6 +73,20 @@ def _wait_until(qapp: QApplication, predicate, *, timeout: float = 2.0) -> None:
     assert predicate()
 
 
+class _FakeSignal:
+    def connect(self, _slot) -> None:
+        return None
+
+
+class _FakeDownloader:
+    def __init__(self) -> None:
+        self.downloadFinished = _FakeSignal()
+        self.requested_paths: list[str] = []
+
+    def request(self, image_path: str) -> None:
+        self.requested_paths.append(image_path)
+
+
 def test_row_selection_reuses_existing_result_cards(qapp: QApplication) -> None:
     interface = InventoryInterface()
     set_document = cast(Any, getattr(interface, '_InventoryInterface__setDocument'))
@@ -135,6 +149,52 @@ def test_result_card_lazy_downloads_missing_thumbnail(qapp: QApplication, tmp_pa
 
     card.hide()
     card.deleteLater()
+    qapp.processEvents()
+
+
+def test_setting_document_prefetches_missing_images_from_other_sections(
+    qapp: QApplication,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    visible_path = 'IconA/T_IconA_ShellCredit_UI.png'
+    hidden_section_path = 'IconWeapon/T_IconWeapon_Test_UI.png'
+    cached_path = tmp_path / 'assets' / 'IconA' / 'T_IconA_ShellCredit_UI.png'
+    cached_path.parent.mkdir(parents=True, exist_ok=True)
+    cached_path.write_bytes(_PNG_BYTES)
+
+    fake_downloader = _FakeDownloader()
+    monkeypatch.setattr(inventory_module, 'basePATH', tmp_path)
+    monkeypatch.setattr(inventory_module, '_lazy_game_icon_downloader', fake_downloader)
+
+    interface = InventoryInterface()
+    set_document = cast(Any, getattr(interface, '_InventoryInterface__setDocument'))
+    set_document(
+        InventoryDocument(
+            kind='test',
+            title='Inventory',
+            sections=(
+                InventorySection(
+                    title='Visible',
+                    rows=(
+                        InventoryRow(title='Shell Credit', image_path=visible_path),
+                    ),
+                ),
+                InventorySection(
+                    title='Hidden',
+                    rows=(
+                        InventoryRow(title='Training Sword', image_path=hidden_section_path),
+                    ),
+                ),
+            ),
+        )
+    )
+    qapp.processEvents()
+
+    assert fake_downloader.requested_paths == [hidden_section_path]
+
+    interface.hide()
+    interface.deleteLater()
     qapp.processEvents()
 
 
