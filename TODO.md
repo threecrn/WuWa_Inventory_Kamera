@@ -44,6 +44,8 @@
 
 ## Reliability And Performance Backlog
 
+- [x] Mixed scan bug: When doing a echo+weapon live scan, the weapon scan fails because at the end of the echo scan, the control leaves the tab menu and ESC to the main game screen, so the weapon scan starts on the wrong screen and fails to find the expected UI elements.
+  - [x] Fix: reset between chained scrapers through `GameNavigator` so inventory state stays in sync when `Esc` closes the previous panel.
 - [ ] Minor issues on edge cases.
   - [ ] At 2560x1440, the echo level signature configuration does not work properly because the key text color is slightly off.
   - [ ] On slow systems, wait delays might be too short for UI animations to complete, causing OCR failures.
