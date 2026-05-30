@@ -13,6 +13,7 @@ The Qt-dependent ``AssetsUpdater`` (with Signal support) remains in
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 import re
 import time
@@ -112,12 +113,10 @@ def _build_game_asset_repo_path(image_path: str) -> str:
 
 
 def _build_game_asset_download_url(image_path: str) -> str:
-    repo_path = _build_game_asset_repo_path(image_path)
-    return (
-        f'https://raw.githubusercontent.com/{_GAME_ASSET_REPO_OWNER}/'
-        f'{_GAME_ASSET_REPO_NAME}/{_GAME_ASSET_REPO_REF}/'
-        f'{urllib.parse.quote(repo_path, safe="/")}'
-    )
+    normalized = _normalize_asset_path(image_path)
+    if normalized is None:
+        raise ValueError(f'Invalid game asset path: {image_path!r}')
+    return f'{_GAME_ASSET_RAW_ROOT}/{urllib.parse.quote(normalized, safe="/")}'
 
 
 def _api_get(params: dict) -> dict:
@@ -179,6 +178,63 @@ def _download_binary(url: str, dest: Path) -> None:
         dest.write_bytes(resp.read())
 
 
+@dataclass(frozen=True)
+class _AssetDownload:
+    label: str
+    url: str
+    dest: Path
+    delay_seconds: float = 0.0
+
+
+class _AssetFamily:
+    name = 'assets'
+
+    def prepare_downloads(self, *, data_dir: Path, assets_dir: Path) -> tuple[_AssetDownload, ...]:
+        raise NotImplementedError
+
+
+class _GameIconsAssetFamily(_AssetFamily):
+    name = 'game-icons'
+
+    def prepare_downloads(self, *, data_dir: Path, assets_dir: Path) -> tuple[_AssetDownload, ...]:
+        manifest = _load_game_asset_manifest(data_dir)
+        logger.info('Loaded %d game asset paths from catalogs', len(manifest))
+        return tuple(
+            _AssetDownload(
+                label=image_path,
+                url=_build_game_asset_download_url(image_path),
+                dest=assets_dir / Path(image_path),
+                delay_seconds=0.1,
+            )
+            for image_path in manifest
+        )
+
+
+class _SonataIconsAssetFamily(_AssetFamily):
+    name = 'sonata-icons'
+
+    def prepare_downloads(self, *, data_dir: Path, assets_dir: Path) -> tuple[_AssetDownload, ...]:
+        sonata_keys = _load_sonata_keys(data_dir)
+        logger.info('Loaded %d sonata keys', len(sonata_keys))
+
+        mapping = _build_icon_mapping(sonata_keys)
+        logger.info('Matched %d / %d sonata icons', len(mapping), len(sonata_keys))
+        unmatched = sonata_keys - set(mapping)
+        if unmatched:
+            logger.warning('No wiki icon found for: %s', ', '.join(sorted(unmatched)))
+
+        output_dir = assets_dir / 'IconS'
+        return tuple(
+            _AssetDownload(
+                label=f'IconS/{key}.png',
+                url=url,
+                dest=output_dir / f'{key}.png',
+                delay_seconds=0.3,
+            )
+            for key, url in sorted(mapping.items())
+        )
+
+
 class _ProgressTracker:
     def __init__(self, updater: BaseAssetsUpdater, total: int) -> None:
         self._updater = updater
@@ -200,9 +256,11 @@ class BaseAssetsUpdater:
     """Qt-free asset downloader.
 
     Downloads catalog-driven game icons into ``assets/`` and keeps
-    ``assets/IconS/`` synced from the Wuthering Waves fandom wiki. Subclass and
-    override :meth:`_onProgress` / :meth:`_onFinished` for lifecycle
-    notifications (e.g. Qt signals).
+    ``assets/IconS/`` synced from the Wuthering Waves fandom wiki. Sync work is
+    split into explicit asset families so sonata support remains isolated while
+    preserving the caller-visible ``IconS`` contract. Subclass and override
+    :meth:`_onProgress` / :meth:`_onFinished` for lifecycle notifications
+    (e.g. Qt signals).
     """
 
     def run(self) -> None:
@@ -210,77 +268,43 @@ class BaseAssetsUpdater:
         assets_dir.mkdir(parents=True, exist_ok=True)
 
         data_dir = basePATH / 'data'
-        try:
-            game_manifest = _load_game_asset_manifest(data_dir)
-        except Exception as exc:
-            logger.error('Failed to load game asset manifest: %s', exc)
-            game_manifest = ()
+        downloads: list[_AssetDownload] = []
+        for family in self._iter_asset_families():
+            try:
+                downloads.extend(family.prepare_downloads(data_dir=data_dir, assets_dir=assets_dir))
+            except Exception as exc:
+                logger.error('Failed to prepare %s asset downloads: %s', family.name, exc)
 
-        logger.info('Loaded %d game asset paths from catalogs', len(game_manifest))
-
-        sonata_mapping: dict[str, str] = {}
-        try:
-            sonata_keys = _load_sonata_keys(data_dir)
-            logger.info('Loaded %d sonata keys', len(sonata_keys))
-            sonata_mapping = _build_icon_mapping(sonata_keys)
-            logger.info('Matched %d / %d sonata icons', len(sonata_mapping), len(sonata_keys))
-            unmatched = sonata_keys - set(sonata_mapping)
-            if unmatched:
-                logger.warning('No wiki icon found for: %s', ', '.join(sorted(unmatched)))
-        except Exception as exc:
-            logger.error('Failed to build sonata icon mapping: %s', exc)
-
-        progress = _ProgressTracker(self, len(game_manifest) + len(sonata_mapping))
-        self._sync_game_assets(game_manifest, assets_dir, progress)
-        self._sync_sonata_assets(sonata_mapping, assets_dir / 'IconS', progress)
+        progress = _ProgressTracker(self, len(downloads))
+        self._sync_downloads(downloads, progress)
 
         self._onFinished()
 
-    def _sync_game_assets(
+    def _iter_asset_families(self) -> tuple[_AssetFamily, ...]:
+        return (
+            _GameIconsAssetFamily(),
+            _SonataIconsAssetFamily(),
+        )
+
+    def _sync_downloads(
         self,
-        manifest: tuple[str, ...],
-        assets_dir: Path,
+        downloads: list[_AssetDownload] | tuple[_AssetDownload, ...],
         progress: _ProgressTracker,
     ) -> None:
-        for image_path in manifest:
-            dest = assets_dir / Path(image_path)
-            label = image_path
-            if dest.exists():
-                logger.debug('Skip (already exists): %s', label)
-                progress.advance(label)
+        for download in downloads:
+            if download.dest.exists():
+                logger.debug('Skip (already exists): %s', download.label)
+                progress.advance(download.label)
                 continue
 
-            url = _build_game_asset_download_url(image_path)
-            logger.info('Downloading %s', label)
+            logger.info('Downloading %s', download.label)
             try:
-                _download_binary(url, dest)
+                _download_binary(download.url, download.dest)
             except Exception as exc:
-                logger.error('Failed to download %s: %s', url, exc)
-            progress.advance(label)
-            time.sleep(0.1)
-
-    def _sync_sonata_assets(
-        self,
-        mapping: dict[str, str],
-        output_dir: Path,
-        progress: _ProgressTracker,
-    ) -> None:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        for key, url in sorted(mapping.items()):
-            dest = output_dir / f'{key}.png'
-            label = f'IconS/{dest.name}'
-            if dest.exists():
-                logger.debug('Skip (already exists): %s', label)
-                progress.advance(label)
-                continue
-
-            logger.info('Downloading %s', label)
-            try:
-                _download_binary(url, dest)
-            except Exception as exc:
-                logger.error('Failed to download %s: %s', url, exc)
-            progress.advance(label)
-            time.sleep(0.3)
+                logger.error('Failed to download %s: %s', download.url, exc)
+            progress.advance(download.label)
+            if download.delay_seconds > 0:
+                time.sleep(download.delay_seconds)
 
     def _onProgress(self, file_name: str, percent: float) -> None:
         """Override to receive download progress."""

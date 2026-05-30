@@ -63,6 +63,13 @@ def test_load_game_asset_manifest_filters_invalid_paths(tmp_path) -> None:
     )
 
 
+def test_base_assets_updater_uses_explicit_game_and_sonata_families() -> None:
+    assert [family.name for family in assets_module.BaseAssetsUpdater()._iter_asset_families()] == [
+        'game-icons',
+        'sonata-icons',
+    ]
+
+
 def test_base_assets_updater_downloads_game_and_sonata_assets(tmp_path, monkeypatch) -> None:
     _write_json(
         tmp_path / 'data' / 'catalog' / 'items.json',
