@@ -16,8 +16,8 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
-    QWidget, QFileDialog, QGridLayout, QHBoxLayout, QLayout,
-    QVBoxLayout, QComboBox,
+    QWidget, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLayout,
+    QScrollArea, QSizePolicy, QVBoxLayout, QComboBox,
 )
 
 from qfluentwidgets import FluentIcon as FIF
@@ -899,6 +899,7 @@ class InventoryInterface(ScrollArea):
         self._currentSearchText = ''
         self._searchBox: LineEdit | None = None
         self._resultsLayout: QVBoxLayout | None = None
+        self._sectionScrollArea: QScrollArea | None = None
         self._resultCards: list[ResultCard | TileCard | EchoTileCard | WeaponTileCard | CharacterTileCard] = []
         self._detailsCard: CardWidget | None = None
         self._detailsLayout: QVBoxLayout | None = None
@@ -932,6 +933,7 @@ class InventoryInterface(ScrollArea):
         )
 
         self.contentWidget = QWidget(self)
+        self.contentWidget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.contentLayout = QVBoxLayout(self.contentWidget)
 
         self.__initWidget()
@@ -939,6 +941,8 @@ class InventoryInterface(ScrollArea):
     def __initWidget(self):
         self.setWidget(self.scrollWidget)
         self.setWidgetResizable(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.__initLayout()
         self.__connectSignalToSlot()
 
@@ -947,8 +951,7 @@ class InventoryInterface(ScrollArea):
         self.mainLayout.setSpacing(28)
         self.mainLayout.setContentsMargins(60, 10, 60, 0)
         self.mainLayout.addWidget(self.inventoryGroup)
-        self.mainLayout.addWidget(self.contentWidget)
-        self.mainLayout.addStretch(1)
+        self.mainLayout.addWidget(self.contentWidget, 1)
         self.contentLayout.setSpacing(16)
         self.contentLayout.setContentsMargins(0, 0, 0, 0)
 
@@ -1052,6 +1055,7 @@ class InventoryInterface(ScrollArea):
 
         self._searchBox = None
         self._resultsLayout = None
+        self._sectionScrollArea = None
         self._resultCards = []
         self._detailsCard = None
         self._detailsLayout = None
@@ -1073,19 +1077,18 @@ class InventoryInterface(ScrollArea):
             self.__addSearchBox()
 
             resultsWidget = QWidget(self.contentWidget)
+            resultsWidget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             resultsLayout = QVBoxLayout(resultsWidget)
             resultsLayout.setContentsMargins(0, 0, 0, 0)
             resultsLayout.setSpacing(16)
             self._resultsLayout = resultsLayout
-            self.contentLayout.addWidget(resultsWidget)
+            self.contentLayout.addWidget(resultsWidget, 1)
 
             self.__renderCurrentSectionContent()
         elif not document.message_lines:
             label = BodyLabel('No supported results were found in this file.', self.contentWidget)
             label.setWordWrap(True)
             self.contentLayout.addWidget(label)
-
-        self.contentLayout.addStretch(1)
 
     def __addSectionSelector(self, sections: tuple[InventorySection, ...], selected_index: int):
         selectorWidget = QWidget(self.contentWidget)
@@ -1152,16 +1155,27 @@ class InventoryInterface(ScrollArea):
 
         self.__clearLayout(self._resultsLayout)
         self._resultCards = []
+        self._sectionScrollArea = None
         self._detailsCard = None
         self._detailsLayout = None
 
         if self._visibleRows:
             contentRow = QWidget(self.contentWidget)
+            contentRow.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             contentRowLayout = QHBoxLayout(contentRow)
             contentRowLayout.setContentsMargins(0, 0, 0, 0)
             contentRowLayout.setSpacing(16)
 
-            sectionColumn = QWidget(contentRow)
+            sectionScrollArea = QScrollArea(contentRow)
+            sectionScrollArea.setWidgetResizable(True)
+            sectionScrollArea.setFrameShape(QFrame.Shape.NoFrame)
+            sectionScrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            sectionScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            sectionScrollArea.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            sectionScrollArea.setStyleSheet('background: transparent; border: none;')
+
+            sectionColumn = QWidget(sectionScrollArea)
+            sectionColumn.setStyleSheet('background: transparent;')
             sectionColumnLayout = QVBoxLayout(sectionColumn)
             sectionColumnLayout.setContentsMargins(0, 0, 0, 0)
             sectionColumnLayout.setSpacing(12)
@@ -1170,10 +1184,13 @@ class InventoryInterface(ScrollArea):
                 filtered_section,
                 show_title=len(document.sections) == 1,
             )
-            contentRowLayout.addWidget(sectionColumn, 1)
+            sectionColumnLayout.addStretch(1)
+            sectionScrollArea.setWidget(sectionColumn)
+            contentRowLayout.addWidget(sectionScrollArea, 1)
+            self._sectionScrollArea = sectionScrollArea
 
             self.__addDetailsPane(contentRowLayout)
-            self._resultsLayout.addWidget(contentRow)
+            self._resultsLayout.addWidget(contentRow, 1)
             self.__applyRowSelection(selected_row_index)
         else:
             self.__addSection(

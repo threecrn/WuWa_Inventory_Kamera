@@ -63,14 +63,14 @@ def _build_document() -> InventoryDocument:
     )
 
 
-def _build_tile_document() -> InventoryDocument:
+def _build_tile_document(*, count: int = 7) -> InventoryDocument:
     rows = tuple(
         InventoryRow(
             title=f'Extremely Long Inventory Item Name {index}',
             body_lines=(str(index),),
             display_kind='tile',
         )
-        for index in range(1, 8)
+        for index in range(1, count + 1)
     )
     return InventoryDocument(
         kind='test',
@@ -364,6 +364,23 @@ def test_tile_section_uses_tile_cards_with_six_column_wrap(qapp: QApplication) -
     assert first_card.nameLabel.text().endswith('…')
     assert sixth_card.y() == first_card.y()
     assert seventh_card.y() > first_card.y()
+
+    interface.hide()
+    interface.deleteLater()
+    qapp.processEvents()
+
+
+def test_large_sections_scroll_inside_the_results_grid(qapp: QApplication) -> None:
+    interface = InventoryInterface()
+    set_document = cast(Any, getattr(interface, '_InventoryInterface__setDocument'))
+    set_document(_build_tile_document(count=36))
+    interface.resize(1400, 700)
+    interface.show()
+    qapp.processEvents()
+
+    assert interface._sectionScrollArea is not None
+    assert interface.verticalScrollBar().maximum() == 0
+    assert interface._sectionScrollArea.verticalScrollBar().maximum() > 0
 
     interface.hide()
     interface.deleteLater()
