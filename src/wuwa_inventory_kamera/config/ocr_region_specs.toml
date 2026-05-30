@@ -6,7 +6,7 @@
 # OCR resize bounds use [width, height].
 # pre_upscale/post_upscale enforce minimum size; pre_downscale/post_downscale cap maximum size.
 
-spec_version = "3.3-new-ui-v2"
+spec_version = "3.3-new-ui-v2-singleline-ocr-v1"
 
 # =====================================================================
 # Echo workflow

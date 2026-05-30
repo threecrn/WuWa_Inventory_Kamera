@@ -30,6 +30,72 @@ logger = logging.getLogger(__name__)
 _LEVEL_RE = re.compile(r'(\d+)\s*/\s*(\d+)')
 # Rank is a single digit 1–5 on the refinement badge
 _RANK_RE  = re.compile(r'\d')
+_DIGIT_TOKEN_RE = re.compile(r'\d+')
+
+
+def _token_x_bounds(token: OcrResult) -> tuple[float, float]:
+    bbox = token[0]
+    if not bbox:
+        return 0.0, 0.0
+
+    xs = [float(point[0]) for point in bbox if point]
+    if not xs:
+        return 0.0, 0.0
+
+    return min(xs), max(xs)
+
+
+def _has_strong_horizontal_overlap(
+    lhs: tuple[str, float, float, float],
+    rhs: tuple[str, float, float, float],
+) -> bool:
+    overlap = min(lhs[2], rhs[2]) - max(lhs[1], rhs[1])
+    if overlap <= 0:
+        return False
+
+    lhs_width = max(lhs[2] - lhs[1], 1.0)
+    rhs_width = max(rhs[2] - rhs[1], 1.0)
+    return (overlap / min(lhs_width, rhs_width)) >= 0.35
+
+
+def _parse_item_quantity(value_tokens: list[OcrResult]) -> int:
+    digit_tokens: list[tuple[str, float, float, float]] = []
+    for token in value_tokens:
+        digits = ''.join(_DIGIT_TOKEN_RE.findall(token[1]))
+        if not digits:
+            continue
+        x0, x1 = _token_x_bounds(token)
+        digit_tokens.append((digits, x0, x1, float(token[2])))
+
+    if not digit_tokens:
+        return 0
+
+    digit_tokens.sort(key=lambda item: (item[1], item[2], -len(item[0]), -item[3]))
+
+    candidates: list[tuple[str, float, float, float, float]] = []
+    for start_index, first in enumerate(digit_tokens):
+        digits = first[0]
+        x0 = first[1]
+        x1 = first[2]
+        confidence = first[3]
+        candidates.append((digits, x0, x1, x1 - x0, confidence))
+
+        previous = first
+        for token in digit_tokens[start_index + 1:]:
+            if _has_strong_horizontal_overlap(previous, token):
+                break
+
+            digits += token[0]
+            x1 = max(x1, token[2])
+            confidence += token[3]
+            previous = token
+            candidates.append((digits, x0, x1, x1 - x0, confidence))
+
+    best_digits = max(
+        candidates,
+        key=lambda item: (item[2], len(item[0]), item[3], item[4]),
+    )[0]
+    return int(best_digits)
 
 
 def _extract_lookup_id(value):
@@ -142,10 +208,7 @@ class WeaponAssembler:
             if equipped_character is not None:
                 data['_equipped'] = equipped_character
         else:
-            try:
-                quantity = int(re.sub(r'[^\d]', '', value_text))
-            except ValueError:
-                quantity = 0
+            quantity = _parse_item_quantity(value_tokens)
             data = {'id': lookup_id, 'item_key': name_text, 'count': quantity}
 
         return WeaponResult(index=idx, is_weapon=is_weapon, data=data)

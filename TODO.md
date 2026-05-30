@@ -29,7 +29,7 @@
 - [ ] Decide what to do with the inventory page of the app: implement it or remove it.
   - [x] Make a plan for how to implement a viewer for the different result type jsons.
     - See `docs/INVENTORY_VIEWER_PLAN.md`.
-- [ ] Grid scroll toward the bottom for weapon, echo, and item tabs: predict the end of the page and handle it correctly.
+- [x] Grid scroll toward the bottom for weapon, echo, and item tabs: predict the end of the page and handle it correctly.
 - [ ] Windowed game support: keep command-line and config behavior consistent with autodetection.
 
 ## Data And Localization Backlog
@@ -47,6 +47,7 @@
 
 - [x] Mixed scan bug: When doing a echo+weapon live scan, the weapon scan fails because at the end of the echo scan, the control leaves the tab menu and ESC to the main game screen, so the weapon scan starts on the wrong screen and fails to find the expected UI elements.
   - [x] Fix: reset between chained scrapers through `GameNavigator` so inventory state stays in sync when `Esc` closes the previous panel.
+- [x] item scan (dev item, resources): count OCR is unreliable and duplicates leading digits: 84 -> 884, 3659 -> 33659
 - [ ] Minor issues on edge cases.
   - [ ] At 2560x1440, the echo level signature configuration does not work properly because the key text color is slightly off.
   - [ ] On slow systems, wait delays might be too short for UI animations to complete, causing OCR failures.

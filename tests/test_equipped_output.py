@@ -23,6 +23,10 @@ def _token_at(text: str, x: int, y: int):
     return ([[x, y], [x + 1, y], [x + 1, y + 1], [x, y + 1]], text, 1.0)
 
 
+def _token_box(text: str, x0: int, x1: int, y0: int = 0, y1: int = 10):
+    return ([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], text, 1.0)
+
+
 def test_weapon_assembler_adds_equipped_character(monkeypatch) -> None:
     monkeypatch.setattr(
         weapon_assembler_module,
@@ -93,6 +97,60 @@ def test_weapon_assembler_extracts_item_id_from_metadata_lookup(monkeypatch) -> 
         'id': 36000004,
         'item_key': 'premiumsealedtube',
         'count': 39,
+    }
+
+
+def test_weapon_assembler_ignores_overlapping_duplicate_count_tokens(monkeypatch) -> None:
+    monkeypatch.setattr(
+        weapon_assembler_module,
+        '_get_data',
+        lambda: ({}, {'standardweaponmold': 42500070}),
+    )
+
+    image = np.zeros((1, 1, 3), dtype=np.uint8)
+    assembler = WeaponAssembler()
+    result = assembler.assemble(
+        WeaponCapture(index=7, name=image, value=image, rank=None),
+        [_token('Standard'), _token('Weapon'), _token('Mold')],
+        [
+            _token_box('Owned', 0, 46),
+            _token_box('8', 58, 68),
+            _token_box('84', 57, 89),
+        ],
+        None,
+    )
+
+    assert result.data == {
+        'id': 42500070,
+        'item_key': 'standardweaponmold',
+        'count': 84,
+    }
+
+
+def test_weapon_assembler_concatenates_split_count_tokens(monkeypatch) -> None:
+    monkeypatch.setattr(
+        weapon_assembler_module,
+        '_get_data',
+        lambda: ({}, {'constructorcore': 80700003}),
+    )
+
+    image = np.zeros((1, 1, 3), dtype=np.uint8)
+    assembler = WeaponAssembler()
+    result = assembler.assemble(
+        WeaponCapture(index=8, name=image, value=image, rank=None),
+        [_token('Constructor'), _token('Core')],
+        [
+            _token_box('Owned', 0, 46),
+            _token_box('3', 58, 70),
+            _token_box('659', 72, 106),
+        ],
+        None,
+    )
+
+    assert result.data == {
+        'id': 80700003,
+        'item_key': 'constructorcore',
+        'count': 3659,
     }
 
 

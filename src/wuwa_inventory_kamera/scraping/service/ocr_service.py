@@ -939,7 +939,16 @@ class OcrService:
                 for idx in miss_indices
             ]
             t0 = time.monotonic()
-            miss_results = self._batch_ocr.ocr_images(miss_preprocessed)
+            if spec.single_line:
+                miss_results = [
+                    _backend_tokens_to_results(
+                        self._backend.recognize_single_line(image),
+                        image=image,
+                    )
+                    for image in miss_preprocessed
+                ]
+            else:
+                miss_results = self._batch_ocr.ocr_images(miss_preprocessed)
             elapsed_sec = time.monotonic() - t0
 
             # Record latency for session report
