@@ -362,6 +362,26 @@ def test_load_inventory_document_normalizes_keyed_echo_export() -> None:
     assert 'Sonata Key: moonlitclouds' in row.details_lines
 
 
+def test_resolve_sonata_icon_path_normalizes_apostrophes(monkeypatch) -> None:
+    monkeypatch.setattr(
+        inventory_models,
+        '_load_generated_locale',
+        lambda filename, _language_code: {
+            "flamewing'sshadow": {
+                'display_name': "Flamewing's Shadow",
+            },
+            'wishesofquietsnowfall': {
+                'display_name': 'Wishes of Quiet Snowfall',
+            },
+        } if filename == 'sonatas.json' else {},
+    )
+
+    resolver = inventory_models.MetadataResolver()
+
+    assert resolver.resolve_sonata_icon_path("flamewing'sshadow") == 'IconS/flamewingsshadow.png'
+    assert resolver.resolve_sonata_icon_path('Wishes of Quiet Snowfall') == 'IconS/wishesofquietsnowfall.png'
+
+
 def test_load_inventory_document_normalizes_keyed_character_export() -> None:
     payload = {
         '1105': {

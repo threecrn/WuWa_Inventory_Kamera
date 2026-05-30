@@ -513,19 +513,20 @@ class MetadataResolver:
         sonata_ref = str(sonata_key).strip()
         if not sonata_ref:
             return None
-        if sonata_ref in self._sonatas_by_key:
-            return f'IconS/{sonata_ref}.png'
-
         normalized = self._normalize_lookup_text(sonata_ref)
+        if not normalized:
+            return None
+
+        if sonata_ref in self._sonatas_by_key:
+            return f'IconS/{normalized}.png'
+
         if normalized in self._sonatas_by_key:
             return f'IconS/{normalized}.png'
 
         canonical_key = self._sonata_keys_by_name.get(normalized)
         if canonical_key:
-            return f'IconS/{canonical_key}.png'
-        if normalized:
             return f'IconS/{normalized}.png'
-        return None
+        return f'IconS/{normalized}.png'
 
     @staticmethod
     def _coerce_image(image_path: object) -> str | None:
