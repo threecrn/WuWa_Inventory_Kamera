@@ -365,9 +365,9 @@ class EchoTileCard(CardWidget):
     """Compact fixed-size echo tile for the inventory viewer."""
 
     TILE_WIDTH = _GRID_TILE_WIDTH
-    TILE_HEIGHT = 210
+    TILE_HEIGHT = 185
     ICON_SIZE = 64
-    SONATA_ICON_SIZE = 16
+    SONATA_ICON_SIZE = 20
 
     clicked = Signal()
 
@@ -547,7 +547,7 @@ class EchoTileCard(CardWidget):
 
         # ── Equipped ──────────────────────────────────────────────────────
         equipped_name = ed.equipped if ed is not None else ''
-        equipped_text = f'Equipped: {equipped_name}' if equipped_name else ''
+        equipped_text = f'By: {equipped_name}' if equipped_name else ''
         self.equippedLabel.setText(equipped_text or ' ')
         self.equippedLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         if equipped_text:
@@ -713,7 +713,7 @@ class WeaponTileCard(CardWidget):
         vBoxLayout.addWidget(self.rarityLine)
 
         equipped_name = self._weaponDisplay.equipped if self._weaponDisplay is not None else ''
-        equipped_text = f'Equipped: {equipped_name}' if equipped_name else ''
+        equipped_text = f'By: {equipped_name}' if equipped_name else ''
         if equipped_text:
             self.equippedLabel.setText(equipped_text)
             self.equippedLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
