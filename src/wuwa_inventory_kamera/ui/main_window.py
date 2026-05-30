@@ -53,7 +53,7 @@ class WuWaInventoryKamera(MSFluentWindow):
         self.navigationInterface.setCurrentItem(self.homeInterface.objectName())
 
     def initWindow(self):
-        self.setFixedSize(1150, 700)
+        self.setFixedSize(1500, 700)
         self.setWindowIcon(QIcon(str(basePATH / 'assets' / 'icon.ico')))
         self.setWindowTitle('WuWa Inventory Kamera')
         self.titleBar.maxBtn.setHidden(True)

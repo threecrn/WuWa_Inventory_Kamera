@@ -159,7 +159,7 @@ def test_row_selection_reuses_existing_result_cards(qapp: QApplication) -> None:
     interface = InventoryInterface()
     set_document = cast(Any, getattr(interface, '_InventoryInterface__setDocument'))
     set_document(_build_document())
-    interface.resize(1200, 800)
+    interface.resize(1400, 800)
     interface.show()
     qapp.processEvents()
 
@@ -185,6 +185,31 @@ def test_row_selection_reuses_existing_result_cards(qapp: QApplication) -> None:
     interface.hide()
     interface.deleteLater()
     qapp.processEvents()
+
+
+def test_details_pane_renders_to_the_right_of_results(qapp: QApplication) -> None:
+    interface = InventoryInterface()
+    set_document = cast(Any, getattr(interface, '_InventoryInterface__setDocument'))
+    set_document(_build_document())
+    interface.resize(1400, 800)
+    interface.show()
+    qapp.processEvents()
+
+    assert interface._detailsCard is not None
+
+    first_card = interface._resultCards[0]
+    first_card_right = first_card.mapTo(interface, first_card.rect().topRight()).x()
+    details_left = interface._detailsCard.mapTo(interface, interface._detailsCard.rect().topLeft()).x()
+
+    assert details_left > first_card_right
+
+    interface.hide()
+    interface.deleteLater()
+    qapp.processEvents()
+
+
+def test_six_column_tile_cards_share_the_same_width() -> None:
+    assert TileCard.TILE_WIDTH == WeaponTileCard.TILE_WIDTH == CharacterTileCard.TILE_WIDTH == 144
 
 
 def test_tile_section_uses_tile_cards_with_six_column_wrap(qapp: QApplication) -> None:

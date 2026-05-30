@@ -45,6 +45,8 @@ logger = logging.getLogger('InventoryInterface')
 
 _LAZY_DOWNLOAD_FAILURE_BACKOFF_SECONDS = 15.0
 _LAZY_DOWNLOAD_MAX_WORKERS = 4
+_DETAILS_PANE_WIDTH = 320
+_GRID_TILE_WIDTH = 144
 _GRID_TILE_RARITY_COLORS: dict[int, QColor] = {
     5: QColor(255, 250, 176),
     4: QColor(232, 161, 255),
@@ -242,7 +244,7 @@ class ResultCard(CardWidget):
 class TileCard(CardWidget):
     """Compact icon + name + count tile for resources and inventory items."""
 
-    TILE_WIDTH = 150
+    TILE_WIDTH = _GRID_TILE_WIDTH
     TILE_HEIGHT = 140
     ICON_SIZE = 64
 
@@ -361,7 +363,7 @@ class TileCard(CardWidget):
 class WeaponTileCard(CardWidget):
     """Compact fixed-size weapon tile mirroring the in-app weapon grid."""
 
-    TILE_WIDTH = 160
+    TILE_WIDTH = _GRID_TILE_WIDTH
     TILE_HEIGHT = 180
     ICON_SIZE = 64
 
@@ -525,7 +527,7 @@ class WeaponTileCard(CardWidget):
 class CharacterTileCard(CardWidget):
     """Compact fixed-size character tile for the inventory viewer."""
 
-    TILE_WIDTH = 160
+    TILE_WIDTH = _GRID_TILE_WIDTH
     TILE_HEIGHT = 160
     ICON_SIZE = 64
 
@@ -942,15 +944,33 @@ class InventoryInterface(ScrollArea):
         self._resultCards = []
         self._detailsCard = None
         self._detailsLayout = None
-        self.__addSection(
-            self._resultsLayout,
-            filtered_section,
-            show_title=len(document.sections) == 1,
-        )
 
         if self._visibleRows:
-            self.__addDetailsPane(self._resultsLayout)
+            contentRow = QWidget(self.contentWidget)
+            contentRowLayout = QHBoxLayout(contentRow)
+            contentRowLayout.setContentsMargins(0, 0, 0, 0)
+            contentRowLayout.setSpacing(16)
+
+            sectionColumn = QWidget(contentRow)
+            sectionColumnLayout = QVBoxLayout(sectionColumn)
+            sectionColumnLayout.setContentsMargins(0, 0, 0, 0)
+            sectionColumnLayout.setSpacing(12)
+            self.__addSection(
+                sectionColumnLayout,
+                filtered_section,
+                show_title=len(document.sections) == 1,
+            )
+            contentRowLayout.addWidget(sectionColumn, 1)
+
+            self.__addDetailsPane(contentRowLayout)
+            self._resultsLayout.addWidget(contentRow)
             self.__applyRowSelection(selected_row_index)
+        else:
+            self.__addSection(
+                self._resultsLayout,
+                filtered_section,
+                show_title=len(document.sections) == 1,
+            )
 
         if self._currentSearchText and not self._visibleRows:
             label = BodyLabel('No rows match the current search.', self.contentWidget)
@@ -971,6 +991,8 @@ class InventoryInterface(ScrollArea):
         sectionGrid.setContentsMargins(0, 0, 0, 0)
         sectionGrid.setSpacing(8 if is_grid_tile else 10)
         if is_grid_tile:
+            for column in range(columns):
+                sectionGrid.setColumnMinimumWidth(column, _GRID_TILE_WIDTH)
             sectionGrid.setColumnStretch(columns, 1)
 
         for index, row in enumerate(section.rows):
@@ -1004,8 +1026,9 @@ class InventoryInterface(ScrollArea):
 
         self.__updateDetailsPane(self._visibleRows[selected_row_index])
 
-    def __addDetailsPane(self, layout: QVBoxLayout):
+    def __addDetailsPane(self, layout: QLayout):
         detailsCard = CardWidget(self.contentWidget)
+        detailsCard.setFixedWidth(_DETAILS_PANE_WIDTH)
         detailsLayout = QVBoxLayout(detailsCard)
         detailsLayout.setContentsMargins(12, 12, 12, 12)
         detailsLayout.setSpacing(6)
