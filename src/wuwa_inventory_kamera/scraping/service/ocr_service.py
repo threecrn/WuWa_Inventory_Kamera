@@ -297,6 +297,24 @@ def _is_plausible_echo_name_results(
         cutoff=_ECHO_NAME_FUZZY_CUTOFF,
     ))
 
+
+def _character_roi_key_for_crop_key(crop_key: str) -> str:
+    """Resolve character crop keys to canonical OCR spec ROI keys."""
+    static_map = {
+        'name': 'characters.resonatorName',
+        'level': 'characters.resonatorLevel',
+        'weaponName': 'characters.weaponName',
+        'weaponLevel': 'characters.weaponLevel',
+        'weaponRank': 'characters.weaponRank',
+    }
+    if crop_key in static_map:
+        return static_map[crop_key]
+    if crop_key.startswith('skill_'):
+        return 'characters.skillLevel'
+    if crop_key.startswith('passive_'):
+        return 'characters.skillButton'
+    return f'characters.{crop_key}'
+
 # ---------------------------------------------------------------------------
 # Internal queue item wrapper
 # ---------------------------------------------------------------------------
@@ -1100,7 +1118,7 @@ class OcrService:
         for key in all_keys:
             images = [c.crops[key] for c in captures if key in c.crops]
             if images:
-                roi_key = f'characters.{key}'
+                roi_key = _character_roi_key_for_crop_key(key)
                 key_results[key] = self._ocr_with_spec(roi_key, images)
 
         def to_tokens(image_results):

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import concurrent.futures
 from types import SimpleNamespace
 
 import numpy as np
 
 import wuwa_inventory_kamera.scraping.service.ocr_service as ocr_service_module
+from wuwa_inventory_kamera.scraping.service.captures import CharCapture
 
 
 class _FakeCache:
@@ -61,3 +63,35 @@ def test_ocr_with_spec_uses_single_line_backend(monkeypatch) -> None:
     assert results[0][0][1] == 0.91
     assert cache.stored is not None
     assert cache.stored[0][0][0] == 'Owned 84'
+
+
+def test_process_chars_uses_canonical_character_roi_keys(monkeypatch) -> None:
+    capture = CharCapture(
+        char_index=27,
+        section=0,
+        crops={
+            'name': np.zeros((2, 2, 3), dtype=np.uint8),
+            'level': np.zeros((2, 2, 3), dtype=np.uint8),
+        },
+    )
+    future: concurrent.futures.Future = concurrent.futures.Future()
+
+    observed_roi_keys: list[str] = []
+
+    service = ocr_service_module.OcrService.__new__(ocr_service_module.OcrService)
+
+    def _fake_ocr_with_spec(roi_key: str, images, rarity=None):
+        _ = rarity
+        observed_roi_keys.append(roi_key)
+        return [[] for _ in images]
+
+    service._ocr_with_spec = _fake_ocr_with_spec
+    service._char_asm = SimpleNamespace(
+        assemble=lambda _cap, *_tokens: SimpleNamespace(char_index=27, section=0, fields={'level': 80})
+    )
+
+    queue_item = SimpleNamespace(capture=capture, future=future)
+    service._process_chars([queue_item])
+
+    assert observed_roi_keys == ['characters.resonatorName', 'characters.resonatorLevel']
+    assert future.done()
