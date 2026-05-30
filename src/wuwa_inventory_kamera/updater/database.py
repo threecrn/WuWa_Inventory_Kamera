@@ -50,6 +50,7 @@ class BaseDataUpdater:
 		'ItemInfo.json',
 		'WeaponConf.json',
 		'RoleInfo.json',
+		'MonsterInfo.json',
 		'.updater_state.json',
 	)
 	_CATALOG_FILENAMES = (
@@ -92,6 +93,7 @@ class BaseDataUpdater:
 				FileConfig(['ConfigDB'], 'ItemInfo.json'),
 				FileConfig(['ConfigDB'], 'WeaponConf.json'),
 				FileConfig(['ConfigDB'], 'RoleInfo.json'),
+				FileConfig(['ConfigDB'], 'MonsterInfo.json'),
 			),
 		),
 		'arikatsu': SourceConfig(
@@ -103,6 +105,7 @@ class BaseDataUpdater:
 				FileConfig(['BinData', 'item'], 'iteminfo.json', 'ItemInfo.json'),
 				FileConfig(['BinData', 'weapon'], 'weaponconf.json', 'WeaponConf.json'),
 				FileConfig(['BinData', 'role'], 'roleinfo.json', 'RoleInfo.json'),
+				FileConfig(['BinData', 'monster'], 'monsterinfo.json', 'MonsterInfo.json'),
 			),
 		),
 	}
@@ -326,6 +329,36 @@ class BaseDataUpdater:
 					rarity = None
 			if isinstance(rarity, int) and 'rarity' not in record:
 				record['rarity'] = rarity
+
+		return {
+			identifier: record
+			for identifier, record in metadata.items()
+			if record
+		}
+
+	def _loadEchoCatalogMetadata(self) -> dict[int, dict[str, Any]]:
+		monster_info = self.loadJson('MonsterInfo.json')
+		if not isinstance(monster_info, list):
+			return {}
+
+		metadata: dict[int, dict[str, Any]] = {}
+		for entry in monster_info:
+			if not isinstance(entry, dict):
+				continue
+
+			identifier = entry.get('Id')
+			if isinstance(identifier, str):
+				try:
+					identifier = int(identifier)
+				except ValueError:
+					continue
+			if not isinstance(identifier, int):
+				continue
+
+			record = metadata.setdefault(identifier, {})
+			image_path = self._extractImagePath(entry.get('Icon'))
+			if image_path is not None and image_path.startswith('IconMonsterHead/') and 'image' not in record:
+				record['image'] = image_path
 
 		return {
 			identifier: record
@@ -806,6 +839,7 @@ class BaseDataUpdater:
 		self._afterUpdateCharacters(data)
 
 	def updateEcho(self) -> None:
+		echo_metadata = self._loadEchoCatalogMetadata()
 		data = self._updatePatternCategory(
 			compat_filename=None,
 			catalog_filename='echoes.json',
@@ -814,6 +848,11 @@ class BaseDataUpdater:
 			compat_key_builder=lambda text, match: self._normalizeText(text) if int(match.group(1)) < 350000000 else None,
 			canonical_key_builder=lambda text, match: self._normalizeText(text) if int(match.group(1)) < 350000000 else None,
 			normalized_builder=lambda text, _: self._normalizeText(text),
+			catalog_entry_builder=lambda identifier, text_key, _display_name, _match: {
+				'id': identifier,
+				'text_key': text_key,
+				**echo_metadata.get(identifier, {}),
+			},
 		)
 		self._removeLegacyCompatFile('echoes.json')
 		self._afterUpdateEchoes(data)

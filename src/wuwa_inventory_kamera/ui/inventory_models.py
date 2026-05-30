@@ -177,6 +177,11 @@ class MetadataResolver:
         )
         self._echoes_by_id.update(generated_echoes_by_id)
         self._echoes_by_key.update(generated_echoes_by_key)
+        self._echo_info_by_id, self._echo_info_by_key = self._build_generated_info_lookups(
+            'echoes.json',
+            language_code=language_code,
+            fields=('image',),
+        )
 
         achievement_mapping = scraping_data.getAchievementsID(language_code)
         self._achievements_by_id = self._build_name_lookup(achievement_mapping, prettify=False)
@@ -450,6 +455,24 @@ class MetadataResolver:
     def resolve_echo(self, echo_id: object) -> str:
         echo_key = str(echo_id)
         return self._echoes_by_id.get(echo_key) or self._echoes_by_key.get(echo_key) or self._fallback_name(echo_key, 'Echo')
+
+    def resolve_echo_display(self, echo_id: object, echo_key: object | None = None) -> tuple[str, str | None]:
+        refs: list[str] = []
+        if echo_key is not None:
+            refs.append(str(echo_key))
+        refs.append(str(echo_id))
+
+        for ref in refs:
+            info = self._echo_info_by_id.get(ref) or self._echo_info_by_key.get(ref)
+            if info:
+                return str(info.get('name', self.resolve_echo(echo_id))), self._coerce_image(info.get('image'))
+
+        for ref in refs:
+            name = self._echoes_by_id.get(ref) or self._echoes_by_key.get(ref)
+            if name:
+                return name, None
+
+        return self._fallback_name(str(echo_id), 'Echo'), None
 
     def resolve_achievement(self, achievement_id: object) -> str:
         achievement_key = str(achievement_id)
@@ -764,9 +787,11 @@ def _build_echo_rows(payload: list, resolver: MetadataResolver) -> tuple[Invento
         if substat_count:
             body_lines.append(substat_count)
 
+        echo_name, image_path = resolver.resolve_echo_display(echo_id, details.get('echo_key'))
+
         rows.append(
             InventoryRow(
-                title=resolver.resolve_echo(echo_id),
+                title=echo_name,
                 subtitle=(
                     f'Echo Key: {details.get("echo_key")}'
                     if details.get('echo_key')
@@ -774,6 +799,7 @@ def _build_echo_rows(payload: list, resolver: MetadataResolver) -> tuple[Invento
                 ),
                 body_lines=tuple(body_lines),
                 details_lines=_build_echo_details(echo_id, details, resolver),
+                image_path=image_path,
             )
         )
     return tuple(rows)

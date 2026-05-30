@@ -88,7 +88,30 @@ def _patch_metadata(monkeypatch) -> None:
     )
 
 
-def test_load_inventory_document_normalizes_echo_export() -> None:
+def test_load_inventory_document_normalizes_echo_export(monkeypatch) -> None:
+    monkeypatch.setattr(
+        inventory_models,
+        '_load_generated_catalog',
+        lambda filename: {
+            'bellbornegeochelone': {
+                'id': 310000010,
+                'text_key': 'MonsterInfo_310000010_Name',
+                'image': 'IconMonsterHead/T_IconMonsterHead_015_UI.png',
+            }
+        } if filename == 'echoes.json' else {},
+    )
+    monkeypatch.setattr(
+        inventory_models,
+        '_load_generated_locale',
+        lambda filename, _language_code: {
+            'bellbornegeochelone': {
+                'display_name': 'Bell Borne Geochelone',
+                'normalized': 'bellbornegeochelone',
+                'aliases': ['bellbornegeochelone'],
+            }
+        } if filename == 'echoes.json' else {},
+    )
+
     payload = [
         {
             '310000010': {
@@ -113,6 +136,7 @@ def test_load_inventory_document_normalizes_echo_export() -> None:
     row = document.sections[0].rows[0]
     assert row.title == 'Bell Borne Geochelone'
     assert row.subtitle == 'Echo ID: 310000010'
+    assert row.image_path == 'IconMonsterHead/T_IconMonsterHead_015_UI.png'
     assert 'Lv. 25 | Tune 5 | Rarity 5' in row.body_lines
     assert 'Sonata: Moonlit Clouds' in row.body_lines
     assert 'Cost: 4' in row.body_lines
@@ -505,6 +529,7 @@ def test_metadata_resolver_prefers_generated_localized_metadata(tmp_path, monkey
     item_name, item_image = resolver.resolve_item(2)
     weapon_name, weapon_image, rarity = resolver.resolve_weapon(21010074)
     character_name, character_image, character_rarity = resolver.resolve_character_display(1105)
+    echo_name, echo_image = resolver.resolve_echo_display(310000010)
 
     assert item_name == 'シェルクレジット'
     assert item_image == 'IconA/shell.png'
@@ -514,6 +539,8 @@ def test_metadata_resolver_prefers_generated_localized_metadata(tmp_path, monkey
     assert character_name == 'ショアキーパー'
     assert character_image == 'IconRoleHead80/shorekeeper.png'
     assert character_rarity == 5
+    assert echo_name == '鐘鳴の亀守'
+    assert echo_image is None
     assert resolver.resolve_item('shellcredit')[0] == 'シェルクレジット'
     assert resolver.resolve_weapon('emeraldofgenesis')[0] == '翠緑の残光'
     assert resolver.resolve_character(1105) == 'ショアキーパー'

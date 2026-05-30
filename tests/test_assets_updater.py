@@ -64,7 +64,7 @@ def test_load_game_asset_manifest_filters_invalid_paths(tmp_path) -> None:
     )
 
 
-def test_load_game_asset_manifest_includes_character_runtime_catalogs_only(tmp_path) -> None:
+def test_load_game_asset_manifest_includes_character_and_echo_runtime_catalogs(tmp_path) -> None:
     data_dir = tmp_path / 'data'
     _write_json(
         data_dir / 'catalog' / 'items.json',
@@ -82,7 +82,7 @@ def test_load_game_asset_manifest_includes_character_runtime_catalogs_only(tmp_p
     _write_json(
         data_dir / 'catalog' / 'echoes.json',
         {
-            'junrock': {'id': 310000010, 'image': 'Echoes/T_Junrock_UI.png'},
+            'junrock': {'id': 310000010, 'image': 'IconMonsterHead/T_IconMonsterHead_015_UI.png'},
         },
     )
     _write_json(
@@ -94,6 +94,7 @@ def test_load_game_asset_manifest_includes_character_runtime_catalogs_only(tmp_p
 
     assert assets_module._load_game_asset_manifest(data_dir) == (
         'IconA/T_IconA_ShellCredit_UI.png',
+        'IconMonsterHead/T_IconMonsterHead_015_UI.png',
         'IconRoleHead80/T_IconRoleHead80_14_UI.png',
     )
 
@@ -155,11 +156,17 @@ def test_base_assets_updater_collect_status_reports_existing_and_missing(tmp_pat
     )
     _write_json(tmp_path / 'data' / 'catalog' / 'weapons.json', {})
     _write_json(
+        tmp_path / 'data' / 'catalog' / 'echoes.json',
+        {'junrock': {'id': 310000010, 'image': 'IconMonsterHead/T_IconMonsterHead_015_UI.png'}},
+    )
+    _write_json(
         tmp_path / 'data' / 'catalog' / 'sonatas.json',
         {'moonlitclouds': {'id': 12, 'text_key': 'PhantomFetter_12_Name'}},
     )
     (tmp_path / 'assets' / 'IconA').mkdir(parents=True, exist_ok=True)
     (tmp_path / 'assets' / 'IconA' / 'T_IconA_ShellCredit_UI.png').write_bytes(b'present')
+    (tmp_path / 'assets' / 'IconMonsterHead').mkdir(parents=True, exist_ok=True)
+    (tmp_path / 'assets' / 'IconMonsterHead' / 'T_IconMonsterHead_015_UI.png').write_bytes(b'present')
 
     monkeypatch.setattr(assets_module, 'basePATH', tmp_path)
     monkeypatch.setattr(
@@ -176,7 +183,7 @@ def test_base_assets_updater_collect_status_reports_existing_and_missing(tmp_pat
     statuses = assets_module.BaseAssetsUpdater().collect_status()
 
     assert [(status.family, status.total, status.existing, status.missing) for status in statuses] == [
-        ('game-icons', 1, 1, 0),
+        ('game-icons', 2, 2, 0),
         ('sonata-icons', 1, 0, 1),
     ]
 
@@ -193,6 +200,12 @@ def test_base_assets_updater_downloads_game_and_sonata_assets(tmp_path, monkeypa
         tmp_path / 'data' / 'catalog' / 'characters.json',
         {
             'sanhua': {'id': 1102, 'image': 'IconRoleHead80/T_IconRoleHead80_14_UI.png'},
+        },
+    )
+    _write_json(
+        tmp_path / 'data' / 'catalog' / 'echoes.json',
+        {
+            'junrock': {'id': 310000010, 'image': 'IconMonsterHead/T_IconMonsterHead_015_UI.png'},
         },
     )
     _write_json(
@@ -215,6 +228,7 @@ def test_base_assets_updater_downloads_game_and_sonata_assets(tmp_path, monkeypa
 
     payloads = {
         assets_module._build_game_asset_download_url('IconA/T_IconA_ShellCredit_UI.png'): b'game-asset',
+        assets_module._build_game_asset_download_url('IconMonsterHead/T_IconMonsterHead_015_UI.png'): b'echo-asset',
         assets_module._build_game_asset_download_url('IconRoleHead80/T_IconRoleHead80_14_UI.png'): b'character-asset',
         'https://example.test/Icon_moonlitclouds.png': b'sonata-asset',
     }
@@ -229,11 +243,13 @@ def test_base_assets_updater_downloads_game_and_sonata_assets(tmp_path, monkeypa
     updater.run()
 
     assert (tmp_path / 'assets' / 'IconA' / 'T_IconA_ShellCredit_UI.png').read_bytes() == b'game-asset'
+    assert (tmp_path / 'assets' / 'IconMonsterHead' / 'T_IconMonsterHead_015_UI.png').read_bytes() == b'echo-asset'
     assert (tmp_path / 'assets' / 'IconRoleHead80' / 'T_IconRoleHead80_14_UI.png').read_bytes() == b'character-asset'
     assert (tmp_path / 'assets' / 'IconS' / 'moonlitclouds.png').read_bytes() == b'sonata-asset'
     assert updater.finished is True
     assert [label for label, _percent in updater.progress] == [
         'game-icons: IconA/T_IconA_ShellCredit_UI.png',
+        'game-icons: IconMonsterHead/T_IconMonsterHead_015_UI.png',
         'game-icons: IconRoleHead80/T_IconRoleHead80_14_UI.png',
         'sonata-icons: IconS/moonlitclouds.png',
     ]

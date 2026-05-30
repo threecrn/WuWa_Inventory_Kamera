@@ -40,7 +40,7 @@ _GAME_ASSET_RAW_ROOT = (
     f'{_GAME_ASSET_REPO_NAME}/{_GAME_ASSET_REPO_REF}/'
     f'{_GAME_ASSET_UI_ROOT}'
 )
-_GAME_ICON_RUNTIME_CATALOGS = ('items.json', 'weapons.json', 'characters.json')
+_GAME_ICON_RUNTIME_CATALOGS = ('items.json', 'weapons.json', 'characters.json', 'echoes.json')
 _ASSET_STATE_FILENAME = '.asset_state.json'
 
 # ---------------------------------------------------------------------------

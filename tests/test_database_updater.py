@@ -69,6 +69,13 @@ def test_update_files_uses_sha_state_for_normalized_multitext(tmp_path: Path, mo
 				'RoleHeadIcon': '/Game/Aki/UI/UIResources/Common/Image/IconRoleHead80/T_IconRoleHead80_14_UI.T_IconRoleHead80_14_UI',
 			},
 		],
+		'https://example.test/monsters': [
+			{
+				'Id': 310000010,
+				'Name': 'MonsterInfo_310000010_Name',
+				'Icon': '/Game/Aki/UI/UIResources/Common/Image/IconMonsterHead/T_IconMonsterHead_015_UI.T_IconMonsterHead_015_UI',
+			},
+		],
 	}
 
 	def fake_fetch(self, url: str):
@@ -81,6 +88,8 @@ def test_update_files_uses_sha_state_for_normalized_multitext(tmp_path: Path, mo
 			return {'sha': 'sha-weapons', 'size': 200, 'download_url': 'https://example.test/weapons'}
 		if 'BinData/role/roleinfo.json' in url:
 			return {'sha': 'sha-roles', 'size': 200, 'download_url': 'https://example.test/roles'}
+		if 'BinData/monster/monsterinfo.json' in url:
+			return {'sha': 'sha-monsters', 'size': 200, 'download_url': 'https://example.test/monsters'}
 		raise AssertionError(f'unexpected url: {url}')
 
 	def fake_urlretrieve(url: str, filename, reporthook=None):
@@ -101,13 +110,16 @@ def test_update_files_uses_sha_state_for_normalized_multitext(tmp_path: Path, mo
 		'https://example.test/items',
 		'https://example.test/weapons',
 		'https://example.test/roles',
+		'https://example.test/monsters',
 	]
 	assert any('Textmaps/en/multi_text/MultiText.json' in url for url in requested_urls)
 	assert any('BinData/role/roleinfo.json' in url for url in requested_urls)
+	assert any('BinData/monster/monsterinfo.json' in url for url in requested_urls)
 	assert _raw_path(tmp_path, 'en', 'MultiText.json').is_file()
 	assert _raw_path(tmp_path, 'en', 'ItemInfo.json').is_file()
 	assert _raw_path(tmp_path, 'en', 'WeaponConf.json').is_file()
 	assert _raw_path(tmp_path, 'en', 'RoleInfo.json').is_file()
+	assert _raw_path(tmp_path, 'en', 'MonsterInfo.json').is_file()
 	assert _raw_path(tmp_path, 'en', '.updater_state.json').is_file()
 	assert updater.loadJson('MultiText.json') == {'RoleInfo_1_Name': 'Rover'}
 
@@ -119,6 +131,7 @@ def test_update_files_uses_sha_state_for_normalized_multitext(tmp_path: Path, mo
 		'https://example.test/items',
 		'https://example.test/weapons',
 		'https://example.test/roles',
+		'https://example.test/monsters',
 	]
 
 
@@ -140,6 +153,10 @@ def test_init_migrates_legacy_raw_files_into_data_raw(tmp_path: Path, monkeypatc
 		tmp_path / 'data' / 'en' / 'RoleInfo.json',
 		[{'Id': 1, 'Name': 'RoleInfo_1_Name', 'RoleHeadIcon': 'Icon'}],
 	)
+	_write_json(
+		tmp_path / 'data' / 'en' / 'MonsterInfo.json',
+		[{'Id': 310000010, 'Name': 'MonsterInfo_310000010_Name', 'Icon': 'Icon'}],
+	)
 	_write_json(tmp_path / 'data' / 'en' / '.updater_state.json', {'source': 'dimbreath', 'files': {}})
 
 	updater = BaseDataUpdater(lang='English')
@@ -149,11 +166,13 @@ def test_init_migrates_legacy_raw_files_into_data_raw(tmp_path: Path, monkeypatc
 	assert _raw_path(tmp_path, 'en', 'ItemInfo.json').is_file()
 	assert _raw_path(tmp_path, 'en', 'WeaponConf.json').is_file()
 	assert _raw_path(tmp_path, 'en', 'RoleInfo.json').is_file()
+	assert _raw_path(tmp_path, 'en', 'MonsterInfo.json').is_file()
 	assert _raw_path(tmp_path, 'en', '.updater_state.json').is_file()
 	assert not (tmp_path / 'data' / 'en' / 'MultiText.json').exists()
 	assert not (tmp_path / 'data' / 'en' / 'ItemInfo.json').exists()
 	assert not (tmp_path / 'data' / 'en' / 'WeaponConf.json').exists()
 	assert not (tmp_path / 'data' / 'en' / 'RoleInfo.json').exists()
+	assert not (tmp_path / 'data' / 'en' / 'MonsterInfo.json').exists()
 	assert not (tmp_path / 'data' / 'en' / '.updater_state.json').exists()
 
 
@@ -315,6 +334,47 @@ def test_non_english_echo_update_uses_catalog_keys_for_locale_outputs(tmp_path: 
 		},
 	}
 	assert ja_lookup == {'先鋒岩塊': 'vanguardjunrock'}
+
+
+def test_update_echo_writes_catalog_image_from_monsterinfo(tmp_path: Path, monkeypatch) -> None:
+	_prepare_workspace(tmp_path, monkeypatch)
+	_write_json(
+		tmp_path / 'data' / 'en' / 'MultiText.json',
+		{'MonsterInfo_310000010_Name': 'Vanguard Junrock'},
+	)
+	_write_json(
+		tmp_path / 'data' / 'en' / 'MonsterInfo.json',
+		[
+			{
+				'Id': 310000010,
+				'Name': 'MonsterInfo_310000010_Name',
+				'Icon': '/Game/Aki/UI/UIResources/Common/Image/IconMonsterHead/T_IconMonsterHead_015_UI.T_IconMonsterHead_015_UI',
+			},
+		],
+	)
+
+	updater = BaseDataUpdater(lang='English')
+	updater.updateEcho()
+
+	echo_catalog = json.loads((tmp_path / 'data' / 'catalog' / 'echoes.json').read_text(encoding='utf-8'))
+	echo_locale = json.loads((tmp_path / 'data' / 'locale' / 'en' / 'echoes.json').read_text(encoding='utf-8'))
+	echo_lookup = json.loads((tmp_path / 'data' / 'locale' / 'en' / 'lookup' / 'echoes.json').read_text(encoding='utf-8'))
+
+	assert echo_catalog == {
+		'vanguardjunrock': {
+			'id': 310000010,
+			'text_key': 'MonsterInfo_310000010_Name',
+			'image': 'IconMonsterHead/T_IconMonsterHead_015_UI.png',
+		},
+	}
+	assert echo_locale == {
+		'vanguardjunrock': {
+			'display_name': 'Vanguard Junrock',
+			'normalized': 'vanguardjunrock',
+			'aliases': ['vanguardjunrock'],
+		},
+	}
+	assert echo_lookup == {'vanguardjunrock': 'vanguardjunrock'}
 
 
 def test_update_characters_writes_catalog_image_and_rarity_from_roleinfo(tmp_path: Path, monkeypatch) -> None:
