@@ -1338,6 +1338,31 @@ class InventoryInterface(ScrollArea):
         label.setWordWrap(True)
         return label
 
+    def __addDetailsStatRow(self, stat_name: str, stat_value: str, *, bold_value: bool = False):
+        rowWidget = QWidget(self._detailsCard)
+        rowLayout = QGridLayout(rowWidget)
+        rowLayout.setContentsMargins(0, 0, 0, 0)
+        rowLayout.setHorizontalSpacing(10)
+        rowLayout.setVerticalSpacing(0)
+
+        nameLabel = BodyLabel(stat_name, rowWidget)
+        nameLabel.setWordWrap(True)
+        nameLabel.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        nameLabel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+        valueLabel = StrongBodyLabel(stat_value, rowWidget) if bold_value else BodyLabel(stat_value, rowWidget)
+        valueLabel.setWordWrap(False)
+        valueLabel.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+        valueLabel.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        valueLabel.setMinimumWidth(72)
+        valueLabel.setMaximumWidth(84)
+
+        rowLayout.addWidget(nameLabel, 0, 0)
+        rowLayout.addWidget(valueLabel, 0, 1)
+        rowLayout.setColumnStretch(0, 1)
+        rowLayout.setColumnStretch(1, 0)
+        return rowWidget
+
     def __parseEchoStatLine(self, line: str) -> tuple[str, str] | None:
         if ': ' not in line:
             return None
@@ -1406,12 +1431,10 @@ class InventoryInterface(ScrollArea):
             self._detailsLayout.addWidget(self.__addDetailsSectionTitle('Main Stat'))
             for stat_name, stat_value in main_rows:
                 self._detailsLayout.addWidget(
-                    self.__addDetailsKeyValueRow(
+                    self.__addDetailsStatRow(
                         stat_name,
                         self.__formatStatValue(stat_value),
                         bold_value=True,
-                        label_stretch=5,
-                        value_stretch=1,
                     )
                 )
 
@@ -1419,11 +1442,9 @@ class InventoryInterface(ScrollArea):
             self._detailsLayout.addWidget(self.__addDetailsSectionTitle('Substats'))
             for stat_name, stat_value in sub_rows:
                 self._detailsLayout.addWidget(
-                    self.__addDetailsKeyValueRow(
+                    self.__addDetailsStatRow(
                         stat_name,
                         self.__formatStatValue(stat_value),
-                        label_stretch=5,
-                        value_stretch=1,
                     )
                 )
 
