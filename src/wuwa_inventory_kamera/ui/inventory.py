@@ -1346,13 +1346,13 @@ class InventoryInterface(ScrollArea):
         rowLayout.setVerticalSpacing(0)
 
         nameLabel = BodyLabel(stat_name, rowWidget)
-        nameLabel.setWordWrap(True)
-        nameLabel.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        nameLabel.setWordWrap(False)
+        nameLabel.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         nameLabel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         valueLabel = StrongBodyLabel(stat_value, rowWidget) if bold_value else BodyLabel(stat_value, rowWidget)
         valueLabel.setWordWrap(False)
-        valueLabel.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+        valueLabel.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         valueLabel.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
         valueLabel.setMinimumWidth(72)
         valueLabel.setMaximumWidth(84)
