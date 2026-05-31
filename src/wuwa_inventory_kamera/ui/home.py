@@ -16,7 +16,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal, QThread
 from PySide6.QtWidgets import (
     QHBoxLayout, QVBoxLayout, QFrame,
-    QFileDialog, QWidget,
+    QFileDialog, QMessageBox, QWidget,
 )
 from qfluentwidgets import FluentIcon as FIF
 from qfluentwidgets import (
@@ -146,15 +146,6 @@ class HomeInterface(QWidget):
     def _initViewerGuidance(self) -> None:
         container = QVBoxLayout(self.rightWidget)
         container.setContentsMargins(0, 0, 0, 0)
-
-        guidance = BodyLabel(
-            'Scan results are read-only.\n\n'
-            'Use the Inventory tab to open exported JSON files and inspect the scan output.\n\n'
-            'Manual inventory correction has been removed from the app scope.'
-        )
-        guidance.setWordWrap(True)
-
-        container.addWidget(guidance)
         container.addStretch(1)
 
     # ------------------------------------------------------------------
@@ -185,7 +176,7 @@ class HomeInterface(QWidget):
 # ---------------------------------------------------------------------------
 
 class LControlPanel(QFrame):
-    """Scanner checkboxes + Start / Export / Reprocess buttons."""
+    """Scanner checkboxes + Scan / Export buttons."""
 
     signalNotifier = Signal(str, str, str)
 
@@ -218,10 +209,7 @@ class LControlPanel(QFrame):
         self.openExportFolder = PushButton('Export Folder', icon=FIF.FOLDER, parent=self)
         self.openExportFolder.clicked.connect(self.openFolder)
 
-        self.reprocessSessionBtn = PushButton('Reprocess Session', icon=FIF.SYNC, parent=self)
-        self.reprocessSessionBtn.clicked.connect(self.runReprocessSession)
-
-        self.startScanning = PrimaryPushButton(FIF.PLAY, 'Start Scanning', self)
+        self.startScanning = PrimaryPushButton(FIF.PLAY, 'Scan', self)
         self.startScanning.clicked.connect(self.runScraper)
 
         self.panelLayout = QVBoxLayout(self)
@@ -248,7 +236,6 @@ class LControlPanel(QFrame):
         self.panelLayout.addWidget(self.processProgressLabel)
         self.panelLayout.addWidget(self.processProgressBar)
         self.panelLayout.addWidget(self.openExportFolder)
-        self.panelLayout.addWidget(self.reprocessSessionBtn)
         self.panelLayout.addWidget(self.startScanning)
 
         self.__setInitialValues()
@@ -346,6 +333,20 @@ class LControlPanel(QFrame):
                 'warning', 'Scan in progress',
                 'A scan is already running. Press ENTER in-game to cancel it.',
             )
+            return
+
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle('Start Scan')
+        dialog.setText('Ready to start scanning?')
+        dialog.setInformativeText(
+            "To cancel the scan, press 'ENTER'\n"
+            'Do not move the mouse during the scan.'
+        )
+        start_button = dialog.addButton('Start', QMessageBox.ButtonRole.AcceptRole)
+        dialog.addButton(QMessageBox.StandardButton.Cancel)
+        dialog.setDefaultButton(start_button)
+        dialog.exec()
+        if dialog.clickedButton() is not start_button:
             return
 
         self.startScanning.setEnabled(False)
