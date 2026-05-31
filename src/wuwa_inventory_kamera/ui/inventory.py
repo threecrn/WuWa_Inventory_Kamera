@@ -1468,6 +1468,77 @@ class InventoryInterface(ScrollArea):
             equippedLabel.setWordWrap(True)
             self._detailsLayout.addWidget(equippedLabel)
 
+    def __parseCharacterSkillLine(self, line: str) -> tuple[str, str] | None:
+        if not line.startswith('Skill ') or ': ' not in line:
+            return None
+        label, value = line.split(': ', 1)
+        skill_name = label[6:].strip()
+        skill_level = value.strip()
+        if not skill_name or not skill_level:
+            return None
+        return skill_name, skill_level
+
+    def __characterSkillRows(self, row: InventoryRow) -> tuple[tuple[str, str], ...]:
+        rows: list[tuple[str, str]] = []
+        for line in row.details_lines:
+            parsed = self.__parseCharacterSkillLine(line)
+            if parsed is not None:
+                rows.append(parsed)
+        return tuple(rows)
+
+    def __characterWeaponName(self, row: InventoryRow) -> str:
+        for line in row.details_lines:
+            if line.startswith('Weapon: '):
+                return line.split(': ', 1)[1].strip()
+        return ''
+
+    def __renderCharacterDetailsPane(self, row: InventoryRow):
+        character_display = row.character_display
+        if character_display is None:
+            return
+
+        nameLabel = StrongBodyLabel(row.title, self._detailsCard)
+        nameLabel.setWordWrap(True)
+        self._detailsLayout.addWidget(nameLabel)
+
+        level_text = ''
+        if character_display.level is not None and character_display.max_level is not None:
+            level_text = f'Level {character_display.level}/{character_display.max_level}'
+        elif character_display.level is not None:
+            level_text = f'Level {character_display.level}'
+        elif character_display.max_level is not None:
+            level_text = f'Level ?/{character_display.max_level}'
+
+        chain_text = (
+            f'Chain {character_display.chain}'
+            if character_display.chain is not None
+            else ''
+        )
+        summary_text = '  '.join(part for part in (level_text, chain_text) if part)
+        if summary_text:
+            summaryLabel = BodyLabel(summary_text, self._detailsCard)
+            summaryLabel.setWordWrap(True)
+            self._detailsLayout.addWidget(summaryLabel)
+
+        skill_rows = self.__characterSkillRows(row)
+        self._detailsLayout.addWidget(self.__addDetailsSectionTitle('Skill levels'))
+        if skill_rows:
+            for skill_name, skill_level in skill_rows:
+                self._detailsLayout.addWidget(
+                    self.__addDetailsStatRow(skill_name, skill_level)
+                )
+        else:
+            noSkillsLabel = BodyLabel('No skill data available.', self._detailsCard)
+            noSkillsLabel.setWordWrap(True)
+            self._detailsLayout.addWidget(noSkillsLabel)
+
+        weapon_name = self.__characterWeaponName(row)
+        if weapon_name:
+            self._detailsLayout.addWidget(self.__addDetailsDivider())
+            weaponLabel = BodyLabel(f'Equipped: {weapon_name}', self._detailsCard)
+            weaponLabel.setWordWrap(True)
+            self._detailsLayout.addWidget(weaponLabel)
+
     def __scheduleDetailsPaneHeightSync(self):
         if self._detailsPaneHeightSyncPending:
             return
@@ -1504,6 +1575,8 @@ class InventoryInterface(ScrollArea):
 
         if row.echo_display is not None:
             self.__renderEchoDetailsPane(row)
+        elif row.character_display is not None:
+            self.__renderCharacterDetailsPane(row)
         else:
             for line in row.details_lines or (row.subtitle, *row.body_lines):
                 if not line:

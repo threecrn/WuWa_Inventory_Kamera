@@ -406,6 +406,61 @@ def test_echo_details_pane_renders_main_and_substat_tables(qapp: QApplication) -
     qapp.processEvents()
 
 
+def test_character_details_pane_renders_structured_layout(qapp: QApplication) -> None:
+    interface = InventoryInterface()
+    set_document = cast(Any, getattr(interface, '_InventoryInterface__setDocument'))
+    set_document(
+        InventoryDocument(
+            kind='test',
+            title='Characters',
+            sections=(
+                InventorySection(
+                    title='Characters',
+                    rows=(
+                        InventoryRow(
+                            title='Cartethyia',
+                            subtitle='Character ID: 1508',
+                            display_kind='character_tile',
+                            details_lines=(
+                                'Character ID: 1508',
+                                'Skill normal: 10',
+                                'Skill skill: 8',
+                                'Skill liberation: 9',
+                                'Weapon: Emerald of Genesis',
+                            ),
+                            character_display=CharacterDisplayData(
+                                level=90,
+                                max_level=90,
+                                chain=2,
+                                rarity=5,
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+    )
+    interface.resize(1400, 800)
+    interface.show()
+    qapp.processEvents()
+
+    texts = _details_card_label_texts(interface)
+    assert 'Cartethyia' in texts
+    assert 'Level 90/90  Chain 2' in texts
+    assert 'Skill levels' in texts
+    assert 'normal' in texts
+    assert '10' in texts
+    assert 'skill' in texts
+    assert '8' in texts
+    assert 'liberation' in texts
+    assert '9' in texts
+    assert 'Equipped: Emerald of Genesis' in texts
+
+    interface.hide()
+    interface.deleteLater()
+    qapp.processEvents()
+
+
 def test_six_column_tile_cards_share_the_same_width() -> None:
     assert TileCard.TILE_WIDTH == WeaponTileCard.TILE_WIDTH == CharacterTileCard.TILE_WIDTH == 144
 
