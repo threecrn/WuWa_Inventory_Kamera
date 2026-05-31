@@ -225,6 +225,9 @@ class MetadataResolver:
             for canonical_key, display_name in self._sonatas_by_key.items()
             if display_name
         }
+        self._echo_stats_by_key, self._echo_stats_by_normalized = self._build_generated_stats_lookup(
+            language_code=language_code,
+        )
 
     @staticmethod
     def _build_info_lookup(mapping: dict) -> dict[str, dict]:
@@ -456,6 +459,36 @@ class MetadataResolver:
             result[canonical_key] = display_name
         return result
 
+    @classmethod
+    def _build_generated_stats_lookup(cls, *, language_code: str) -> tuple[dict[str, str], dict[str, str]]:
+        locale = _load_generated_locale('stats.json', language_code)
+        if not locale:
+            return {}, {}
+
+        by_key: dict[str, str] = {}
+        by_normalized: dict[str, str] = {}
+        for canonical_key, record in locale.items():
+            if not isinstance(canonical_key, str) or not canonical_key:
+                continue
+
+            display_name = cls._extract_display_text(record)
+            if not display_name:
+                continue
+
+            by_key[canonical_key] = display_name
+            by_normalized[cls._normalize_lookup_text(canonical_key)] = display_name
+
+            if isinstance(record, dict):
+                normalized = record.get('normalized')
+                if isinstance(normalized, str) and normalized:
+                    by_normalized[cls._normalize_lookup_text(normalized)] = display_name
+                aliases = record.get('aliases')
+                if isinstance(aliases, list):
+                    for alias in aliases:
+                        if isinstance(alias, str) and alias:
+                            by_normalized[cls._normalize_lookup_text(alias)] = display_name
+        return by_key, by_normalized
+
     @staticmethod
     def _prettify_name(raw_name: object) -> str:
         text = str(raw_name).replace('_', ' ').replace('-', ' ')
@@ -566,6 +599,22 @@ class MetadataResolver:
         if canonical_key:
             return f'IconS/{normalized}.png'
         return f'IconS/{normalized}.png'
+
+    def resolve_echo_stat(self, stat_key: object) -> str:
+        stat_ref = str(stat_key).strip()
+        if not stat_ref:
+            return ''
+
+        display_name = self._echo_stats_by_key.get(stat_ref)
+        if display_name:
+            return display_name
+
+        normalized = self._normalize_lookup_text(stat_ref)
+        display_name = self._echo_stats_by_normalized.get(normalized)
+        if display_name:
+            return display_name
+
+        return stat_ref
 
     @staticmethod
     def _coerce_image(image_path: object) -> str | None:
@@ -876,11 +925,7 @@ def _build_echo_rows(payload: list, resolver: MetadataResolver) -> tuple[Invento
         rows.append(
             InventoryRow(
                 title=echo_name,
-                subtitle=(
-                    f'Echo Key: {details.get("echo_key")}'
-                    if details.get('echo_key')
-                    else f'Echo ID: {echo_id}'
-                ),
+                subtitle=f'Echo ID: {echo_id}',
                 body_lines=tuple(body_lines),
                 details_lines=_build_echo_details(echo_id, details, resolver),
                 image_path=image_path,
@@ -1091,10 +1136,6 @@ def _build_shell_rows(payload: dict, resolver: MetadataResolver) -> tuple[Invent
 
 def _build_echo_details(echo_id: object, details: dict, resolver: MetadataResolver) -> tuple[str, ...]:
     lines: list[str] = []
-
-    echo_key = details.get('echo_key')
-    if echo_key:
-        lines.append(f'Echo Key: {echo_key}')
     lines.append(f'Echo ID: {echo_id}')
 
     for key, label in (
@@ -1121,10 +1162,10 @@ def _build_echo_details(echo_id: object, details: dict, resolver: MetadataResolv
 
     stats = details.get('stats')
     for stat_name, stat_value in _iter_echo_stat_items(stats, 'main'):
-        lines.append(f'Main Stat: {stat_name} {stat_value}')
+        lines.append(f'Main Stat: {resolver.resolve_echo_stat(stat_name)} {stat_value}')
 
     for stat_name, stat_value in _iter_echo_stat_items(stats, 'sub'):
-        lines.append(f'Substat: {stat_name} {stat_value}')
+        lines.append(f'Substat: {resolver.resolve_echo_stat(stat_name)} {stat_value}')
 
     return tuple(lines)
 

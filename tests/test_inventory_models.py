@@ -345,7 +345,7 @@ def test_load_inventory_document_normalizes_keyed_echo_export() -> None:
 
     row = document.sections[0].rows[0]
     assert row.title == 'Bell Borne Geochelone'
-    assert row.subtitle == 'Echo Key: bellbornegeochelone'
+    assert row.subtitle == 'Echo ID: 310000010'
     assert row.display_kind == 'echo_tile'
     assert row.echo_display == inventory_models.EchoDisplayData(
         level=25,
@@ -358,8 +358,44 @@ def test_load_inventory_document_normalizes_keyed_echo_export() -> None:
     )
     assert 'Sonata: Moonlitclouds' in row.body_lines
     assert 'Equipped: Shorekeeper' in row.body_lines
-    assert 'Echo Key: bellbornegeochelone' in row.details_lines
+    assert 'Echo ID: 310000010' in row.details_lines
     assert 'Sonata Key: moonlitclouds' in row.details_lines
+
+
+def test_load_inventory_document_localizes_echo_stat_labels(monkeypatch) -> None:
+    monkeypatch.setattr(
+        inventory_models,
+        '_load_generated_locale',
+        lambda filename, _language_code: {
+            'cr': {
+                'display_name': 'Crit. Rate',
+                'normalized': 'critrate',
+                'aliases': ['critrate'],
+            },
+            'basicAttack': {
+                'display_name': 'Basic Attack DMG Bonus',
+                'normalized': 'basicattackdmgbonus',
+                'aliases': ['basicattackdmgbonus'],
+            },
+        } if filename == 'stats.json' else {},
+    )
+
+    payload = [
+        {
+            '310000010': {
+                'stats': {
+                    'main': {'cr': '22.0'},
+                    'sub': {'basicattackdmgbonus': '7.9'},
+                },
+            }
+        }
+    ]
+
+    document = inventory_models.load_inventory_document('echoes_wuwainventorykamera.json', payload)
+
+    row = document.sections[0].rows[0]
+    assert 'Main Stat: Crit. Rate 22.0' in row.details_lines
+    assert 'Substat: Basic Attack DMG Bonus 7.9' in row.details_lines
 
 
 def test_resolve_sonata_icon_path_normalizes_apostrophes(monkeypatch) -> None:

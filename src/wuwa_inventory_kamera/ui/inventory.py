@@ -1325,15 +1325,42 @@ class InventoryInterface(ScrollArea):
         label.setWordWrap(True)
         return label
 
-    def __echoStatRows(self, row: InventoryRow) -> tuple[tuple[str, str], ...]:
-        stat_rows: list[tuple[str, str]] = []
+    def __parseEchoStatLine(self, line: str) -> tuple[str, str] | None:
+        if ': ' not in line:
+            return None
+        _label, payload = line.split(': ', 1)
+        payload = payload.strip()
+        if not payload or ' ' not in payload:
+            return None
+
+        stat_name, stat_value = payload.rsplit(' ', 1)
+        stat_name = stat_name.strip()
+        stat_value = stat_value.strip()
+        if not stat_name or not stat_value:
+            return None
+        return stat_name, stat_value
+
+    def __echoStatRows(self, row: InventoryRow) -> tuple[tuple[tuple[str, str], ...], tuple[tuple[str, str], ...]]:
+        main_rows: list[tuple[str, str]] = []
+        sub_rows: list[tuple[str, str]] = []
         for line in row.details_lines:
-            if ': ' not in line:
+            if line.startswith('Main Stat: '):
+                parsed = self.__parseEchoStatLine(line)
+                if parsed is not None:
+                    main_rows.append(parsed)
                 continue
-            label, value = line.split(': ', 1)
-            if label in {'Main Stat', 'Substat'}:
-                stat_rows.append((label, value))
-        return tuple(stat_rows)
+            if line.startswith('Substat: '):
+                parsed = self.__parseEchoStatLine(line)
+                if parsed is not None:
+                    sub_rows.append(parsed)
+        return tuple(main_rows), tuple(sub_rows)
+
+    @staticmethod
+    def __formatStatValue(value_text: str) -> str:
+        normalized = value_text.strip()
+        if not normalized:
+            return normalized
+        return f"{normalized.rstrip('%')}%"
 
     def __renderEchoDetailsPane(self, row: InventoryRow):
         echo_display = row.echo_display
@@ -1366,16 +1393,27 @@ class InventoryInterface(ScrollArea):
             metaLayout.addStretch(1)
             self._detailsLayout.addWidget(metaRow)
 
-        if echo_display.main_stat:
-            self._detailsLayout.addWidget(self.__addDetailsKeyValueRow('Main Stat', echo_display.main_stat, bold_value=True))
+        main_rows, sub_rows = self.__echoStatRows(row)
+        if main_rows:
+            self._detailsLayout.addWidget(self.__addDetailsSectionTitle('Main Stat'))
+            for stat_name, stat_value in main_rows:
+                self._detailsLayout.addWidget(
+                    self.__addDetailsKeyValueRow(
+                        stat_name,
+                        self.__formatStatValue(stat_value),
+                        bold_value=True,
+                    )
+                )
 
-        stat_rows = self.__echoStatRows(row)
-        if stat_rows:
-            self._detailsLayout.addWidget(self.__addDetailsSectionTitle('Stats'))
-            for label_text, value_text in stat_rows:
-                if label_text == 'Main Stat':
-                    continue
-                self._detailsLayout.addWidget(self.__addDetailsKeyValueRow(label_text, value_text))
+        if sub_rows:
+            self._detailsLayout.addWidget(self.__addDetailsSectionTitle('Substats'))
+            for stat_name, stat_value in sub_rows:
+                self._detailsLayout.addWidget(
+                    self.__addDetailsKeyValueRow(
+                        stat_name,
+                        self.__formatStatValue(stat_value),
+                    )
+                )
 
         self._detailsLayout.addWidget(self.__addDetailsSectionTitle('Echo Skill'))
         if echo_display.sonata_name:

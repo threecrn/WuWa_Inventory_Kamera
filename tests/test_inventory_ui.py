@@ -178,6 +178,18 @@ def _layout_texts(layout) -> list[str]:
     return texts
 
 
+def _details_card_label_texts(interface: InventoryInterface) -> list[str]:
+    assert interface._detailsCard is not None
+    texts: list[str] = []
+    widgets = list(interface._detailsCard.findChildren(inventory_module.BodyLabel))
+    widgets.extend(interface._detailsCard.findChildren(inventory_module.StrongBodyLabel))
+    for widget in widgets:
+        text = widget.text().strip()
+        if text:
+            texts.append(text)
+    return texts
+
+
 def _wait_until(qapp: QApplication, predicate, *, timeout: float = 2.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -333,6 +345,62 @@ def test_details_pane_expands_for_wrapped_details_after_selection(qapp: QApplica
         widget = item.widget() if item is not None else None
         assert widget is not None
         assert widget.height() > 0
+
+    interface.hide()
+    interface.deleteLater()
+    qapp.processEvents()
+
+
+def test_echo_details_pane_renders_main_and_substat_tables(qapp: QApplication) -> None:
+    interface = InventoryInterface()
+    set_document = cast(Any, getattr(interface, '_InventoryInterface__setDocument'))
+    set_document(
+        InventoryDocument(
+            kind='test',
+            title='Echoes',
+            sections=(
+                InventorySection(
+                    title='Echoes',
+                    rows=(
+                        InventoryRow(
+                            title='Bell Borne Geochelone',
+                            subtitle='Echo ID: 310000010',
+                            display_kind='echo_tile',
+                            details_lines=(
+                                'Echo ID: 310000010',
+                                'Main Stat: Crit. Rate 22.0',
+                                'Main Stat: ATK 150',
+                                'Substat: Basic Attack DMG Bonus 7.9',
+                                'Substat: Crit. DMG 12.6',
+                            ),
+                            echo_display=EchoDisplayData(
+                                level=25,
+                                cost=4,
+                                rarity=5,
+                                equipped='Cartethyia',
+                                sonata_name='Moonlit Clouds',
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+    )
+    interface.resize(1400, 800)
+    interface.show()
+    qapp.processEvents()
+
+    texts = _details_card_label_texts(interface)
+    assert 'Main Stat' in texts
+    assert 'Substats' in texts
+    assert 'Crit. Rate' in texts
+    assert 'ATK' in texts
+    assert 'Basic Attack DMG Bonus' in texts
+    assert 'Crit. DMG' in texts
+    assert '22.0%' in texts
+    assert '150%' in texts
+    assert '7.9%' in texts
+    assert '12.6%' in texts
 
     interface.hide()
     interface.deleteLater()
