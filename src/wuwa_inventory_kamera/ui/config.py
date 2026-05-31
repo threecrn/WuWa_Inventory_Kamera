@@ -130,6 +130,7 @@ class Config(QConfig):
     scanDevItems = ConfigItem("Scanner", "ScanDevItems", False, BoolValidator())
     scanResources = ConfigItem("Scanner", "ScanResources", False, BoolValidator())
     scanAchievements = ConfigItem("Scanner", "scanAchievements", False, BoolValidator())
+    showScanStartDialog = ConfigItem("Scanner", "ShowScanStartDialog", True, BoolValidator())
 
     # Scanner thresholds
     echoMinRarity = ConfigItem("Scanner", "EchoMinRarity", 1, RangeValidator(1, 5))

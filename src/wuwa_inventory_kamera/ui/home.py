@@ -16,7 +16,8 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal, QThread
 from PySide6.QtWidgets import (
     QHBoxLayout, QVBoxLayout, QFrame,
-    QFileDialog, QMessageBox, QWidget,
+    QFileDialog, QMessageBox, QCheckBox,
+    QWidget,
 )
 from qfluentwidgets import FluentIcon as FIF
 from qfluentwidgets import (
@@ -335,19 +336,25 @@ class LControlPanel(QFrame):
             )
             return
 
-        dialog = QMessageBox(self)
-        dialog.setWindowTitle('Start Scan')
-        dialog.setText('Ready to start scanning?')
-        dialog.setInformativeText(
-            "To cancel the scan, press 'ENTER'\n"
-            'Do not move the mouse during the scan.'
-        )
-        start_button = dialog.addButton('Start', QMessageBox.ButtonRole.AcceptRole)
-        dialog.addButton(QMessageBox.StandardButton.Cancel)
-        dialog.setDefaultButton(start_button)
-        dialog.exec()
-        if dialog.clickedButton() is not start_button:
-            return
+        if cfg.showScanStartDialog.value:
+            dialog = QMessageBox(self)
+            dialog.setWindowTitle('Start Scan')
+            dialog.setText('Ready to start scanning?')
+            dialog.setInformativeText(
+                "To cancel the scan, press 'ENTER'\n"
+                'Do not move the mouse during the scan.'
+            )
+            do_not_show_again = QCheckBox('Do not show again', dialog)
+            dialog.setCheckBox(do_not_show_again)
+            start_button = dialog.addButton('Start', QMessageBox.ButtonRole.AcceptRole)
+            dialog.addButton(QMessageBox.StandardButton.Cancel)
+            dialog.setDefaultButton(start_button)
+            dialog.exec()
+            if dialog.clickedButton() is not start_button:
+                return
+            if do_not_show_again.isChecked():
+                cfg.showScanStartDialog.value = False
+                cfg.save()
 
         self.startScanning.setEnabled(False)
 
