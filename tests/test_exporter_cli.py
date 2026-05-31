@@ -153,3 +153,26 @@ def test_resolve_sonata_preserves_display_case_for_connector_words() -> None:
 
     resolved = exporter._resolve_sonata({'sonata_key': 'wishesofquietsnowfall'}, maps)
     assert resolved == 'WishesofQuietSnowfall'
+
+
+def test_stat_token_percent_aliases_map_to_wutheringtools_keys() -> None:
+    expected = {
+        'heavy%': 'HeavyAttackDMGBonus',
+        'basic%': 'BasicAttackDMGBonus',
+        'skill%': 'ResonanceSkillDMGBonus',
+        'liberation%': 'ResonanceLiberationDMGBonus',
+        'glacio%': 'Glacio',
+        'fusion%': 'Fusion',
+        'electro%': 'Electro',
+        'aero%': 'Aero',
+        'spectro%': 'Spectro',
+        'havoc%': 'Havoc',
+    }
+
+    for raw, token in expected.items():
+        assert exporter._stat_token(raw, value='1.0%', is_main=False) == token
+
+
+def test_stat_token_keeps_flat_main_stat_for_non_percent_damage_aliases() -> None:
+    assert exporter._stat_token('heavy', value='40', is_main=False) == 'Heavy'
+    assert exporter._stat_token('basic', value='40', is_main=False) == 'Basic'

@@ -181,6 +181,29 @@ def _stat_token(stat_name: object, *, value: object, is_main: bool) -> str:
         'spectro': 'Spectro',
         'havoc': 'Havoc',
     }
+
+    dmg_bonus_aliases = {
+        'skill': 'ResonanceSkillDMGBonus',
+        'skilldmg': 'ResonanceSkillDMGBonus',
+        'resonanceskill': 'ResonanceSkillDMGBonus',
+        'resonanceskilldmg': 'ResonanceSkillDMGBonus',
+        'basic': 'BasicAttackDMGBonus',
+        'basicattack': 'BasicAttackDMGBonus',
+        'heavy': 'HeavyAttackDMGBonus',
+        'heavyattack': 'HeavyAttackDMGBonus',
+        'liberation': 'ResonanceLiberationDMGBonus',
+        'resonanceliberation': 'ResonanceLiberationDMGBonus',
+        'glacio': 'Glacio',
+        'fusion': 'Fusion',
+        'electro': 'Electro',
+        'aero': 'Aero',
+        'spectro': 'Spectro',
+        'havoc': 'Havoc',
+    }
+
+    if percent_hint and normalized in dmg_bonus_aliases:
+        return dmg_bonus_aliases[normalized]
+
     if normalized in direct:
         return direct[normalized]
 
