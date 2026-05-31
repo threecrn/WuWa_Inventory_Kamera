@@ -31,7 +31,7 @@ def test_serialize_weapon_export_restores_v1_container_shape() -> None:
     ]
 
 
-def test_build_standalone_exports_restores_inventory_and_achievement_files() -> None:
+def test_build_standalone_exports_writes_item_convenience_files() -> None:
     result = {
         'devItems': [{'id': 10800, 'item_key': 'resonancepotion', 'count': 3}],
         'shell': {'2': 123456},
@@ -40,10 +40,7 @@ def test_build_standalone_exports_restores_inventory_and_achievement_files() -> 
 
     exports = output_serialization.build_standalone_exports(result)
 
-    assert exports[output_serialization.INVENTORY_EXPORT_FILENAME] == {
-        '10800': 3,
-        '2': 123456,
-    }
+    assert output_serialization.INVENTORY_EXPORT_FILENAME not in exports
     assert exports[output_serialization.DEV_ITEMS_EXPORT_FILENAME] == [
         {'id': 10800, 'item_key': 'resonancepotion', 'count': 3}
     ]

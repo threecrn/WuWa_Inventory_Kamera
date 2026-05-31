@@ -79,14 +79,6 @@ def build_standalone_exports(
     if _should_write_payload(weapons):
         exports[WEAPON_EXPORT_FILENAME] = weapons
 
-    inventory = serialize_inventory_export(
-        dev_items=result.get('devItems'),
-        resources=result.get('resources'),
-        shell=result.get('shell'),
-    )
-    if _should_write_payload(inventory):
-        exports[INVENTORY_EXPORT_FILENAME] = inventory
-
     if include_item_convenience:
         dev_items = serialize_item_rows(result.get('devItems'))
         if _should_write_payload(dev_items):
