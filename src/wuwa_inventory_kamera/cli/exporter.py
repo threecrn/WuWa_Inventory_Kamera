@@ -24,6 +24,8 @@ class _LocalizationMaps:
     echoes_by_id: dict[str, dict[str, str]]
     characters_by_id: dict[str, str]
     sonata_by_key: dict[str, str]
+    weapons_by_id: dict[str, str]
+    weapons_by_key: dict[str, str]
 
 
 def _normalize_lookup(value: object) -> str:
@@ -75,6 +77,8 @@ def _build_localization_maps(*, language: str) -> _LocalizationMaps:
     characters_catalog = _load_json(data_root / 'catalog' / 'characters.json')
     characters_locale = _load_locale_file(data_root, language, 'characters.json')
     sonata_locale = _load_locale_file(data_root, language, 'sonatas.json')
+    weapons_catalog = _load_json(data_root / 'catalog' / 'weapons.json')
+    weapons_locale = _load_locale_file(data_root, language, 'weapons.json')
 
     echoes_by_id: dict[str, dict[str, str]] = {}
     if isinstance(echoes_catalog, dict) and isinstance(echoes_locale, dict):
@@ -121,10 +125,43 @@ def _build_localization_maps(*, language: str) -> _LocalizationMaps:
             display_name = record.get('display_name') if isinstance(record, dict) else None
             sonata_by_key[canonical_key] = _compact_preserve_case(display_name or canonical_key)
 
+    weapons_by_id: dict[str, str] = {}
+    weapons_by_key: dict[str, str] = {}
+    if isinstance(weapons_catalog, dict) and isinstance(weapons_locale, dict):
+        for canonical_key, info in weapons_catalog.items():
+            if not isinstance(canonical_key, str) or not isinstance(info, dict):
+                continue
+            locale_record = weapons_locale.get(canonical_key)
+            display_name = (
+                locale_record.get('display_name')
+                if isinstance(locale_record, dict)
+                else None
+            )
+            token_name = _tokenize_name(display_name or canonical_key)
+            if not token_name:
+                continue
+
+            identifier = info.get('id')
+            if identifier is not None:
+                weapons_by_id[str(identifier)] = token_name
+
+            weapons_by_key[_normalize_lookup(canonical_key)] = token_name
+            if isinstance(locale_record, dict):
+                normalized = locale_record.get('normalized')
+                if isinstance(normalized, str) and normalized:
+                    weapons_by_key[_normalize_lookup(normalized)] = token_name
+                aliases = locale_record.get('aliases')
+                if isinstance(aliases, list):
+                    for alias in aliases:
+                        if isinstance(alias, str) and alias:
+                            weapons_by_key[_normalize_lookup(alias)] = token_name
+
     return _LocalizationMaps(
         echoes_by_id=echoes_by_id,
         characters_by_id=characters_by_id,
         sonata_by_key=sonata_by_key,
+        weapons_by_id=weapons_by_id,
+        weapons_by_key=weapons_by_key,
     )
 
 
@@ -335,6 +372,60 @@ def _extract_talents(details: dict[str, Any]) -> dict[str, str]:
     return talents
 
 
+def _resolve_weapon_name(details: dict[str, Any], maps: _LocalizationMaps) -> str | None:
+    weapon = details.get('weapon')
+    if isinstance(weapon, dict):
+        weapon_id = weapon.get('id')
+        if isinstance(weapon_id, dict):
+            weapon_id = weapon_id.get('id')
+        if weapon_id is not None:
+            by_id = maps.weapons_by_id.get(str(weapon_id))
+            if by_id:
+                return by_id
+
+        key_hint = weapon.get('weapon_key') or weapon.get('id')
+        if key_hint is None:
+            return None
+        normalized = _normalize_lookup(key_hint)
+        if normalized:
+            by_key = maps.weapons_by_key.get(normalized)
+            if by_key:
+                return by_key
+        tokenized = _tokenize_name(key_hint)
+        return tokenized or None
+
+    if weapon is None:
+        return None
+
+    normalized = _normalize_lookup(weapon)
+    if normalized:
+        by_key = maps.weapons_by_key.get(normalized)
+        if by_key:
+            return by_key
+    tokenized = _tokenize_name(weapon)
+    return tokenized or None
+
+
+def _extract_weapon_refinement_payload(details: dict[str, Any], weapon_name: str) -> dict[str, dict[str, str]] | None:
+    weapon = details.get('weapon')
+    if not isinstance(weapon, dict):
+        return None
+
+    ascension_value = _to_number(weapon.get('ascension'))
+    if ascension_value is None or int(ascension_value) <= 1:
+        return None
+
+    refinement_value = _to_number(weapon.get('rank'))
+    if refinement_value is None:
+        return None
+
+    return {
+        weapon_name: {
+            'refinement': str(int(refinement_value)),
+        }
+    }
+
+
 def build_wutheringtools_export(
     *,
     characters_payload: Any,
@@ -356,11 +447,17 @@ def build_wutheringtools_export(
             resolved_name = _tokenize_name(key_hint) or str(character_id)
 
         talents = _extract_talents(details)
+        weapon_name = _resolve_weapon_name(details, maps)
         characters_out[resolved_name] = {
             'echoes': {},
         }
         if talents:
             characters_out[resolved_name]['talents'] = talents
+        if weapon_name:
+            characters_out[resolved_name]['weapon'] = weapon_name
+            refinement_payload = _extract_weapon_refinement_payload(details, weapon_name)
+            if refinement_payload:
+                characters_out[resolved_name]['weapons'] = refinement_payload
 
     inventory_echoes: list[dict[str, Any]] = []
     equipped_echoes: dict[str, list[dict[str, Any]]] = {}

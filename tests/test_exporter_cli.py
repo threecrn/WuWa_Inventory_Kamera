@@ -149,6 +149,8 @@ def test_resolve_sonata_preserves_display_case_for_connector_words() -> None:
         echoes_by_id={},
         characters_by_id={},
         sonata_by_key={'wishesofquietsnowfall': 'WishesofQuietSnowfall'},
+        weapons_by_id={},
+        weapons_by_key={},
     )
 
     resolved = exporter._resolve_sonata({'sonata_key': 'wishesofquietsnowfall'}, maps)
@@ -207,3 +209,97 @@ def test_character_talents_are_exported_from_skills_as_strings() -> None:
         'liberation': '8',
         'intro': '9',
     }
+
+
+def test_character_weapon_is_exported_from_weapon_id() -> None:
+    payload = exporter.build_wutheringtools_export(
+        characters_payload={
+            '1105': {
+                '_name': 'shorekeeper',
+                'character_key': 'shorekeeper',
+                'weapon': {
+                    'id': 21010074,
+                },
+                'echoes': {},
+            }
+        },
+        echoes_payload=[],
+        language='en',
+    )
+
+    character_data = json.loads(payload['data']['character'])
+    details = next(iter(character_data['characters'].values()))
+    assert details['weapon'] == 'Autumntrace'
+
+
+def test_character_weapon_falls_back_to_tokenized_weapon_key() -> None:
+    payload = exporter.build_wutheringtools_export(
+        characters_payload={
+            '1105': {
+                '_name': 'shorekeeper',
+                'character_key': 'shorekeeper',
+                'weapon': {
+                    'weapon_key': 'frostburn',
+                },
+                'echoes': {},
+            }
+        },
+        echoes_payload=[],
+        language='en',
+    )
+
+    character_data = json.loads(payload['data']['character'])
+    details = next(iter(character_data['characters'].values()))
+    assert details['weapon'] == 'Frostburn'
+
+
+def test_character_weapons_refinement_is_exported_when_weapon_ascension_above_one() -> None:
+    payload = exporter.build_wutheringtools_export(
+        characters_payload={
+            '1105': {
+                '_name': 'shorekeeper',
+                'character_key': 'shorekeeper',
+                'weapon': {
+                    'weapon_key': 'frostburn',
+                    'ascension': 2,
+                    'rank': 3,
+                },
+                'echoes': {},
+            }
+        },
+        echoes_payload=[],
+        language='en',
+    )
+
+    character_data = json.loads(payload['data']['character'])
+    details = next(iter(character_data['characters'].values()))
+    assert details['weapon'] == 'Frostburn'
+    assert details['weapons'] == {
+        'Frostburn': {
+            'refinement': '3',
+        }
+    }
+
+
+def test_character_weapons_refinement_is_omitted_when_weapon_ascension_not_above_one() -> None:
+    payload = exporter.build_wutheringtools_export(
+        characters_payload={
+            '1105': {
+                '_name': 'shorekeeper',
+                'character_key': 'shorekeeper',
+                'weapon': {
+                    'weapon_key': 'frostburn',
+                    'ascension': 1,
+                    'rank': 3,
+                },
+                'echoes': {},
+            }
+        },
+        echoes_payload=[],
+        language='en',
+    )
+
+    character_data = json.loads(payload['data']['character'])
+    details = next(iter(character_data['characters'].values()))
+    assert details['weapon'] == 'Frostburn'
+    assert 'weapons' not in details
