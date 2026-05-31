@@ -40,6 +40,14 @@ def _tokenize_name(value: object) -> str:
     return ''.join(part[:1].upper() + part[1:] for part in parts)
 
 
+def _compact_preserve_case(value: object) -> str:
+    text = str(value).strip()
+    if not text:
+        return ''
+    parts = re.findall(r'[A-Za-z0-9]+', text)
+    return ''.join(parts)
+
+
 def _load_json(path: Path) -> Any:
     with open(path, encoding='utf-8') as handle:
         return json.load(handle)
@@ -111,7 +119,7 @@ def _build_localization_maps(*, language: str) -> _LocalizationMaps:
             if not isinstance(canonical_key, str):
                 continue
             display_name = record.get('display_name') if isinstance(record, dict) else None
-            sonata_by_key[canonical_key] = _tokenize_name(display_name or canonical_key)
+            sonata_by_key[canonical_key] = _compact_preserve_case(display_name or canonical_key)
 
     return _LocalizationMaps(
         echoes_by_id=echoes_by_id,
@@ -221,7 +229,7 @@ def _resolve_sonata(echo_record: dict[str, Any], maps: _LocalizationMaps) -> str
     sonata_ref = str(sonata_key)
     if sonata_ref in maps.sonata_by_key:
         return maps.sonata_by_key[sonata_ref]
-    return _tokenize_name(sonata_ref) or None
+    return _compact_preserve_case(sonata_ref) or None
 
 
 def _build_wt_echo(

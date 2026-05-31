@@ -142,3 +142,14 @@ def test_main_writes_json_output(tmp_path, monkeypatch) -> None:
     written = json.loads(output_path.read_text(encoding='utf-8'))
     assert written['meta']['source'] == 'WutheringTools'
     assert written['data'] == {'character': '{}', 'inventory': '{}'}
+
+
+def test_resolve_sonata_preserves_display_case_for_connector_words() -> None:
+    maps = exporter._LocalizationMaps(
+        echoes_by_id={},
+        characters_by_id={},
+        sonata_by_key={'wishesofquietsnowfall': 'WishesofQuietSnowfall'},
+    )
+
+    resolved = exporter._resolve_sonata({'sonata_key': 'wishesofquietsnowfall'}, maps)
+    assert resolved == 'WishesofQuietSnowfall'
