@@ -1363,7 +1363,7 @@ class InventoryInterface(ScrollArea):
         rowLayout.setColumnStretch(1, 0)
         return rowWidget
 
-    def __parseEchoStatLine(self, line: str) -> tuple[str, str] | None:
+    def __parseEchoStatLine(self, line: str) -> tuple[str, str, bool] | None:
         if ': ' not in line:
             return None
         _label, payload = line.split(': ', 1)
@@ -1376,11 +1376,14 @@ class InventoryInterface(ScrollArea):
         stat_value = stat_value.strip()
         if not stat_name or not stat_value:
             return None
-        return stat_name, stat_value
+        return stat_name, stat_value, stat_name.endswith('%')
 
-    def __echoStatRows(self, row: InventoryRow) -> tuple[tuple[tuple[str, str], ...], tuple[tuple[str, str], ...]]:
-        main_rows: list[tuple[str, str]] = []
-        sub_rows: list[tuple[str, str]] = []
+    def __echoStatRows(
+        self,
+        row: InventoryRow,
+    ) -> tuple[tuple[tuple[str, str, bool], ...], tuple[tuple[str, str, bool], ...]]:
+        main_rows: list[tuple[str, str, bool]] = []
+        sub_rows: list[tuple[str, str, bool]] = []
         for line in row.details_lines:
             if line.startswith('Main Stat: '):
                 parsed = self.__parseEchoStatLine(line)
@@ -1394,11 +1397,13 @@ class InventoryInterface(ScrollArea):
         return tuple(main_rows), tuple(sub_rows)
 
     @staticmethod
-    def __formatStatValue(value_text: str) -> str:
+    def __formatStatValue(value_text: str, *, append_percent: bool) -> str:
         normalized = value_text.strip()
         if not normalized:
             return normalized
-        return f"{normalized.rstrip('%')}%"
+        if append_percent:
+            return f"{normalized.rstrip('%')}%"
+        return normalized.rstrip('%')
 
     def __renderEchoDetailsPane(self, row: InventoryRow):
         echo_display = row.echo_display
@@ -1429,22 +1434,22 @@ class InventoryInterface(ScrollArea):
         main_rows, sub_rows = self.__echoStatRows(row)
         if main_rows:
             self._detailsLayout.addWidget(self.__addDetailsSectionTitle('Main Stat'))
-            for stat_name, stat_value in main_rows:
+            for stat_name, stat_value, has_percent_suffix in main_rows:
                 self._detailsLayout.addWidget(
                     self.__addDetailsStatRow(
                         stat_name,
-                        self.__formatStatValue(stat_value),
+                        self.__formatStatValue(stat_value, append_percent=has_percent_suffix),
                         bold_value=True,
                     )
                 )
 
         if sub_rows:
             self._detailsLayout.addWidget(self.__addDetailsSectionTitle('Substats'))
-            for stat_name, stat_value in sub_rows:
+            for stat_name, stat_value, has_percent_suffix in sub_rows:
                 self._detailsLayout.addWidget(
                     self.__addDetailsStatRow(
                         stat_name,
-                        self.__formatStatValue(stat_value),
+                        self.__formatStatValue(stat_value, append_percent=has_percent_suffix),
                     )
                 )
 

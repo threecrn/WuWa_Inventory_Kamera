@@ -370,7 +370,7 @@ def test_echo_details_pane_renders_main_and_substat_tables(qapp: QApplication) -
                                 'Echo ID: 310000010',
                                 'Main Stat: Crit. Rate 22.0',
                                 'Main Stat: ATK 150',
-                                'Substat: Basic Attack DMG Bonus 7.9',
+                                'Substat: ATK% 7.9',
                                 'Substat: Crit. DMG 12.6',
                             ),
                             echo_display=EchoDisplayData(
@@ -395,12 +395,12 @@ def test_echo_details_pane_renders_main_and_substat_tables(qapp: QApplication) -
     assert 'Substats' in texts
     assert 'Crit. Rate' in texts
     assert 'ATK' in texts
-    assert 'Basic Attack DMG Bonus' in texts
+    assert 'ATK%' in texts
     assert 'Crit. DMG' in texts
-    assert '22.0%' in texts
-    assert '150%' in texts
+    assert '22.0' in texts
+    assert '150' in texts
     assert '7.9%' in texts
-    assert '12.6%' in texts
+    assert '12.6' in texts
 
     interface.hide()
     interface.deleteLater()
