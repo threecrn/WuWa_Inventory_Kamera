@@ -1302,7 +1302,15 @@ class InventoryInterface(ScrollArea):
         divider.setStyleSheet('color: rgba(255, 255, 255, 26);')
         return divider
 
-    def __addDetailsKeyValueRow(self, label_text: str, value_text: str, *, bold_value: bool = False):
+    def __addDetailsKeyValueRow(
+        self,
+        label_text: str,
+        value_text: str,
+        *,
+        bold_value: bool = False,
+        label_stretch: int | None = None,
+        value_stretch: int | None = None,
+    ):
         rowWidget = QWidget(self._detailsCard)
         rowLayout = QHBoxLayout(rowWidget)
         rowLayout.setContentsMargins(0, 0, 0, 0)
@@ -1310,14 +1318,19 @@ class InventoryInterface(ScrollArea):
 
         label = BodyLabel(label_text, rowWidget)
         label.setWordWrap(True)
-        rowLayout.addWidget(label, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-
-        rowLayout.addStretch(1)
+        if label_stretch is not None and value_stretch is not None:
+            rowLayout.addWidget(label, label_stretch, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        else:
+            rowLayout.addWidget(label, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            rowLayout.addStretch(1)
 
         value = StrongBodyLabel(value_text, rowWidget) if bold_value else BodyLabel(value_text, rowWidget)
         value.setWordWrap(True)
         value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        rowLayout.addWidget(value, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        if label_stretch is not None and value_stretch is not None:
+            rowLayout.addWidget(value, value_stretch, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        else:
+            rowLayout.addWidget(value, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         return rowWidget
 
     def __addDetailsSectionTitle(self, text: str):
@@ -1371,11 +1384,6 @@ class InventoryInterface(ScrollArea):
         title.setWordWrap(True)
         self._detailsLayout.addWidget(title)
 
-        if row.subtitle:
-            subtitle = BodyLabel(row.subtitle, self._detailsCard)
-            subtitle.setWordWrap(True)
-            self._detailsLayout.addWidget(subtitle)
-
         if echo_display.level is not None or echo_display.cost is not None:
             metaRow = QWidget(self._detailsCard)
             metaLayout = QHBoxLayout(metaRow)
@@ -1402,6 +1410,8 @@ class InventoryInterface(ScrollArea):
                         stat_name,
                         self.__formatStatValue(stat_value),
                         bold_value=True,
+                        label_stretch=5,
+                        value_stretch=1,
                     )
                 )
 
@@ -1412,25 +1422,27 @@ class InventoryInterface(ScrollArea):
                     self.__addDetailsKeyValueRow(
                         stat_name,
                         self.__formatStatValue(stat_value),
+                        label_stretch=5,
+                        value_stretch=1,
                     )
                 )
 
-        self._detailsLayout.addWidget(self.__addDetailsSectionTitle('Echo Skill'))
+        self._detailsLayout.addWidget(self.__addDetailsSectionTitle('Sonata'))
         if echo_display.sonata_name:
-            self._detailsLayout.addWidget(
-                self.__addDetailsKeyValueRow('Sonata', echo_display.sonata_name)
-            )
+            sonataLabel = BodyLabel(echo_display.sonata_name, self._detailsCard)
+            sonataLabel.setWordWrap(True)
+            self._detailsLayout.addWidget(sonataLabel)
         else:
-            placeholder = BodyLabel('Echo skill text is not included in this export.', self._detailsCard)
+            placeholder = BodyLabel('Sonata text is not included in this export.', self._detailsCard)
             placeholder.setWordWrap(True)
             self._detailsLayout.addWidget(placeholder)
 
         equipped_name = echo_display.equipped
         if equipped_name:
             self._detailsLayout.addWidget(self.__addDetailsDivider())
-            self._detailsLayout.addWidget(
-                self.__addDetailsKeyValueRow('Equipped by', equipped_name)
-            )
+            equippedLabel = BodyLabel(f'Equipped by {equipped_name}', self._detailsCard)
+            equippedLabel.setWordWrap(True)
+            self._detailsLayout.addWidget(equippedLabel)
 
     def __scheduleDetailsPaneHeightSync(self):
         if self._detailsPaneHeightSyncPending:
