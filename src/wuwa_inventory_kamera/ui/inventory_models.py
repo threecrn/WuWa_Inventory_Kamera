@@ -1138,6 +1138,17 @@ def _build_echo_details(echo_id: object, details: dict, resolver: MetadataResolv
     lines: list[str] = []
     lines.append(f'Echo ID: {echo_id}')
 
+    def _format_echo_stat(raw_stat_name: object, raw_stat_value: object) -> tuple[str, str]:
+        stat_key = str(raw_stat_name).strip()
+        has_percent_suffix = stat_key.endswith('%')
+        lookup_key = stat_key[:-1] if has_percent_suffix else stat_key
+        display_name = resolver.resolve_echo_stat(lookup_key)
+
+        value_text = str(raw_stat_value).strip()
+        if has_percent_suffix:
+            value_text = f'{value_text.rstrip("%")}%'
+        return display_name, value_text
+
     for key, label in (
         ('level', 'Level'),
         ('tuneLv', 'Tune Level'),
@@ -1162,10 +1173,12 @@ def _build_echo_details(echo_id: object, details: dict, resolver: MetadataResolv
 
     stats = details.get('stats')
     for stat_name, stat_value in _iter_echo_stat_items(stats, 'main'):
-        lines.append(f'Main Stat: {resolver.resolve_echo_stat(stat_name)} {stat_value}')
+        display_name, value_text = _format_echo_stat(stat_name, stat_value)
+        lines.append(f'Main Stat: {display_name} {value_text}')
 
     for stat_name, stat_value in _iter_echo_stat_items(stats, 'sub'):
-        lines.append(f'Substat: {resolver.resolve_echo_stat(stat_name)} {stat_value}')
+        display_name, value_text = _format_echo_stat(stat_name, stat_value)
+        lines.append(f'Substat: {display_name} {value_text}')
 
     return tuple(lines)
 

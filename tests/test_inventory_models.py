@@ -184,8 +184,8 @@ def test_load_inventory_document_uses_rolled_main_and_object_stat_order() -> Non
     ]
     assert [line for line in row.details_lines if line.startswith('Substat:')] == [
         'Substat: Crit Rate 8.4%',
-        'Substat: ATK% 9.4%',
-        'Substat: HP% 7.1%',
+        'Substat: ATK 9.4%',
+        'Substat: HP 7.1%',
     ]
 
 
