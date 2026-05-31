@@ -312,6 +312,29 @@ def _normalize_echoes_payload(payload: Any) -> list[dict[str, Any]]:
     return []
 
 
+def _extract_talents(details: dict[str, Any]) -> dict[str, str]:
+    skills = details.get('skills')
+    if not isinstance(skills, dict):
+        return {}
+
+    mapping = (
+        ('basic', 'normal'),
+        ('skill', 'resonance'),
+        ('forte', 'forte'),
+        ('liberation', 'liberation'),
+        ('intro', 'intro'),
+    )
+
+    talents: dict[str, str] = {}
+    for target_key, source_key in mapping:
+        raw_value = skills.get(source_key)
+        numeric = _to_number(raw_value)
+        if numeric is None:
+            continue
+        talents[target_key] = str(int(numeric))
+    return talents
+
+
 def build_wutheringtools_export(
     *,
     characters_payload: Any,
@@ -331,9 +354,13 @@ def build_wutheringtools_export(
         if not resolved_name:
             key_hint = details.get('_name') or details.get('character_key') or character_id
             resolved_name = _tokenize_name(key_hint) or str(character_id)
+
+        talents = _extract_talents(details)
         characters_out[resolved_name] = {
             'echoes': {},
         }
+        if talents:
+            characters_out[resolved_name]['talents'] = talents
 
     inventory_echoes: list[dict[str, Any]] = []
     equipped_echoes: dict[str, list[dict[str, Any]]] = {}

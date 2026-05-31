@@ -176,3 +176,34 @@ def test_stat_token_percent_aliases_map_to_wutheringtools_keys() -> None:
 def test_stat_token_keeps_flat_main_stat_for_non_percent_damage_aliases() -> None:
     assert exporter._stat_token('heavy', value='40', is_main=False) == 'Heavy'
     assert exporter._stat_token('basic', value='40', is_main=False) == 'Basic'
+
+
+def test_character_talents_are_exported_from_skills_as_strings() -> None:
+    payload = exporter.build_wutheringtools_export(
+        characters_payload={
+            '1105': {
+                '_name': 'shorekeeper',
+                'character_key': 'shorekeeper',
+                'skills': {
+                    'normal': 5,
+                    'resonance': 6,
+                    'forte': 7,
+                    'liberation': 8,
+                    'intro': 9,
+                },
+                'echoes': {},
+            }
+        },
+        echoes_payload=[],
+        language='en',
+    )
+
+    character_data = json.loads(payload['data']['character'])
+    details = next(iter(character_data['characters'].values()))
+    assert details['talents'] == {
+        'basic': '5',
+        'skill': '6',
+        'forte': '7',
+        'liberation': '8',
+        'intro': '9',
+    }
