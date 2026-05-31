@@ -112,19 +112,15 @@ def test_main_writes_json_output(tmp_path, monkeypatch) -> None:
         encoding='utf-8',
     )
 
-    monkeypatch.setattr(
-        exporter,
-        'build_wutheringtools_export',
-        lambda **kwargs: {
-            'meta': {'version': '2', 'source': 'WutheringTools'},
-            'data': {'character': '{}', 'inventory': '{}'},
-        },
-    )
-    monkeypatch.setattr(
-        exporter,
-        '_extract_payload',
-        lambda path, section_name: {'ok': (str(path), section_name)},
-    )
+    def _fake_write(*, characters_path, echoes_path, output_path, language='en'):
+        output = output_path
+        output.write_text(
+            json.dumps({'meta': {'version': '2', 'source': 'WutheringTools'}, 'data': {'character': '{}', 'inventory': '{}'}}),
+            encoding='utf-8',
+        )
+        return output
+
+    monkeypatch.setattr(exporter, 'write_wutheringtools_export', _fake_write)
 
     monkeypatch.setattr(
         exporter.argparse.ArgumentParser,

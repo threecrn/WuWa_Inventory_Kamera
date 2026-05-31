@@ -22,6 +22,7 @@ from qfluentwidgets import (
 from .home import HomeInterface
 from .settings import SettingInterface
 from .inventory import InventoryInterface
+from .export import ExportInterface
 from ..config.app_config import basePATH
 from ..scraping.utils.common import isUserAdmin
 
@@ -41,11 +42,13 @@ class WuWaInventoryKamera(MSFluentWindow):
     def initInterface(self):
         self.homeInterface = HomeInterface(self)
         self.inventoryInterface = InventoryInterface(self)
+        self.exportInterface = ExportInterface(self)
         self.settingInterface = SettingInterface(self)
 
     def initNavigation(self):
         self.addSubInterface(self.homeInterface, FIF.HOME, 'Home', FIF.HOME_FILL)
         self.addSubInterface(self.inventoryInterface, FIF.DICTIONARY, 'Inventory')
+        self.addSubInterface(self.exportInterface, FIF.DOWNLOAD, 'Export')
         self.addSubInterface(
             self.settingInterface, FIF.SETTING, 'Settings',
             position=NavigationItemPosition.BOTTOM,
