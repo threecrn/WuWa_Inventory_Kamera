@@ -1429,6 +1429,16 @@ class InventoryInterface(ScrollArea):
             metaLayout.addStretch(1)
             self._detailsLayout.addWidget(metaRow)
 
+        self._detailsLayout.addWidget(self.__addDetailsSectionTitle('Sonata'))
+        if echo_display.sonata_name:
+            sonataLabel = BodyLabel(echo_display.sonata_name, self._detailsCard)
+            sonataLabel.setWordWrap(True)
+            self._detailsLayout.addWidget(sonataLabel)
+        else:
+            placeholder = BodyLabel('Sonata text is not included in this export.', self._detailsCard)
+            placeholder.setWordWrap(True)
+            self._detailsLayout.addWidget(placeholder)
+
         main_rows, sub_rows = self.__echoStatRows(row)
         if main_rows:
             self._detailsLayout.addWidget(self.__addDetailsSectionTitle('Main Stat'))
@@ -1450,16 +1460,6 @@ class InventoryInterface(ScrollArea):
                         self.__formatStatValue(stat_value),
                     )
                 )
-
-        self._detailsLayout.addWidget(self.__addDetailsSectionTitle('Sonata'))
-        if echo_display.sonata_name:
-            sonataLabel = BodyLabel(echo_display.sonata_name, self._detailsCard)
-            sonataLabel.setWordWrap(True)
-            self._detailsLayout.addWidget(sonataLabel)
-        else:
-            placeholder = BodyLabel('Sonata text is not included in this export.', self._detailsCard)
-            placeholder.setWordWrap(True)
-            self._detailsLayout.addWidget(placeholder)
 
         equipped_name = echo_display.equipped
         if equipped_name:
