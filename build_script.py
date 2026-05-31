@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -325,6 +326,94 @@ def _build_include_files(root: Path, config: FreezeConfig) -> list[tuple[str, st
     return include_files
 
 
+def _collect_windows_ucrt_include_files(existing_targets: set[str]) -> list[tuple[str, str]]:
+    """Collect UCRT DLLs that are sometimes missing from older/minimal Windows installs.
+
+    cx_Freeze's include_msvcr flag covers VC runtime DLLs but does not always place the
+    api-ms-win-crt-* forwarder DLLs next to the executable. Bundling them from the host
+    (preferring System32, then System32/downlevel) avoids runtime launch failures.
+    """
+
+    if sys.platform != "win32":
+        return []
+
+    windows_dir = Path(os.environ.get("WINDIR", "C:/Windows"))
+    system32 = windows_dir / "System32"
+    downlevel = system32 / "downlevel"
+
+    patterns = ("api-ms-win-crt-*.dll", "ucrtbase.dll")
+    include_files: list[tuple[str, str]] = []
+    seen_targets = set(existing_targets)
+
+    for pattern in patterns:
+        for filename in sorted({p.name for root in (system32, downlevel) for p in root.glob(pattern)}):
+            target = filename.replace("\\", "/")
+            target_key = target.lower()
+            if target_key in seen_targets:
+                continue
+
+            source_path: Path | None = None
+            for root in (system32, downlevel):
+                candidate = root / filename
+                if candidate.exists():
+                    source_path = candidate
+                    break
+
+            if source_path is None:
+                continue
+
+            include_files.append((str(source_path), target))
+            seen_targets.add(target_key)
+
+    return include_files
+
+
+def _copy_runtime_files(runtime_files: list[tuple[str, str]], output_dir: Path) -> None:
+    for source, target in runtime_files:
+        destination = output_dir / target
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+
+
+def _collect_windows_python_runtime_files(existing_targets: set[str]) -> list[tuple[str, str]]:
+    if sys.platform != "win32":
+        return []
+
+    runtime_names = (
+        "python3.dll",
+        f"python{sys.version_info.major}{sys.version_info.minor}.dll",
+    )
+
+    search_roots = [
+        Path(sys.base_prefix),
+        Path(sys.base_exec_prefix),
+        Path(sys.executable).resolve().parent,
+    ]
+
+    include_files: list[tuple[str, str]] = []
+    seen_targets = set(existing_targets)
+
+    for runtime_name in runtime_names:
+        target_key = runtime_name.lower()
+        if target_key in seen_targets:
+            continue
+
+        source_path: Path | None = None
+        for root in search_roots:
+            candidate = root / runtime_name
+            if candidate.exists():
+                source_path = candidate
+                break
+
+        if source_path is None:
+            continue
+
+        include_files.append((str(source_path), runtime_name))
+        seen_targets.add(target_key)
+
+    return include_files
+
+
 def _inner_build(
     root: Path,
     config: FreezeConfig,
@@ -343,6 +432,15 @@ def _inner_build(
 
     providers = _validate_provider(backend, skip_provider_check=skip_provider_check)
     include_files = _build_include_files(root, config)
+    runtime_files: list[tuple[str, str]] = []
+    if config.include_msvcr:
+        runtime_files = _collect_windows_ucrt_include_files({target.lower() for _, target in include_files})
+        include_files.extend(runtime_files)
+    python_runtime_files = _collect_windows_python_runtime_files(
+        {target.lower() for _, target in include_files}
+    )
+    runtime_files.extend(python_runtime_files)
+    include_files.extend(python_runtime_files)
     build_options = {
         "build_exe": str(output_dir),
         "include_files": include_files,
@@ -378,6 +476,9 @@ def _inner_build(
         executables=[executable],
         script_args=["build_exe"],
     )
+
+    if runtime_files:
+        _copy_runtime_files(runtime_files, output_dir)
 
     for directory in config.create_directories:
         (output_dir / directory).mkdir(parents=True, exist_ok=True)

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "wuwa-inventory-kamera"
-version = "2.0.0.dev0"
+version = "2.0.0b1"
 description = "WuWa Inventory Kamera — GPU-accelerated inventory scanner v2"
 requires-python = ">=3.11"
 readme = "README.md"
