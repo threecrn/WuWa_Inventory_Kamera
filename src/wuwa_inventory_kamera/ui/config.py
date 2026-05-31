@@ -23,7 +23,7 @@ from qfluentwidgets import (
     qconfig, QConfig, ConfigValidator,
     ConfigItem, OptionsConfigItem, BoolValidator,
     FolderValidator, OptionsValidator, RangeValidator,
-    Signal,
+    Signal, Theme, EnumSerializer,
 )
 
 from ..config.app_config import (
@@ -104,6 +104,10 @@ class Config(QConfig):
     """Application Qt configuration."""
 
     configChanged = Signal()
+    themeMode = OptionsConfigItem(
+        'QFluentWidgets', 'ThemeMode', Theme.DARK,
+        OptionsValidator(Theme), EnumSerializer(Theme),
+    )
 
     def save(self):
         super().save()
