@@ -341,8 +341,9 @@ class LControlPanel(QFrame):
             dialog.setWindowTitle('Start Scan')
             dialog.setText('Ready to start scanning?')
             dialog.setInformativeText(
-                "To cancel the scan, press 'ENTER'\n"
-                'Do not move the mouse during the scan.'
+                'Open the game main menu before starting the scan.\n'
+                'Do not move the mouse during the scan.\n'
+                "To cancel the scan, press 'ENTER'"
             )
             do_not_show_again = QCheckBox('Do not show again', dialog)
             dialog.setCheckBox(do_not_show_again)
