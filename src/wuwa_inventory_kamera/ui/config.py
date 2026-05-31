@@ -148,7 +148,9 @@ class Config(QConfig):
         PathValidator(default_ocr_cache_path()),
     )
 
-    # Window mode
+    # Display mode
+    gameFullscreen = ConfigItem("Advanced", "GameFullscreenMode", False, BoolValidator())
+    # Legacy key retained for backward compatibility with old config files.
     windowed = ConfigItem("Advanced", "WindowedMode", False, BoolValidator())
 
     # Advanced / debug

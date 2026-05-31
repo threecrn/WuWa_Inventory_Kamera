@@ -31,6 +31,7 @@
     - See `docs/INVENTORY_VIEWER_PLAN.md`.
 - [x] Grid scroll toward the bottom for weapon, echo, and item tabs: predict the end of the page and handle it correctly.
 - [ ] Windowed game support: keep command-line and config behavior consistent with autodetection.
+  - [ ] Is the app setting "Windowed mode" needed?
 
 ## Data And Localization Backlog
 

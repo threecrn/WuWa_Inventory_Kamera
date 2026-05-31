@@ -110,11 +110,11 @@ class SettingInterface(ScrollArea):
             alphabethList(),
             self.inGameGroup,
         )
-        self.windowedCard = SwitchSettingCard(
+        self.gameFullscreenCard = SwitchSettingCard(
             FIF.MINIMIZE,
-            self.tr('Windowed mode'),
-            self.tr('Enable if the game runs in a window instead of fullscreen. Screenshots and input coordinates will be relative to the game window.'),
-            configItem=cfg.windowed,
+            self.tr('Game Fullscreen mode'),
+            self.tr('Enable if the game is running in fullscreen mode. Turn off for windowed or borderless-windowed play.'),
+            configItem=cfg.gameFullscreen,
             parent=self.inGameGroup,
         )
 
@@ -228,7 +228,7 @@ class SettingInterface(ScrollArea):
         self.inGameGroup.addSettingCard(self.languageGame)
         self.inGameGroup.addSettingCard(self.inventoryKey)
         self.inGameGroup.addSettingCard(self.resonatorKey)
-        self.inGameGroup.addSettingCard(self.windowedCard)
+        self.inGameGroup.addSettingCard(self.gameFullscreenCard)
         self.ocrGroup.addSettingCard(self.ocrBackendCard)
         self.ocrGroup.addSettingCard(self.ocrBatchSizeCard)
         self.ocrGroup.addSettingCard(self.ocrCachePathCard)

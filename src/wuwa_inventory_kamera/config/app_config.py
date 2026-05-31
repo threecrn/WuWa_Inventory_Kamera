@@ -76,8 +76,10 @@ class AppConfig:
         self.saveRaw: bool = False
         self.writeDebug: bool = False
 
-        # Window mode
-        self.windowed: bool = False
+        # Display mode
+        self.gameFullscreen: bool = False
+        # Legacy runtime flag used by scanner internals.
+        self.windowed: bool = not self.gameFullscreen
 
     def load(self, path: str | Path = 'config/config.json') -> 'AppConfig':
         """Populate fields from *path* (QConfig JSON format).
@@ -152,8 +154,12 @@ class AppConfig:
             self.saveRaw = _bool(advanced['SaveRaw'])
         if 'WriteDebug' in advanced:
             self.writeDebug = _bool(advanced['WriteDebug'])
-        if 'WindowedMode' in advanced:
-            self.windowed = _bool(advanced['WindowedMode'])
+        if 'GameFullscreenMode' in advanced:
+            self.gameFullscreen = _bool(advanced['GameFullscreenMode'])
+        elif 'WindowedMode' in advanced:
+            # Backward-compatible migration from the old setting.
+            self.gameFullscreen = not _bool(advanced['WindowedMode'])
+        self.windowed = not self.gameFullscreen
 
         return self
 
@@ -196,7 +202,12 @@ class AppConfig:
         self.logLevel  = get(qcfg_obj.logLevel)
         self.saveRaw   = get(qcfg_obj.saveRaw)
         self.writeDebug = get(qcfg_obj.writeDebug)
-        self.windowed  = get(qcfg_obj.windowed)
+        if hasattr(qcfg_obj, 'gameFullscreen'):
+            self.gameFullscreen = bool(get(qcfg_obj.gameFullscreen))
+        else:
+            # Legacy fallback for older UI config objects.
+            self.gameFullscreen = not bool(get(qcfg_obj.windowed))
+        self.windowed = not self.gameFullscreen
 
 
 app_config: AppConfig = AppConfig().load()

@@ -368,7 +368,7 @@ class LControlPanel(QFrame):
             ocr_cache_path=cfg.get(cfg.ocrCachePath),
             save_raw=cfg.saveRaw.value,
             max_batch_size=cfg.ocrBatchSize.value,
-            windowed=cfg.windowed.value,
+            windowed=not cfg.gameFullscreen.value,
             write_debug=cfg.writeDebug.value,
         )
         self._scan_thread.progress.connect(self._onScanProgress)
