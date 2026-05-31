@@ -7,6 +7,7 @@ Inventory viewer — load and inspect JSON result files.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 import logging
 import os
 import threading
@@ -16,7 +17,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
-    QWidget, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLayout,
+    QApplication, QWidget, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLayout,
     QScrollArea, QSizePolicy, QVBoxLayout, QComboBox,
 )
 
@@ -919,6 +920,7 @@ class InventoryInterface(ScrollArea):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
+        self._waitCursorDepth = 0
         self._currentSectionIndex = 0
         self._currentRowIndex = 0
         self._currentSearchText = ''
@@ -1024,16 +1026,17 @@ class InventoryInterface(ScrollArea):
             self.__loadSource(Path(folder_path), source_kind='session')
 
     def __loadSource(self, path: Path, *, source_kind: str):
-        self._currentSourcePath = path
-        self._currentSourceKind = source_kind
-        self.inventoryFileCard.setContent(str(path))
-        self.inventoryFileCard.buttons[2].setEnabled(True)
-        self.inventoryFileCard.buttons[3].setEnabled(True)
+        with self.__waitCursor():
+            self._currentSourcePath = path
+            self._currentSourceKind = source_kind
+            self.inventoryFileCard.setContent(str(path))
+            self.inventoryFileCard.buttons[2].setEnabled(True)
+            self.inventoryFileCard.buttons[3].setEnabled(True)
 
-        if source_kind == 'session':
-            self.__setDocument(load_inventory_session(path))
-        else:
-            self.__setDocument(load_inventory_file(path))
+            if source_kind == 'session':
+                self.__setDocument(load_inventory_session(path))
+            else:
+                self.__setDocument(load_inventory_file(path))
 
     def __reloadCurrentSource(self):
         if self._currentSourcePath is None or self._currentSourceKind is None:
@@ -1137,9 +1140,10 @@ class InventoryInterface(ScrollArea):
         if index < 0 or index == self._currentSectionIndex:
             return
 
-        self._currentSectionIndex = index
-        self._currentRowIndex = 0
-        self.__renderCurrentSectionContent()
+        with self.__waitCursor():
+            self._currentSectionIndex = index
+            self._currentRowIndex = 0
+            self.__renderCurrentSectionContent()
 
     def __addSearchBox(self) -> LineEdit:
         searchBox = LineEdit(self.contentWidget)
@@ -1154,9 +1158,10 @@ class InventoryInterface(ScrollArea):
         if text == self._currentSearchText:
             return
 
-        self._currentSearchText = text
-        self._currentRowIndex = 0
-        self.__renderCurrentSectionContent()
+        with self.__waitCursor():
+            self._currentSearchText = text
+            self._currentRowIndex = 0
+            self.__renderCurrentSectionContent()
 
     def __renderCurrentSectionContent(self):
         if self._resultsLayout is None:
@@ -1602,3 +1607,26 @@ class InventoryInterface(ScrollArea):
 
             if widget is not None:
                 widget.deleteLater()
+
+    @contextmanager
+    def __waitCursor(self):
+        self.__beginWaitCursor()
+        try:
+            yield
+        finally:
+            self.__endWaitCursor()
+
+    def __beginWaitCursor(self):
+        if self._waitCursorDepth == 0:
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            QApplication.processEvents()
+        self._waitCursorDepth += 1
+
+    def __endWaitCursor(self):
+        if self._waitCursorDepth == 0:
+            return
+
+        self._waitCursorDepth -= 1
+        if self._waitCursorDepth == 0:
+            QApplication.restoreOverrideCursor()
+            QApplication.processEvents()
