@@ -373,6 +373,7 @@ def test_update_echo_writes_catalog_image_from_monsterinfo(tmp_path: Path, monke
 			'id': 310000010,
 			'text_key': 'MonsterInfo_310000010_Name',
 			'image': 'IconMonsterHead/T_IconMonsterHead_015_UI.png',
+			'cost': 1,
 		},
 	}
 	assert echo_locale == {
@@ -383,6 +384,38 @@ def test_update_echo_writes_catalog_image_from_monsterinfo(tmp_path: Path, monke
 		},
 	}
 	assert echo_lookup == {'vanguardjunrock': 'vanguardjunrock'}
+
+
+def test_update_echo_writes_cost4_for_33_prefix_monsters(tmp_path: Path, monkeypatch) -> None:
+	_prepare_workspace(tmp_path, monkeypatch)
+	_write_json(
+		tmp_path / 'data' / 'en' / 'MultiText.json',
+		{'MonsterInfo_330000010_Name': 'Tempest Mephis'},
+	)
+	_write_json(
+		tmp_path / 'data' / 'en' / 'MonsterInfo.json',
+		[
+			{
+				'Id': 330000010,
+				'Name': 'MonsterInfo_330000010_Name',
+				'Icon': '/Game/Aki/UI/UIResources/Common/Image/IconMonsterHead/T_IconMonsterHead_225_UI.T_IconMonsterHead_225_UI',
+			},
+		],
+	)
+
+	updater = BaseDataUpdater(lang='English')
+	updater.updateEcho()
+
+	echo_catalog = json.loads((tmp_path / 'data' / 'catalog' / 'echoes.json').read_text(encoding='utf-8'))
+
+	assert echo_catalog == {
+		'tempestmephis': {
+			'id': 330000010,
+			'text_key': 'MonsterInfo_330000010_Name',
+			'image': 'IconMonsterHead/T_IconMonsterHead_225_UI.png',
+			'cost': 4,
+		},
+	}
 
 
 def test_update_characters_writes_catalog_image_and_rarity_from_roleinfo(tmp_path: Path, monkeypatch) -> None:

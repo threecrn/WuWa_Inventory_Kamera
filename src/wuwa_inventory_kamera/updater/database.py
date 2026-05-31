@@ -20,6 +20,14 @@ from typing import Any, Optional
 logger = logging.getLogger('DatabaseManager')
 
 
+_ECHO_COST_BY_MONSTER_PREFIX: dict[str, int] = {
+	'31': 1,
+	'32': 3,
+	'33': 4,
+	'34': 4,
+}
+
+
 @dataclass
 class FileConfig:
 	folder: list[str]
@@ -359,6 +367,10 @@ class BaseDataUpdater:
 			image_path = self._extractImagePath(entry.get('Icon'))
 			if image_path is not None and image_path.startswith('IconMonsterHead/') and 'image' not in record:
 				record['image'] = image_path
+
+			cost = _ECHO_COST_BY_MONSTER_PREFIX.get(str(identifier)[:2])
+			if cost is not None and 'cost' not in record:
+				record['cost'] = cost
 
 		return {
 			identifier: record

@@ -35,6 +35,13 @@ _SESSION_EXPORT_FILES: tuple[str, ...] = (
     ACHIEVEMENT_EXPORT_FILENAME,
 )
 
+_ECHO_COST_BY_MONSTER_PREFIX: dict[str, int] = {
+    '31': 1,
+    '32': 3,
+    '33': 4,
+    '34': 4,
+}
+
 
 @dataclass(frozen=True)
 class WeaponDisplayData:
@@ -203,7 +210,7 @@ class MetadataResolver:
         self._echo_info_by_id, self._echo_info_by_key = self._build_generated_info_lookups(
             'echoes.json',
             language_code=language_code,
-            fields=('image',),
+            fields=('image', 'cost'),
         )
 
         achievement_mapping = scraping_data.getAchievementsID(language_code)
@@ -569,6 +576,36 @@ class MetadataResolver:
 
         return self._fallback_name(str(echo_id), 'Echo'), None
 
+    def resolve_echo_cost(
+        self,
+        echo_id: object,
+        *,
+        echo_key: object | None = None,
+        monster_id: object | None = None,
+        exported_cost: object | None = None,
+    ) -> int | None:
+        refs: list[str] = []
+        if echo_key is not None:
+            refs.append(str(echo_key))
+        if monster_id is not None:
+            refs.append(str(monster_id))
+        refs.append(str(echo_id))
+
+        for ref in refs:
+            info = self._echo_info_by_id.get(ref) or self._echo_info_by_key.get(ref)
+            if not isinstance(info, dict):
+                continue
+            resolved = _coerce_int(info.get('cost'))
+            if resolved is not None:
+                return resolved
+
+        for raw_identifier in (monster_id, echo_id):
+            inferred = _infer_echo_cost_from_identifier(raw_identifier)
+            if inferred is not None:
+                return inferred
+
+        return _coerce_int(exported_cost)
+
     def resolve_achievement(self, achievement_id: object) -> str:
         achievement_key = str(achievement_id)
         return (
@@ -902,7 +939,12 @@ def _build_echo_rows(payload: list, resolver: MetadataResolver) -> tuple[Invento
         if sonata_name:
             body_lines.append(f'Sonata: {sonata_name}')
 
-        cost = details.get('_cost')
+        cost = resolver.resolve_echo_cost(
+            echo_id,
+            echo_key=details.get('echo_key'),
+            monster_id=details.get('_monsterId'),
+            exported_cost=details.get('_cost'),
+        )
         if cost is not None:
             body_lines.append(f'Cost: {cost}')
 
@@ -911,8 +953,8 @@ def _build_echo_rows(payload: list, resolver: MetadataResolver) -> tuple[Invento
         if equipped_name:
             body_lines.append(f'Equipped: {equipped_name}')
 
-        main_stat = _format_main_stat(details)
-        primary_main_stat = _format_echo_primary_main_stat(details)
+        main_stat = _format_main_stat(details, resolved_cost=cost)
+        primary_main_stat = _format_echo_primary_main_stat(details, resolved_cost=cost)
         stats = details.get('stats')
         if main_stat:
             body_lines.append(main_stat)
@@ -927,7 +969,7 @@ def _build_echo_rows(payload: list, resolver: MetadataResolver) -> tuple[Invento
                 title=echo_name,
                 subtitle=f'Echo ID: {echo_id}',
                 body_lines=tuple(body_lines),
-                details_lines=_build_echo_details(echo_id, details, resolver),
+                details_lines=_build_echo_details(echo_id, details, resolver, resolved_cost=cost),
                 image_path=image_path,
                 display_kind='echo_tile',
                 echo_display=EchoDisplayData(
@@ -1134,7 +1176,13 @@ def _build_shell_rows(payload: dict, resolver: MetadataResolver) -> tuple[Invent
     return tuple(rows)
 
 
-def _build_echo_details(echo_id: object, details: dict, resolver: MetadataResolver) -> tuple[str, ...]:
+def _build_echo_details(
+    echo_id: object,
+    details: dict,
+    resolver: MetadataResolver,
+    *,
+    resolved_cost: object | None = None,
+) -> tuple[str, ...]:
     lines: list[str] = []
     lines.append(f'Echo ID: {echo_id}')
 
@@ -1153,7 +1201,6 @@ def _build_echo_details(echo_id: object, details: dict, resolver: MetadataResolv
         ('level', 'Level'),
         ('tuneLv', 'Tune Level'),
         ('rarity', 'Rarity'),
-        ('_cost', 'Cost'),
         ('_equipped', 'Equipped'),
         ('_scanIndex', 'Scan Index'),
         ('_monsterId', 'Monster ID'),
@@ -1163,6 +1210,10 @@ def _build_echo_details(echo_id: object, details: dict, resolver: MetadataResolv
             if key == '_equipped':
                 value = resolver.resolve_character(value)
             lines.append(f'{label}: {value}')
+
+    cost_value = _coerce_int(resolved_cost)
+    if cost_value is not None:
+        lines.append(f'Cost: {cost_value}')
 
     sonata_key = details.get('sonata_key')
     if sonata_key:
@@ -1391,18 +1442,19 @@ def _format_chain(value: object) -> str | None:
 _FIXED_MAIN_BY_COST: dict[int, str] = {1: 'hp', 3: 'atk', 4: 'atk'}
 
 
-def _format_main_stat(details: object) -> str | None:
-    main_stat = _format_echo_primary_main_stat(details)
+def _format_main_stat(details: object, *, resolved_cost: object | None = None) -> str | None:
+    main_stat = _format_echo_primary_main_stat(details, resolved_cost=resolved_cost)
     if main_stat is None:
         return None
     return f'Main: {main_stat}'
 
 
-def _format_echo_primary_main_stat(details: object) -> str | None:
+def _format_echo_primary_main_stat(details: object, *, resolved_cost: object | None = None) -> str | None:
     if not isinstance(details, dict):
         return None
     main_stats = _iter_echo_stat_items(details.get('stats'), 'main')
-    selected = _select_display_main_stat(main_stats, details.get('_cost'))
+    cost = resolved_cost if resolved_cost is not None else details.get('_cost')
+    selected = _select_display_main_stat(main_stats, cost)
     if selected is None:
         return None
     stat_name, stat_value = selected
@@ -1484,6 +1536,13 @@ def _coerce_int(value: object) -> int | None:
         except ValueError:
             return None
     return None
+
+
+def _infer_echo_cost_from_identifier(value: object) -> int | None:
+    identifier = str(value)
+    if not identifier:
+        return None
+    return _ECHO_COST_BY_MONSTER_PREFIX.get(identifier[:2])
 
 
 def _max_level_from_ascension(value: object) -> int | None:

@@ -140,7 +140,7 @@ def test_load_inventory_document_normalizes_echo_export(monkeypatch) -> None:
     assert row.display_kind == 'echo_tile'
     assert row.echo_display == inventory_models.EchoDisplayData(
         level=25,
-        cost=4,
+        cost=1,
         rarity=5,
         main_stat='Healing Bonus 26.4%',
         equipped='Shorekeeper',
@@ -149,7 +149,7 @@ def test_load_inventory_document_normalizes_echo_export(monkeypatch) -> None:
     )
     assert 'Lv. 25 | Tune 5 | Rarity 5' in row.body_lines
     assert 'Sonata: Moonlit Clouds' in row.body_lines
-    assert 'Cost: 4' in row.body_lines
+    assert 'Cost: 1' in row.body_lines
     assert 'Equipped: Shorekeeper' in row.body_lines
     assert 'Main: Healing Bonus 26.4%' in row.body_lines
     assert 'Substats: 2' in row.body_lines
@@ -349,13 +349,14 @@ def test_load_inventory_document_normalizes_keyed_echo_export() -> None:
     assert row.display_kind == 'echo_tile'
     assert row.echo_display == inventory_models.EchoDisplayData(
         level=25,
-        cost=None,
+        cost=1,
         rarity=5,
         main_stat='Healing Bonus 26.4%',
         equipped='Shorekeeper',
         sonata_name='Moonlitclouds',
         sonata_icon_path='IconS/moonlitclouds.png',
     )
+    assert 'Cost: 1' in row.body_lines
     assert 'Sonata: Moonlitclouds' in row.body_lines
     assert 'Equipped: Shorekeeper' in row.body_lines
     assert 'Echo ID: 310000010' in row.details_lines
@@ -552,7 +553,7 @@ def test_metadata_resolver_prefers_generated_localized_metadata(tmp_path, monkey
     )
     _write_json(
         tmp_path / 'data' / 'catalog' / 'echoes.json',
-        {'bellbornegeochelone': {'id': 310000010, 'text_key': 'MonsterInfo_310000010_Name'}},
+        {'bellbornegeochelone': {'id': 310000010, 'text_key': 'MonsterInfo_310000010_Name', 'cost': 1}},
     )
     _write_json(
         tmp_path / 'data' / 'catalog' / 'achievements.json',
@@ -623,9 +624,16 @@ def test_metadata_resolver_prefers_generated_localized_metadata(tmp_path, monkey
     assert resolver.resolve_character('shorekeeper') == 'ショアキーパー'
     assert resolver.resolve_echo(310000010) == '鐘鳴の亀守'
     assert resolver.resolve_echo('bellbornegeochelone') == '鐘鳴の亀守'
+    assert resolver.resolve_echo_cost(310000010) == 1
     assert resolver.resolve_achievement(9001) == '最初の一歩'
     assert resolver.resolve_achievement('firststeps') == '最初の一歩'
     assert resolver.resolve_sonata('moonlitclouds') == '月を窺う軽雲'
+
+
+def test_metadata_resolver_infers_cost4_from_33_prefix_when_export_omits_cost() -> None:
+    resolver = inventory_models.MetadataResolver()
+
+    assert resolver.resolve_echo_cost(330000010) == 4
 
 
 def test_load_character_rarity_lookup_prefers_qualityid_over_itemqualityid(tmp_path, monkeypatch) -> None:

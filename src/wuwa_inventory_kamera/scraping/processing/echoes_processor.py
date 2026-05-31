@@ -79,8 +79,8 @@ def _setupRarityDetection() -> dict[int, tuple[np.ndarray, np.ndarray]]:
 _RARITY_BOUNDS = _setupRarityDetection()
 
 # Monster ID prefix → slot cost  (first two digits of the numeric ID).
-# e.g. 310000020 (prefix "31") → cost 1,  320000020 → cost 3,  340000020 → cost 4.
-_MONSTER_COST_MAP: dict[str, int] = {'31': 1, '32': 3, '34': 4}
+# e.g. 310000020 (prefix "31") → cost 1,  320000020 → cost 3,  330000020/340000020 → cost 4.
+_MONSTER_COST_MAP: dict[str, int] = {'31': 1, '32': 3, '33': 4, '34': 4}
 
 # ---------------------------------------------------------------------------
 # Sonata icon matching (lazy-initialised, shared across all scans in a session)
