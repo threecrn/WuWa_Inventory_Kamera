@@ -130,7 +130,7 @@ class LoadingScreen(QWidget):
 
     def initWindow(self):
         logger.debug("Setting up window properties")
-        self.setFixedSize(1500, 700)
+        self.setFixedSize(800, 600)
         self.setWindowIcon(QIcon(str(basePATH / 'assets' / 'icon.ico')))
         self.setWindowTitle('WuWa Inventory Kamera')
 
