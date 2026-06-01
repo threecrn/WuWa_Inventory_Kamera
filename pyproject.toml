@@ -88,7 +88,7 @@ common_packages = [
     "wuwa_inventory_kamera",
     "yaml",
 ]
-#include_files = ["assets", "config", "data"]
+include_files = ["assets/icon.ico"]
 create_directories = ["export", "logs", "assets", "config", "data"]
 zip_exclude_packages = ["rapidocr_onnxruntime", "wuwa_inventory_kamera"]
 package_files = [
