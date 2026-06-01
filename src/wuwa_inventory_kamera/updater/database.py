@@ -12,7 +12,6 @@ import json
 import urllib.parse
 import urllib.request
 import logging
-from babel import Locale
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -597,12 +596,23 @@ class BaseDataUpdater:
 
 	def _getLanguageName(self, code: str) -> str:
 		parts = code.split('-')
-		locale = Locale(parts[0], script=parts[1] if len(parts) > 1 else None)
-		try:
-			display_name = locale.get_display_name()
-			return display_name.capitalize() if display_name else code
-		except Exception:
-			return code
+		lang = parts[0] if parts else code
+		# Lightweight common-name map to avoid depending on Babel's locale data.
+		_common_names = {
+			'en': 'English',
+			'zh-Hans': '中文 (简体)',    # Simplified Chinese
+			'zh-Hant': '中文 (繁體)',    # Traditional Chinese
+			'ja': '日本語',             # Japanese
+			'ko': '한국어',             # Korean
+			'fr': 'Français',           # French
+			'de': 'Deutsch',            # German
+			'es': 'Español',            # Spanish
+			'th': 'ไทย'                 # Thai
+		}
+		if isinstance(lang, str) and lang in _common_names:
+			return _common_names[lang]
+		# Fallback: return a capitalized language code or the original code
+		return lang.capitalize() if isinstance(lang, str) and lang else code
 
 	def fetchFileData(self, url: str) -> Any:
 		try:
