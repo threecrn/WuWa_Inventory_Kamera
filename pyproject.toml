@@ -16,7 +16,6 @@ dependencies = [
     "prompt_toolkit>=3.0; sys_platform == 'win32'",
     "rapidocr-onnxruntime",
     "PyYAML",
-    "babel",
     "onnxruntime-directml; sys_platform == 'win32'",
     "onnxruntime; sys_platform != 'win32'",
 ]
