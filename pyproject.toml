@@ -88,8 +88,8 @@ common_packages = [
     "wuwa_inventory_kamera",
     "yaml",
 ]
-include_files = ["assets", "config", "data"]
-create_directories = ["export", "logs", "screenshots"]
+#include_files = ["assets", "config", "data"]
+create_directories = ["export", "logs", "assets", "config", "data"]
 zip_exclude_packages = ["rapidocr_onnxruntime", "wuwa_inventory_kamera"]
 package_files = [
     { source = "src/wuwa_inventory_kamera/config/ocr_region_specs.toml", target = "lib/wuwa_inventory_kamera/config/ocr_region_specs.toml" },
