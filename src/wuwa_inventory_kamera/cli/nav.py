@@ -232,32 +232,26 @@ def _draw_single_coord(
     oy: int,
 ) -> None:
     """Draw one :class:`~...game.game_roi.Coordinates` onto *img* (in-place)."""
-    import cv2
+    from ... import imgio
 
     if coord is None:
         h_img, w_img = img.shape[:2]
-        cv2.rectangle(img, (1, 1), (w_img - 2, h_img - 2), color, 2)
+        imgio.rectangle(img, (1, 1), (w_img - 2, h_img - 2), color, 2)
     elif coord.w > 0 and coord.h > 0:
         x1 = int(coord.x) - ox
         y1 = int(coord.y) - oy
         x2 = x1 + int(coord.w)
         y2 = y1 + int(coord.h)
-        cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
-        cv2.putText(
-            img, label, (x1 + 3, y1 + 14),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA,
-        )
+        imgio.rectangle(img, (x1, y1), (x2, y2), color, 2)
+        imgio.put_text(img, label, (x1 + 3, y1 + 14), 0.45, color, thickness=1)
     else:
         cx = int(coord.x) - ox
         cy = int(coord.y) - oy
         arm = 12
-        cv2.line(img, (cx - arm, cy), (cx + arm, cy), color, 2)
-        cv2.line(img, (cx, cy - arm), (cx, cy + arm), color, 2)
-        cv2.circle(img, (cx, cy), 3, color, -1)
-        cv2.putText(
-            img, label, (cx + arm + 3, cy + 5),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA,
-        )
+        imgio.line(img, (cx - arm, cy), (cx + arm, cy), color, thickness=2)
+        imgio.line(img, (cx, cy - arm), (cx, cy + arm), color, thickness=2)
+        imgio.circle(img, (cx, cy), 3, color, thickness=-1)
+        imgio.put_text(img, label, (cx + arm + 3, cy + 5), 0.45, color, thickness=1)
 
 
 def _draw_annotations(
@@ -707,7 +701,7 @@ class NavSession:
         *as_image* is ``True``, in which case a BGR ``np.ndarray`` is returned
         (or ``None`` in dry-run mode).
         """
-        import cv2
+        from ... import imgio
         from ..game.screen import capture, capture_region
 
         if as_image:
@@ -746,7 +740,7 @@ class NavSession:
             origin = (0.0, 0.0) if capture_roi is None else (capture_roi.x, capture_roi.y)
             bgr = _draw_annotations(bgr, layout, annotate, origin)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        cv2.imwrite(str(out_path), bgr)
+        imgio.imwrite(str(out_path), bgr)
         return {'saved': str(out_path), 'roi': roi, 'shape': list(bgr.shape)}
 
     # â”€â”€ State / inspection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

@@ -1,5 +1,5 @@
-﻿import cv2
-import numpy as np
+﻿import numpy as np
+from src.wuwa_inventory_kamera import imgio
 
 files = [
     r"captures\test-echo-workflow\2026-05-01_02-07-55\echo_0000\level.png",
@@ -7,7 +7,7 @@ files = [
 ]
 
 for f in files:
-    img = cv2.imread(f)
+    img = imgio.imread(f)
     print(f"\n{f} shape: {img.shape if img is not None else 'Error'}")
     if img is not None:
         # Show unique colors

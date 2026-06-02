@@ -5,7 +5,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..capabilities import BackendCapabilities
-from ..enums import ColorCode, FontFace, ImreadMode, Interpolation, LineType, MatchMethod
+from ..enums import ColorCode, FontFace, ImreadMode, Interpolation, LineType, MatchMethod, MorphOp, MorphShape, ThresholdMode
 from ..types import Color, ImageArray, MaskArray, PathLike, Point, PointArray
 
 
@@ -50,6 +50,28 @@ _MATCH_METHOD_MAP: dict[MatchMethod, int] = {
     MatchMethod.CCOEFF_NORMED: cv2.TM_CCOEFF_NORMED,
 }
 
+_THRESHOLD_MODE_MAP: dict[ThresholdMode, int] = {
+    ThresholdMode.BINARY: cv2.THRESH_BINARY,
+    ThresholdMode.BINARY_INV: cv2.THRESH_BINARY_INV,
+    ThresholdMode.OTSU: cv2.THRESH_BINARY + cv2.THRESH_OTSU,
+}
+
+_MORPH_SHAPE_MAP: dict[MorphShape, int] = {
+    MorphShape.RECT: cv2.MORPH_RECT,
+    MorphShape.ELLIPSE: cv2.MORPH_ELLIPSE,
+    MorphShape.CROSS: cv2.MORPH_CROSS,
+}
+
+_MORPH_OP_MAP: dict[MorphOp, int] = {
+    MorphOp.ERODE: cv2.MORPH_ERODE,
+    MorphOp.DILATE: cv2.MORPH_DILATE,
+    MorphOp.OPEN: cv2.MORPH_OPEN,
+    MorphOp.CLOSE: cv2.MORPH_CLOSE,
+    MorphOp.GRADIENT: cv2.MORPH_GRADIENT,
+    MorphOp.TOPHAT: cv2.MORPH_TOPHAT,
+    MorphOp.BLACKHAT: cv2.MORPH_BLACKHAT,
+}
+
 
 class Cv2Backend:
     name = "cv2"
@@ -61,6 +83,7 @@ class Cv2Backend:
         mask_ops=True,
         template_matching=True,
         perspective_warp=True,
+        morphology=True,
     )
 
     def imread(self, path: PathLike, mode: str) -> ImageArray | None:
@@ -220,3 +243,50 @@ class Cv2Backend:
         )
         matrix = cv2.getPerspectiveTransform(src, dst)
         return cv2.warpPerspective(image, matrix, (width, height))
+
+    def threshold(
+        self,
+        image: MaskArray,
+        thresh: int,
+        maxval: int,
+        mode: ThresholdMode,
+    ) -> tuple[float, MaskArray]:
+        threshold_value, result = cv2.threshold(
+            image,
+            thresh,
+            maxval,
+            _THRESHOLD_MODE_MAP[mode],
+        )
+        return float(threshold_value), result
+
+    def get_structuring_element(
+        self,
+        shape: MorphShape,
+        ksize: tuple[int, int],
+    ) -> MaskArray:
+        return cv2.getStructuringElement(_MORPH_SHAPE_MAP[shape], ksize)
+
+    def morphology_ex(
+        self,
+        image: MaskArray,
+        op: MorphOp,
+        kernel: MaskArray,
+        iterations: int = 1,
+    ) -> MaskArray:
+        return cv2.morphologyEx(image, _MORPH_OP_MAP[op], kernel, iterations=iterations)
+
+    def dilate(
+        self,
+        image: MaskArray,
+        kernel: MaskArray,
+        iterations: int = 1,
+    ) -> MaskArray:
+        return cv2.dilate(image, kernel, iterations=iterations)
+
+    def erode(
+        self,
+        image: MaskArray,
+        kernel: MaskArray,
+        iterations: int = 1,
+    ) -> MaskArray:
+        return cv2.erode(image, kernel, iterations=iterations)

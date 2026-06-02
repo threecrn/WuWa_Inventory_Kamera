@@ -12,3 +12,4 @@ class BackendCapabilities:
     mask_ops: bool = False
     template_matching: bool = False
     perspective_warp: bool = False
+    morphology: bool = False

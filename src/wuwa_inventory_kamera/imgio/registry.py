@@ -60,6 +60,17 @@ def _load_backend(name: str) -> tuple[ImgioBackend, str]:
 
         return PillowBackend(), 'pillow'
 
+    if name == 'skimage':
+        try:
+            from .backends.skimage_backend import SkimageBackend
+        except ImportError as exc:
+            raise ImgioBackendUnavailableError(
+                "imgio backend 'skimage' requires scikit-image and Pillow. "
+                "Install with 'pip install scikit-image Pillow'."
+            ) from exc
+
+        return SkimageBackend(), 'skimage'
+
     if name == "auto":
         try:
             from .backends.cv2_backend import Cv2Backend
@@ -76,10 +87,15 @@ def _load_backend(name: str) -> tuple[ImgioBackend, str]:
         if PillowBackend is not None:
             return PillowBackend(), 'pillow'
 
-        raise ImgioBackendUnavailableError(
-            "Unable to initialize imgio backend in auto mode. "
-            "Install opencv-python or Pillow, or choose an installed backend explicitly."
-        )
+        try:
+            from .backends.skimage_backend import SkimageBackend
+        except ImportError:
+            raise ImgioBackendUnavailableError(
+                "Unable to initialize imgio backend in auto mode. "
+                "Install opencv-python or Pillow, or choose an installed backend explicitly."
+            ) from None
+
+        return SkimageBackend(), 'skimage'
 
     if name == 'skimage':
         raise ImgioBackendUnavailableError(

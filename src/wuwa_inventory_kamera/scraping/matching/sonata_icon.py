@@ -36,8 +36,9 @@ import logging
 import re
 from pathlib import Path
 
-import cv2
 import numpy as np
+
+from ... import imgio
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,7 @@ def load_references(
     """
     refs: dict[str, tuple[np.ndarray, np.ndarray]] = {}
     for p in sorted(refs_dir.glob("*.png")):
-        img = cv2.imread(str(p), cv2.IMREAD_UNCHANGED)
+        img = imgio.imread(str(p), imgio.ImreadMode.UNCHANGED)
         if img is None or img.ndim != 3:
             continue
         if img.shape[2] == 4:
@@ -161,11 +162,11 @@ def _match_icon(
 
     results: list[tuple[str, float]] = []
     for name, (ref_bgr, ref_alpha) in references.items():
-        ref_scaled = cv2.resize(ref_bgr, (w, h), interpolation=cv2.INTER_AREA)
-        alpha_scaled = cv2.resize(ref_alpha, (w, h), interpolation=cv2.INTER_AREA)
+        ref_scaled = imgio.resize(ref_bgr, (w, h), interpolation=imgio.Interpolation.AREA)
+        alpha_scaled = imgio.resize(ref_alpha, (w, h), interpolation=imgio.Interpolation.AREA)
 
         ref_mask_bin = np.where(alpha_scaled > 127, np.uint8(255), np.uint8(0))
-        combined = cv2.bitwise_and(scan_mask_bin, ref_mask_bin)
+        combined = imgio.bitwise_and(scan_mask_bin, ref_mask_bin)
 
         ncc = _ncc_masked(scan_bgr, ref_scaled, combined)
 

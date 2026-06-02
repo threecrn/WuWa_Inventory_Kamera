@@ -13,6 +13,7 @@ from typing import Callable
 
 import numpy as np
 
+from ... import imgio
 from ...game.navigation import GameNavigator, InventoryTab, SortOrder
 from ...game.screen import capture_full
 from .grid_navigator import GridNavigator
@@ -207,14 +208,13 @@ class ItemWorkflow:
         pos: GridPosition,
         full: np.ndarray,
     ) -> None:
-        import cv2
         import json
 
         assert self.save_raw is not None
         item_dir = self._scan_dir_for_scan(pos)
         item_dir.mkdir(parents=True, exist_ok=True)
 
-        cv2.imwrite(str(item_dir / 'full.png'), full)
+        imgio.imwrite(str(item_dir / 'full.png'), full)
 
         meta = {
             'session_id': self.session.session_id,

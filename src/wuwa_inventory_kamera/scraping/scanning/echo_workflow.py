@@ -38,8 +38,8 @@ from pathlib import Path
 from typing import Callable
 
 import numpy as np
-import cv2
 
+from ... import imgio
 from ...game.navigation import (
     GameNavigator,
     InventoryTab,
@@ -498,13 +498,12 @@ class EchoWorkflow:
     ) -> None:
         """Save raw screenshots to disk for offline reprocessing."""
         import json
-        import cv2
 
         assert self.save_raw is not None
         echo_dir = self.save_raw / f'echo_{pos.scan_index:04d}'
         echo_dir.mkdir(parents=True, exist_ok=True)
 
-        cv2.imwrite(str(echo_dir / 'full.png'), full)
+        imgio.imwrite(str(echo_dir / 'full.png'), full)
 
         meta = {
             'session_id': self.session.session_id,

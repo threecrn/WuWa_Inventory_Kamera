@@ -42,3 +42,25 @@ class LineType(str, Enum):
 
 class FontFace(str, Enum):
     SIMPLEX = "simplex"
+
+
+class ThresholdMode(str, Enum):
+    BINARY = "binary"
+    BINARY_INV = "binary_inv"
+    OTSU = "otsu"
+
+
+class MorphShape(str, Enum):
+    RECT = "rect"
+    ELLIPSE = "ellipse"
+    CROSS = "cross"
+
+
+class MorphOp(str, Enum):
+    ERODE = "erode"
+    DILATE = "dilate"
+    OPEN = "open"
+    CLOSE = "close"
+    GRADIENT = "gradient"
+    TOPHAT = "tophat"
+    BLACKHAT = "blackhat"

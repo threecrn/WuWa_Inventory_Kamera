@@ -35,8 +35,9 @@ from __future__ import annotations
 import logging
 from typing import NamedTuple
 
-import cv2
 import numpy as np
+
+from ... import imgio
 
 logger = logging.getLogger(__name__)
 
@@ -113,8 +114,7 @@ class BatchOcr:
         h = int(max(np.linalg.norm(box[0] - box[3]), np.linalg.norm(box[1] - box[2])))
         w, h = max(w, 1), max(h, 1)
         dst = np.array([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]], dtype=np.float32)
-        M = cv2.getPerspectiveTransform(box, dst)
-        return cv2.warpPerspective(img, M, (w, h))
+        return imgio.warp_perspective(img, box, (w, h))
 
     def extract_crops(
         self,

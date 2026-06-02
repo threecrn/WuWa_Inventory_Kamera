@@ -10,9 +10,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-import cv2
 import numpy as np
 
+from ... import imgio
 from .echo_capture_utils import ensure_bgr_image
 
 logger = logging.getLogger(__name__)
@@ -88,7 +88,7 @@ def _resolve_echo_debug_dir(scan, raw_base: str | Path | None) -> Path | None:
 def _to_debug_image(image: np.ndarray) -> np.ndarray:
     if image.ndim == 2:
         return image
-    return cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    return imgio.convert_color(image, imgio.ColorCode.RGB2BGR)
 
 
 def _write_region_debug_artifacts(
@@ -102,7 +102,7 @@ def _write_region_debug_artifacts(
     from ..ocr.region_specs import get_spec
 
     debug_dir.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(debug_dir / f'{basename}.png'), raw_bgr)
+    imgio.imwrite(str(debug_dir / f'{basename}.png'), raw_bgr)
 
     spec = get_spec(roi_key)
     if spec is None:
@@ -111,11 +111,11 @@ def _write_region_debug_artifacts(
     preprocessed = spec.preprocess(raw_bgr, rarity=rarity)
     signature = spec._image_for_signature(raw_bgr, rarity)
 
-    cv2.imwrite(
+    imgio.imwrite(
         str(debug_dir / f'{basename}_preprocessed.png'),
         _to_debug_image(preprocessed.ocr_rgb),
     )
-    cv2.imwrite(str(debug_dir / f'{basename}_signature.png'), signature)
+    imgio.imwrite(str(debug_dir / f'{basename}_signature.png'), signature)
 
 
 def _write_echo_debug_artifacts(

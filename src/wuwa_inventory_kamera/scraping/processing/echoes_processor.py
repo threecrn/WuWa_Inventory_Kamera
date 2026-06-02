@@ -39,9 +39,9 @@ from concurrent.futures import ThreadPoolExecutor
 from difflib import get_close_matches as getMatches
 from pathlib import Path
 
-import cv2
 import numpy as np
 
+from ... import imgio
 from ...game.screen_info import ScreenInfo
 from ...config.app_config import app_config
 from ..models.raw_scan import RawEchoScan
@@ -159,7 +159,7 @@ def _extractSonataFromIcon(
 def _getRarity(image: np.ndarray) -> int:
     """Detect rarity from the colour of an echo card crop."""
     for rarity, (lower, upper) in _RARITY_BOUNDS.items():
-        if np.any(cv2.inRange(image, lower, upper)):
+        if np.any(imgio.in_range(image, lower, upper)):
             return rarity
     return 1
 
@@ -307,24 +307,27 @@ def _writeDebugCrops(
     ]
 
     # -- Annotated full screenshot (ROI bounding boxes) ----------------------
-    annotated = cv2.cvtColor(scan.full_screenshot, cv2.COLOR_RGB2BGR)
+    annotated = imgio.convert_color(scan.full_screenshot, imgio.ColorConversion.RGB2BGR)
     for attr, colour, label in _ROI_ANNOTATIONS:
         roi = getattr(si, attr)
         x1, y1 = int(roi.x), int(roi.y)
         x2, y2 = int(roi.x + roi.w), int(roi.y + roi.h)
-        cv2.rectangle(annotated, (x1, y1), (x2, y2), colour, 2)
-        cv2.putText(
+        imgio.rectangle(annotated, (x1, y1), (x2, y2), colour, 2)
+        imgio.put_text(
             annotated, label,
             (x1, max(0, y1 - 6)),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 1, cv2.LINE_AA,
+            font_face=0,  # FONT_HERSHEY_SIMPLEX
+            font_scale=0.5,
+            color=colour,
+            thickness=1,
         )
-    cv2.imwrite(str(debug_dir / "full_annotated.png"), annotated)
+    imgio.imwrite(str(debug_dir / "full_annotated.png"), annotated)
 
     # -- Individual crops (colour + B&W) -------------------------------------
-    # Screenshots are RGB in-memory; cv2.imwrite expects BGR.
-    cv2.imwrite(str(debug_dir / "card.png"),            cv2.cvtColor(echo_card,              cv2.COLOR_RGB2BGR))
-    cv2.imwrite(str(debug_dir / "stats_name.png"),      cv2.cvtColor(name_crop,              cv2.COLOR_RGB2BGR))
-    cv2.imwrite(str(debug_dir / "stats_value.png"),     cv2.cvtColor(value_crop,             cv2.COLOR_RGB2BGR))
+    # Screenshots are RGB in-memory; imwrite expects BGR.
+    imgio.imwrite(str(debug_dir / "card.png"),            imgio.convert_color(echo_card,              imgio.ColorConversion.RGB2BGR))
+    imgio.imwrite(str(debug_dir / "stats_name.png"),      imgio.convert_color(name_crop,              imgio.ColorConversion.RGB2BGR))
+    imgio.imwrite(str(debug_dir / "stats_value.png"),     imgio.convert_color(value_crop,             imgio.ColorConversion.RGB2BGR))
 
     if ocr_data is not None:
         with open(debug_dir / "ocr.json", 'w', encoding='utf-8') as fh:

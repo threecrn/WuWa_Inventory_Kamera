@@ -212,12 +212,12 @@ def _preprocess_with_spec(
 
     Falls back to the raw image (as RGB) if no spec is registered.
     """
-    import cv2
+    from ... import imgio
     spec = get_spec(roi_key)
     if spec is not None:
         return spec.preprocess(bgr, rarity=rarity).ocr_rgb
     # No spec — return image as-is in RGB
-    return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    return imgio.convert_color(bgr, imgio.ColorConversion.BGR2RGB)
 
 
 def _backend_tokens_to_results(
@@ -456,7 +456,7 @@ class OcrService:
         Returns the same ``(text, conf, box)`` token list as
         :meth:`_ocr_with_spec`.
         """
-        import cv2 as _cv2
+        from ... import imgio
 
         spec = get_spec(roi_key)
 
@@ -470,7 +470,7 @@ class OcrService:
         if spec is not None:
             preprocessed = spec.preprocess(image_bgr, rarity=rarity)
         else:
-            preprocessed = _cv2.cvtColor(image_bgr, _cv2.COLOR_BGR2RGB)
+            preprocessed = imgio.convert_color(image_bgr, imgio.ColorCode.BGR2RGB)
 
         # OCR via CPU backend
         ocr_image = preprocessed.ocr_rgb if hasattr(preprocessed, 'ocr_rgb') else preprocessed
@@ -637,7 +637,7 @@ class OcrService:
         Sonata detection is handled by the :class:`EchoAssembler` via
         icon template matching on ``capture.sonata_icon``, bypassing OCR.
         """
-        import cv2
+        from ... import imgio
 
         captures: list[EchoCapture] = [cast(EchoCapture, it.capture) for it in group]
 
@@ -803,8 +803,8 @@ class OcrService:
 
         # EchoCapture stores stat crops as RGB, but the OCR specs and cache
         # signatures operate on BGR inputs.
-        stats_name_bgr = [cv2.cvtColor(c.stats_name, cv2.COLOR_RGB2BGR) for c in captures]
-        stats_value_bgr = [cv2.cvtColor(c.stats_value, cv2.COLOR_RGB2BGR) for c in captures]
+        stats_name_bgr = [imgio.convert_color(c.stats_name, imgio.ColorCode.RGB2BGR) for c in captures]
+        stats_value_bgr = [imgio.convert_color(c.stats_value, imgio.ColorCode.RGB2BGR) for c in captures]
 
         name_results = self._ocr_with_spec(
             'echoes.fullStatsName',

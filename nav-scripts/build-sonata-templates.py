@@ -21,14 +21,13 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-import cv2
-
 # Bootstrap: load template-building helpers from the tool directory.
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO_ROOT / 'src'))
 sys.path.insert(0, str(_REPO_ROOT / 'tools' / 'update_sonata_templates'))
 import main as _ust  # noqa: E402 (late import after path manipulation)
 
+from wuwa_inventory_kamera import imgio
 from wuwa_inventory_kamera.game.screen_info import ScreenInfo
 from wuwa_inventory_kamera.scraping.ocr import get_backend, imageToString
 from wuwa_inventory_kamera.scraping.service.echo_capture_utils import (
@@ -44,7 +43,7 @@ def _capture_sonata_icon(full_bgr, echoes_info, backend):
         int(level_roi.x) : int(level_roi.x + level_roi.w),
     ]
     level_text = imageToString(
-        cv2.cvtColor(level_crop, cv2.COLOR_BGR2RGB),
+        imgio.convert_color(level_crop, imgio.ColorCode.BGR2RGB),
         allowedChars='0123456789',
         backend=backend,
     ).strip()

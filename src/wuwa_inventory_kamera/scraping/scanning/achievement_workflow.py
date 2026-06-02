@@ -38,6 +38,7 @@ from typing import Callable
 
 import numpy as np
 
+from ... import imgio
 from ...game.navigation import GameNavigator
 from ...game.screen import capture_region
 from ..service.captures import AchievementCapture, AchievementResult
@@ -159,13 +160,12 @@ class AchievementWorkflow:
     ) -> None:
         """Save raw screenshots to disk for offline reprocessing."""
         import json
-        import cv2
 
         assert self.save_raw is not None
         ach_dir = self.save_raw / f'achievement_{achievement_id}'
         ach_dir.mkdir(parents=True, exist_ok=True)
 
-        cv2.imwrite(str(ach_dir / 'status.png'), status_crop)
+        imgio.imwrite(str(ach_dir / 'status.png'), status_crop)
 
         meta = {
             'achievement_name': achievement_name,

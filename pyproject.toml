@@ -12,7 +12,7 @@ license = { file = "LICENSE" }
 
 dependencies = [
     "numpy",
-    "opencv-python",
+    "Pillow>=10.0.0",
     "prompt_toolkit>=3.0; sys_platform == 'win32'",
     "rapidocr-onnxruntime",
     "PyYAML",
@@ -21,6 +21,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Image backends
+cv2 = [
+    "opencv-python",
+]
+imgio-advanced = [
+    "scikit-image>=0.22.0",
+    "scipy>=1.11.0",
+]
 # Full application (UI + game capture)
 app = [
     "PySide6-Fluent-Widgets>=1.8.7",
@@ -28,6 +36,7 @@ app = [
     "PyWinCtl>=0.4.1",
     "PyMonCtl>=0.92",
     "pyreadline3>=3.4",
+    "opencv-python",  # cv2 backend recommended for app
 ]
 # Build / packaging
 build = [

@@ -1,6 +1,5 @@
-﻿import cv2
-import numpy as np
-import os
+﻿import numpy as np
+from src.wuwa_inventory_kamera import imgio
 
 files = [
     r"captures\test-echo-workflow\2026-05-01_02-07-55\echo_0000\level.png",
@@ -13,17 +12,17 @@ ranges = {
 }
 
 for f in files:
-    img = cv2.imread(f)
+    img = imgio.imread(f)
     if img is None:
         print(f"Error loading {f}")
         continue
     print(f"\nImage: {f}")
     for name, (low, high) in ranges.items():
-        mask = cv2.inRange(img, np.array(low), np.array(high))
-        count = cv2.countNonZero(mask)
-        coords = cv2.findNonZero(mask)
+        mask = imgio.in_range(img, np.array(low, dtype=np.uint8), np.array(high, dtype=np.uint8))
+        count = imgio.count_nonzero(mask)
+        coords = imgio.find_nonzero(mask)
         bbox = "N/A"
         if coords is not None:
-            x, y, w, h = cv2.boundingRect(coords)
+            x, y, w, h = imgio.bounding_rect(coords)
             bbox = f"x={x},y={y},w={w},h={h}"
         print(f"  {name}: count={count}, bbox={bbox}")

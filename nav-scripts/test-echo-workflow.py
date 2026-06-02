@@ -24,11 +24,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'src'))
 
+from wuwa_inventory_kamera import imgio
 from wuwa_inventory_kamera.scraping.ocr import imageToString, get_backend
 from wuwa_inventory_kamera.scraping.matching.sonata_icon import SonataIconMatcher
 from wuwa_inventory_kamera.scraping.service.ocr_service import _filter_echo_name
@@ -85,7 +85,7 @@ for idx in range(TOTAL):
         int(ei.level.x) : int(ei.level.x + ei.level.w),
     ]
     # imageToString expects RGB
-    level_rgb = cv2.cvtColor(level_crop, cv2.COLOR_BGR2RGB)
+    level_rgb = imgio.convert_color(level_crop, imgio.ColorCode.BGR2RGB)
     level_text = imageToString(level_rgb, allowedChars='0123456789', backend=backend).strip()
     level = int(level_text) if level_text.isdigit() else -1
     two_digits = len(level_text) == 2
@@ -136,10 +136,10 @@ for idx in range(TOTAL):
     # ── Save debug crops ─────────────────────────────────────────────────
     item_dir = out_dir / f'echo_{idx:04d}'
     item_dir.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(item_dir / 'level.png'), level_crop)
-    cv2.imwrite(str(item_dir / 'sonata_icon.png'), sonata_icon)
-    cv2.imwrite(str(item_dir / 'echo_name_raw.png'), echo_name_bgr)
-    cv2.imwrite(str(item_dir / 'echo_name_filtered.png'), filtered)
+    imgio.imwrite(str(item_dir / 'level.png'), level_crop)
+    imgio.imwrite(str(item_dir / 'sonata_icon.png'), sonata_icon)
+    imgio.imwrite(str(item_dir / 'echo_name_raw.png'), echo_name_bgr)
+    imgio.imwrite(str(item_dir / 'echo_name_filtered.png'), filtered)
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 

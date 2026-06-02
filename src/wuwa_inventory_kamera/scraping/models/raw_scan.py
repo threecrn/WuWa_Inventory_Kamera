@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import cv2
 import numpy as np
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from ... import imgio
 
 
 @dataclass
@@ -47,7 +48,7 @@ class RawEchoScan:
 
     # --- images (excluded from repr / equality to keep those fast) ---
     # Default to None so that loadRawScans() can populate only the paths and
-    # defer the actual cv2.imread to load_images(), called just before OCR.
+    # defer the actual imgio.imread to load_images(), called just before OCR.
     full_screenshot: np.ndarray | None = field(default=None, repr=False, compare=False)
     """Full game screenshot; None until load_images() is called."""
 
@@ -81,10 +82,10 @@ class RawEchoScan:
         if self.full_screenshot is None:
             if self.full_path is None:
                 raise FileNotFoundError(f"Scan {self.index}: full_path is not set.")
-            bgr = cv2.imread(str(self.full_path))
+            bgr = imgio.imread(str(self.full_path))
             if bgr is None:
                 raise FileNotFoundError(f"Scan {self.index}: could not read {self.full_path}")
-            self.full_screenshot = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+            self.full_screenshot = imgio.convert_color(bgr, imgio.ColorCode.BGR2RGB)
 
     def release_images(self) -> None:
         """
@@ -162,7 +163,7 @@ class RawCharacterScan:
 
         images: dict[str, np.ndarray] = {}
         for name, path in paths.items():
-            bgr = cv2.imread(str(path))
+            bgr = imgio.imread(str(path))
             if bgr is None:
                 raise FileNotFoundError(
                     f'Character scan {self.index}: could not read {path}'

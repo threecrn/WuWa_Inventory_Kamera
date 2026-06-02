@@ -50,8 +50,9 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-import cv2
 import numpy as np
+
+from .. import imgio
 
 # ---------------------------------------------------------------------------
 # Project root for bundled template assets.
@@ -96,7 +97,7 @@ def _icon_roi(width: int, height: int) -> tuple[int, int, int, int]:
 
 def _circular_mask(h: int, w: int) -> np.ndarray:
     mask = np.zeros((h, w), dtype=np.uint8)
-    cv2.circle(mask, (w // 2, h // 2), min(w // 2, h // 2), 255, -1)
+    imgio.circle(mask, (w // 2, h // 2), min(w // 2, h // 2), 255, -1)
     return mask
 
 
@@ -106,7 +107,7 @@ def load_templates(templates_dir: Path) -> dict[str, np.ndarray]:
     """Load ``{sonata_key: bgr_image}`` from *templates_dir*."""
     templates: dict[str, np.ndarray] = {}
     for p in sorted(templates_dir.glob("*.png")):
-        img = cv2.imread(str(p), cv2.IMREAD_COLOR)
+        img = imgio.imread(str(p), mode="color")
         if img is not None:
             templates[p.stem] = img
     if not templates:
@@ -130,17 +131,17 @@ def match_icon(
     h, w = crop.shape[:2]
     if mask is None:
         mask = _circular_mask(h, w)
-    crop_masked = cv2.bitwise_and(crop, crop, mask=mask)
+    crop_masked = imgio.bitwise_and(crop, crop, mask=mask)
 
     best_name: str | None = None
     best_score = -1.0
     for name, tmpl in templates.items():
         # Resize template to match crop if needed
         if tmpl.shape[:2] != (h, w):
-            tmpl = cv2.resize(tmpl, (w, h), interpolation=cv2.INTER_AREA)
-        tmpl_masked = cv2.bitwise_and(tmpl, tmpl, mask=mask)
-        score: float = cv2.matchTemplate(
-            crop_masked, tmpl_masked, cv2.TM_CCOEFF_NORMED,
+            tmpl = imgio.resize(tmpl, (w, h), interpolation=imgio.Interpolation.AREA)
+        tmpl_masked = imgio.bitwise_and(tmpl, tmpl, mask=mask)
+        score: float = imgio.match_template(
+            crop_masked, tmpl_masked, imgio.MatchMethod.CCOEFF_NORMED,
         )[0][0]
         if score > best_score:
             best_score = score
@@ -194,7 +195,7 @@ def cmd_build(args: argparse.Namespace) -> None:
         if not matched:
             continue
 
-        full = cv2.imread(str(full_path), cv2.IMREAD_COLOR)
+        full = imgio.imread(str(full_path), mode="color")
         if full is None:
             continue
         h, w = full.shape[:2]
@@ -212,7 +213,7 @@ def cmd_build(args: argparse.Namespace) -> None:
         stack = np.stack(crops, axis=0).astype(np.float32)
         median = np.median(stack, axis=0).astype(np.uint8)
         dest = templates_dir / f"{name}.png"
-        cv2.imwrite(str(dest), median)
+        imgio.imwrite(str(dest), median)
 
     logger.info(
         "Built %d templates (%d total samples) → %s",
@@ -260,7 +261,7 @@ def cmd_detect(args: argparse.Namespace) -> None:
     has_truth = False
 
     for label, path in screenshots:
-        img = cv2.imread(str(path), cv2.IMREAD_COLOR)
+        img = imgio.imread(str(path), mode="color")
         if img is None:
             logger.warning("Could not read %s — skipping.", path)
             continue

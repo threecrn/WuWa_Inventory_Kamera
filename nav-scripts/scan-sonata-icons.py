@@ -27,12 +27,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import cv2
-
 _CELLS_PER_PAGE = 24
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'src'))
 
+from wuwa_inventory_kamera import imgio
 from wuwa_inventory_kamera.game.screen_info import ScreenInfo
 from wuwa_inventory_kamera.scraping.ocr import get_backend, imageToString
 from wuwa_inventory_kamera.scraping.service.echo_capture_utils import (
@@ -48,7 +47,7 @@ def _capture_sonata_icon(full_bgr, echoes_info, backend):
         int(level_roi.x) : int(level_roi.x + level_roi.w),
     ]
     level_text = imageToString(
-        cv2.cvtColor(level_crop, cv2.COLOR_BGR2RGB),
+        imgio.convert_color(level_crop, imgio.ColorCode.BGR2RGB),
         allowedChars='0123456789',
         backend=backend,
     ).strip()
@@ -100,7 +99,7 @@ for idx in range(TOTAL):
         continue
 
     sonata_icon = _capture_sonata_icon(full, echoes_info, backend)
-    cv2.imwrite(str(item_dir / 'sonata_icon.png'), sonata_icon)
+    imgio.imwrite(str(item_dir / 'sonata_icon.png'), sonata_icon)
 
     pct = (idx + 1) / TOTAL * 100
     print(f'\r  {idx + 1}/{TOTAL} ({pct:.0f}%)', end='', flush=True)

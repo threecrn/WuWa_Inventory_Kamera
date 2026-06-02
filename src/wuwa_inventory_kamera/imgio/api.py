@@ -4,7 +4,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from .capabilities import BackendCapabilities
-from .enums import ColorCode, FontFace, ImreadMode, Interpolation, LineType, MatchMethod
+from .enums import ColorCode, FontFace, ImreadMode, Interpolation, LineType, MatchMethod, MorphOp, MorphShape, ThresholdMode
 from .registry import get_backend, get_backend_capabilities, get_backend_name, set_backend
 from .types import Color, ImageArray, MaskArray, PathLike, Point, PointArray
 
@@ -155,6 +155,47 @@ def warp_perspective(
     return get_backend().warp_perspective(image, src_quad, dst_size)
 
 
+def threshold(
+    image: MaskArray,
+    thresh: int,
+    maxval: int,
+    mode: ThresholdMode = ThresholdMode.BINARY,
+) -> tuple[float, MaskArray]:
+    return get_backend().threshold(image, thresh, maxval, mode)
+
+
+def get_structuring_element(
+    shape: MorphShape,
+    ksize: tuple[int, int],
+) -> MaskArray:
+    return get_backend().get_structuring_element(shape, ksize)
+
+
+def morphology_ex(
+    image: MaskArray,
+    op: MorphOp,
+    kernel: MaskArray,
+    iterations: int = 1,
+) -> MaskArray:
+    return get_backend().morphology_ex(image, op, kernel, iterations=iterations)
+
+
+def dilate(
+    image: MaskArray,
+    kernel: MaskArray,
+    iterations: int = 1,
+) -> MaskArray:
+    return get_backend().dilate(image, kernel, iterations=iterations)
+
+
+def erode(
+    image: MaskArray,
+    kernel: MaskArray,
+    iterations: int = 1,
+) -> MaskArray:
+    return get_backend().erode(image, kernel, iterations=iterations)
+
+
 def backend_name() -> str:
     return get_backend_name()
 
@@ -171,17 +212,22 @@ __all__ = [
     "circle",
     "convert_color",
     "count_nonzero",
+    "dilate",
+    "erode",
     "find_nonzero",
+    "get_structuring_element",
     "imread",
     "imwrite",
     "in_range",
     "line",
     "lut",
     "match_template",
+    "morphology_ex",
     "polylines",
     "put_text",
     "rectangle",
     "resize",
     "set_backend",
+    "threshold",
     "warp_perspective",
 ]

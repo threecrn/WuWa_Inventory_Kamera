@@ -44,6 +44,7 @@ from typing import Callable
 
 import numpy as np
 
+from ... import imgio
 from ...game.navigation import GameNavigator
 from ...game.screen import capture_full, capture_region
 from ..service.captures import CharCapture, CharResult
@@ -488,7 +489,6 @@ class CharacterWorkflow:
     ) -> None:
         """Save raw screenshots/crops to disk for offline reprocessing."""
         import json
-        import cv2
 
         assert self.save_raw is not None
         char_dir = self.save_raw / f'char_{char_index:04d}'
@@ -496,7 +496,7 @@ class CharacterWorkflow:
         section_dir.mkdir(parents=True, exist_ok=True)
 
         for name, img in images.items():
-            cv2.imwrite(str(section_dir / f'{name}.png'), img)
+            imgio.imwrite(str(section_dir / f'{name}.png'), img)
 
         if section == 0:
             meta = {

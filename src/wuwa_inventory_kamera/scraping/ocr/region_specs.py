@@ -39,8 +39,9 @@ class OcrPreprocessResult:
 from pathlib import Path
 from typing import Literal
 
-import cv2
 import numpy as np
+
+from ... import imgio
 
 logger = logging.getLogger(__name__)
 
@@ -310,7 +311,7 @@ class OcrRegionSpec:
         mode = self.render_mode
 
         if mode == "raw_passthrough":
-            return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+            return imgio.convert_color(bgr, imgio.ColorCode.BGR2RGB)
 
         if mode in {
             "anchor_contrast",
@@ -645,7 +646,7 @@ def _render_masked_color(
 
     out = np.zeros_like(bgr)
     out[refined_mask] = bgr[refined_mask]
-    return cv2.cvtColor(out, cv2.COLOR_BGR2RGB)
+    return imgio.convert_color(out, imgio.ColorCode.BGR2RGB)
 
 
 def _render_neutral_bg_color(
@@ -665,7 +666,7 @@ def _render_neutral_bg_color(
 
     out = np.full_like(bgr, _NEUTRAL_BG_BGR)
     out[refined_mask] = bgr[refined_mask]
-    return cv2.cvtColor(out, cv2.COLOR_BGR2RGB)
+    return imgio.convert_color(out, imgio.ColorCode.BGR2RGB)
 
 
 def _render_luma_boost_color(
@@ -678,13 +679,13 @@ def _render_luma_boost_color(
     chroma (A, B) channels are left untouched so RapidOCR retains the
     colour cues that distinguish, e.g., rarity-tinted glyphs.
     """
-    lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
+    lab = imgio.convert_color(bgr, imgio.ColorCode.BGR2LAB)
     l_f32 = lab[..., 0].astype(np.float32)
     stretch = 255.0 / max(1, 255 - floor_value)
     boosted = np.clip((l_f32 - floor_value) * stretch, 0.0, 255.0).astype(np.uint8)
     lab[..., 0] = boosted
-    out_bgr = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
-    return cv2.cvtColor(out_bgr, cv2.COLOR_BGR2RGB)
+    out_bgr = imgio.convert_color(lab, imgio.ColorCode.LAB2BGR)
+    return imgio.convert_color(out_bgr, imgio.ColorCode.BGR2RGB)
 
 
 def _midpoint_of_ranges(
@@ -730,9 +731,9 @@ def _midpoint_of_ranges_bgr(
     if color_space == "bgr":
         bgr = midpoint
     elif color_space == "rgb":
-        bgr = cv2.cvtColor(midpoint, cv2.COLOR_RGB2BGR)
+        bgr = imgio.convert_color(midpoint, imgio.ColorCode.RGB2BGR)
     elif color_space == "hsv":
-        bgr = cv2.cvtColor(midpoint, cv2.COLOR_HSV2BGR)
+        bgr = imgio.convert_color(midpoint, imgio.ColorCode.HSV2BGR)
     else:
         raise ValueError(f"Unknown color_space: {color_space!r}")
 
@@ -788,7 +789,7 @@ def _render_anchor_contrast(
     )
     if weight is None:
         # Anchors are identical; no contrast to enhance.
-        return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        return imgio.convert_color(bgr, imgio.ColorCode.BGR2RGB)
 
     text_f32 = np.array(text_anchor_bgr, dtype=np.float32)
     bg_f32 = np.array(bg_anchor_bgr, dtype=np.float32)
@@ -796,7 +797,7 @@ def _render_anchor_contrast(
 
     rendered = weight * text_f32 + (1.0 - weight) * bg_f32
     rendered_bgr = np.clip(rendered, 0, 255).astype(np.uint8)
-    return cv2.cvtColor(rendered_bgr, cv2.COLOR_BGR2RGB)
+    return imgio.convert_color(rendered_bgr, imgio.ColorCode.BGR2RGB)
 
 
 def _render_normalized_anchor_contrast(
@@ -819,12 +820,12 @@ def _render_normalized_anchor_contrast(
         sharpness=sharpness,
     )
     if weight is None:
-        return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        return imgio.convert_color(bgr, imgio.ColorCode.BGR2RGB)
 
     plane = np.rint(
         np.clip(_normalize_anchor_weight(weight, sharpness) * 255.0, 0.0, 255.0)
     ).astype(np.uint8)
-    return cv2.cvtColor(plane, cv2.COLOR_GRAY2RGB)
+    return imgio.convert_color(plane, imgio.ColorCode.GRAY2RGB)
 
 
 def _render_normalized_anchor_color(
@@ -846,7 +847,7 @@ def _render_normalized_anchor_color(
         sharpness=sharpness,
     )
     if weight is None:
-        return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        return imgio.convert_color(bgr, imgio.ColorCode.BGR2RGB)
 
     text_f32 = np.array(text_anchor_bgr, dtype=np.float32)
     bg_f32 = np.array(bg_anchor_bgr, dtype=np.float32)
@@ -854,7 +855,7 @@ def _render_normalized_anchor_color(
 
     rendered = weight * text_f32 + (1.0 - weight) * bg_f32
     rendered_bgr = np.rint(np.clip(rendered, 0.0, 255.0)).astype(np.uint8)
-    return cv2.cvtColor(rendered_bgr, cv2.COLOR_BGR2RGB)
+    return imgio.convert_color(rendered_bgr, imgio.ColorCode.BGR2RGB)
 
 
 def _render_masked_normalized_anchor_contrast(
@@ -879,7 +880,7 @@ def _render_masked_normalized_anchor_contrast(
         sharpness=sharpness,
     )
     if weight is None:
-        return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        return imgio.convert_color(bgr, imgio.ColorCode.BGR2RGB)
 
     normalized = _normalize_anchor_weight(weight, sharpness)
     if text_mask is not None:
@@ -887,7 +888,7 @@ def _render_masked_normalized_anchor_contrast(
         normalized = normalized * support
 
     plane = np.rint(np.clip(normalized * 255.0, 0.0, 255.0)).astype(np.uint8)
-    return cv2.cvtColor(plane, cv2.COLOR_GRAY2RGB)
+    return imgio.convert_color(plane, imgio.ColorCode.GRAY2RGB)
 
 
 def _anchor_contrast_weight(
@@ -931,11 +932,11 @@ def _convert_color_space(bgr: np.ndarray, space: str) -> np.ndarray:
     if space == "bgr":
         return bgr
     if space == "rgb":
-        return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        return imgio.convert_color(bgr, imgio.ColorCode.BGR2RGB)
     if space == "hsv":
-        return cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+        return imgio.convert_color(bgr, imgio.ColorCode.BGR2HSV)
     if space == "gray":
-        return cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+        return imgio.convert_color(bgr, imgio.ColorCode.BGR2GRAY)
     raise ValueError(f"Unknown color_space: {space!r}")
 
 
@@ -947,7 +948,7 @@ def _mask_from_ranges(
 
     Range tuples are automatically truncated to match the channel count of
     *image*.  This lets BGR-declared ranges be safely reused against a
-    grayscale (2-D) image without raising a ``cv2.error``.
+    grayscale (2-D) image without raising an error.
     """
     if not ranges:
         return None
@@ -957,7 +958,7 @@ def _mask_from_ranges(
     for lo, hi in ranges:
         lo_arr = np.array(lo[:n_ch], dtype=np.uint8)
         hi_arr = np.array(hi[:n_ch], dtype=np.uint8)
-        mask = cv2.inRange(image, lo_arr, hi_arr) > 0
+        mask = imgio.in_range(image, lo_arr, hi_arr) > 0
         if combined is None:
             combined = mask
         else:
@@ -975,7 +976,7 @@ def _zero_masked(bgr: np.ndarray, mask: np.ndarray) -> np.ndarray:
 def _to_gray(bgr: np.ndarray) -> np.ndarray:
     if bgr.ndim == 2:
         return bgr
-    return cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    return imgio.convert_color(bgr, imgio.ColorCode.BGR2GRAY)
 
 
 def _apply_threshold(
@@ -989,9 +990,9 @@ def _apply_threshold(
         lut = np.zeros(256, dtype=np.uint8)
         for i in range(floor_value, 256):
             lut[i] = int((i - floor_value) * (255 / max(1, 255 - floor_value)))
-        return cv2.LUT(gray, lut)
+        return imgio.lut(gray, lut)
     if mode == "otsu":
-        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        _, binary = imgio.threshold(gray, 0, 255, imgio.ThresholdMode.OTSU)
         return binary
     raise ValueError(f"Unknown threshold_mode: {mode!r}")
 
@@ -1000,8 +1001,8 @@ def _apply_morphology(plane: np.ndarray, mode: str) -> np.ndarray:
     if mode == "none":
         return plane
     if mode == "close":
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        return cv2.morphologyEx(plane, cv2.MORPH_CLOSE, kernel)
+        kernel = imgio.get_structuring_element(imgio.MorphShape.RECT, (3, 3))
+        return imgio.morphology_ex(plane, imgio.MorphOp.CLOSE, kernel)
     raise ValueError(f"Unknown morphology: {mode!r}")
 
 
@@ -1009,21 +1010,21 @@ def _expanded_text_support_mask(text_mask: np.ndarray, morphology: str) -> np.nd
     """Expand a binary text mask by one pixel to retain anti-aliased fringes."""
     mask_plane = np.where(text_mask, np.uint8(255), np.uint8(0))
     mask_plane = _apply_morphology(mask_plane, morphology)
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    expanded = cv2.dilate(mask_plane, kernel, iterations=1)
+    kernel = imgio.get_structuring_element(imgio.MorphShape.RECT, (3, 3))
+    expanded = imgio.dilate(mask_plane, kernel, iterations=1)
     return expanded.astype(np.float32) / 255.0
 
 
 def _repair_single_line_glyphs(plane: np.ndarray) -> np.ndarray:
     """Bridge tiny horizontal gaps common in shrunk single-line text."""
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 1))
-    return cv2.morphologyEx(plane, cv2.MORPH_CLOSE, kernel)
+    kernel = imgio.get_structuring_element(imgio.MorphShape.RECT, (2, 1))
+    return imgio.morphology_ex(plane, imgio.MorphOp.CLOSE, kernel)
 
 
 def _format_for_ocr(plane: np.ndarray) -> np.ndarray:
     """Convert a single-channel image to 3-channel RGB for the OCR backend."""
     if plane.ndim == 2:
-        return cv2.cvtColor(plane, cv2.COLOR_GRAY2RGB)
+        return imgio.convert_color(plane, imgio.ColorCode.GRAY2RGB)
     return plane
 
 
@@ -1053,7 +1054,7 @@ def _upscale_to_min(image: np.ndarray, min_size: Size2D) -> np.ndarray:
     scale = max(min_w / max(1, w), min_h / max(1, h))
     new_w = max(1, math.ceil(w * scale))
     new_h = max(1, math.ceil(h * scale))
-    interpolation = cv2.INTER_NEAREST if _is_binary(image) else cv2.INTER_LINEAR
+    interpolation = imgio.Interpolation.NEAREST if _is_binary(image) else imgio.Interpolation.LINEAR
     return _resize_preserving_binary(
         image,
         (new_w, new_h),
@@ -1073,7 +1074,7 @@ def _downscale(image: np.ndarray, max_size: Size2D) -> np.ndarray:
     return _resize_preserving_binary(
         image,
         (new_w, new_h),
-        interpolation=cv2.INTER_AREA,
+        interpolation=imgio.Interpolation.AREA,
     )
 
 
@@ -1083,7 +1084,7 @@ def _resize_preserving_binary(
     *,
     interpolation: int,
 ) -> np.ndarray:
-    resized = cv2.resize(image, size, interpolation=interpolation)
+    resized = imgio.resize(image, size, interpolation=interpolation)
     # Re-binarize if input was binary
     if _is_binary(image):
         resized = np.where(resized >= 32, np.uint8(255), np.uint8(0))
@@ -1107,7 +1108,7 @@ def _normalize_preprocessed_for_signature(
     """
     gray = image
     if image.ndim == 3:
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        gray = imgio.convert_color(image, imgio.ColorCode.RGB2GRAY)
 
     if _is_binary(gray):
         return np.ascontiguousarray(gray)

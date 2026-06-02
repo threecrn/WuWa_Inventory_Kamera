@@ -24,6 +24,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ... import imgio
 from ...game.navigation import GameNavigator
 from ...game.screen import capture_region
 from ..service.captures import ShellCapture, ShellResult
@@ -107,12 +108,11 @@ class ShellWorkflow:
     def _save_raw(self, amount_crop: np.ndarray) -> None:
         """Save raw screenshot to disk for offline reprocessing."""
         import json
-        import cv2
 
         assert self.save_raw is not None
         self.save_raw.mkdir(parents=True, exist_ok=True)
 
-        cv2.imwrite(str(self.save_raw / 'shell.png'), amount_crop)
+        imgio.imwrite(str(self.save_raw / 'shell.png'), amount_crop)
 
         meta = {
             'screen_width': self.nav.layout.width,

@@ -1,10 +1,10 @@
-import cv2
 import json
 import ctypes
 import logging
 import numpy as np
 from pathlib import Path
 
+from ... import imgio
 from ...config.app_config import app_config
 from ...output_serialization import write_json_exports
 from ..data import (
@@ -52,7 +52,7 @@ def screenshot(left: int = 0, top: int = 0, width: int = 0, height: int = 0, mon
             'mon': monitor
         }
         image = np.array(sct.grab(region))
-        image = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
+        image = imgio.convert_color(image, imgio.ColorCode.RGBA2RGB)
     
     return image
 
@@ -66,7 +66,7 @@ def darken_background_preserve_edges_ndarray(image: np.ndarray, threshold: int =
     engines see high-contrast white text on a black field.
     """
     if len(image.shape) == 3 and image.shape[2] == 3:
-        img = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        img = imgio.convert_color(image, imgio.ColorCode.RGB2GRAY)
     elif len(image.shape) == 2:
         img = image
     else:
@@ -75,7 +75,7 @@ def darken_background_preserve_edges_ndarray(image: np.ndarray, threshold: int =
     for i in range(256):
         if i >= threshold:
             lut[i] = int((i - threshold) * (255 / (255 - threshold)))
-    return cv2.LUT(img, lut)
+    return imgio.lut(img, lut)
 
 
 def isUserAdmin():

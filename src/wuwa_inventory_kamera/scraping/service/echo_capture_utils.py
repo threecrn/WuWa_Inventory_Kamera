@@ -11,9 +11,9 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-import cv2
 import numpy as np
 
+from ... import imgio
 from .captures import EchoCapture
 
 
@@ -39,7 +39,7 @@ def ensure_bgr_image(image: np.ndarray, *, source_space: str) -> np.ndarray:
     if image.ndim == 2 or source_space == 'bgr':
         return image.copy()
     if source_space == 'rgb':
-        return cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        return imgio.convert_color(image, imgio.ColorCode.RGB2BGR)
     raise ValueError(f'Unsupported source_space: {source_space!r}')
 
 
@@ -49,7 +49,7 @@ def ensure_rgb_image(image: np.ndarray, *, source_space: str) -> np.ndarray:
     if image.ndim == 2 or source_space == 'rgb':
         return image.copy()
     if source_space == 'bgr':
-        return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        return imgio.convert_color(image, imgio.ColorCode.BGR2RGB)
     raise ValueError(f'Unsupported source_space: {source_space!r}')
 
 
