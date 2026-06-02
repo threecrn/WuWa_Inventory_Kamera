@@ -31,7 +31,7 @@ from collections import defaultdict
 
 import numpy as np
 
-from ..utils.common import convertToBlackWhite, darken_background_preserve_edges_ndarray
+from ..utils.common import darken_background_preserve_edges_ndarray
 from ..ocr import imageToString
 
 logger = logging.getLogger(__name__)
@@ -126,23 +126,13 @@ class StatsExtractor(abc.ABC):
     subclasses stay minimal.
     """
 
-    def __init__(self, use_bw: bool = False) -> None:
-        """
-        Parameters
-        ----------
-        use_bw:
-            When ``True``, both crops are converted to greyscale B/W via
-            :func:`~scraping.utils.convertToBlackWhite` before being passed
-            to :meth:`_ocr_and_pair` (and before the result cache key is
-            computed).  Defaults to ``False``.
-        """
-        self._use_bw = use_bw
+    def __init__(self) -> None:
+        pass
 
     def _prepare(self, image: np.ndarray) -> np.ndarray:
-        """Preprocess *image* for OCR: darken the gradient background, then
-        optionally convert to B/W for Tesseract-based backends."""
+        """Preprocess *image* for OCR: darken the gradient background."""
         img = darken_background_preserve_edges_ndarray(image)
-        return convertToBlackWhite(img) if self._use_bw else img
+        return img
 
     @abc.abstractmethod
     def _ocr_and_pair(
@@ -303,8 +293,8 @@ class RapidOcrStatsExtractor(StatsExtractor):
         ``text_score``, ``use_angle_cls``, custom model paths).
     """
 
-    def __init__(self, use_bw: bool = False, **kwargs):
-        super().__init__(use_bw=use_bw)
+    def __init__(self, **kwargs):
+        super().__init__()
         from ..ocr._rapidocr import RapidOcrBackend
         self._backend = RapidOcrBackend(**kwargs)
 
@@ -345,9 +335,6 @@ class RapidOcrCoordStatsExtractor(StatsExtractor):
     row_tolerance:
         Maximum pixel distance between two tokens' Y centres to be
         considered part of the same text row.  Defaults to ``10``.
-    use_bw:
-        Apply B/W pre-processing before OCR.  Defaults to ``False`` —
-        RapidOCR performs its own internal pre-processing on colour images.
     **kwargs:
         Forwarded verbatim to
         :class:`~scraping.ocr._rapidocr.RapidOcrBackend`.
@@ -356,8 +343,8 @@ class RapidOcrCoordStatsExtractor(StatsExtractor):
     _ALPHA_RE = re.compile(r'[^a-zA-Z]')
     _DIGIT_RE = re.compile(r'[^0-9.%]')
 
-    def __init__(self, row_tolerance: int = 10, use_bw: bool = False, **kwargs):
-        super().__init__(use_bw=use_bw)
+    def __init__(self, row_tolerance: int = 10, **kwargs):
+        super().__init__()
         from ..ocr._rapidocr import RapidOcrBackend
         self._backend = RapidOcrBackend(**kwargs)
         self._row_tolerance = row_tolerance

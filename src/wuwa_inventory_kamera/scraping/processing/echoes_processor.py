@@ -51,8 +51,6 @@ from .stats_extractor import (
     StatsExtractor,
 )
 from ..utils.common import (
-    convertToBlackWhite,
-    darken_background_preserve_edges_ndarray,
     loadRawScans,
 )
 from ..ocr import imageToString
@@ -326,9 +324,7 @@ def _writeDebugCrops(
     # Screenshots are RGB in-memory; cv2.imwrite expects BGR.
     cv2.imwrite(str(debug_dir / "card.png"),            cv2.cvtColor(echo_card,              cv2.COLOR_RGB2BGR))
     cv2.imwrite(str(debug_dir / "stats_name.png"),      cv2.cvtColor(name_crop,              cv2.COLOR_RGB2BGR))
-    cv2.imwrite(str(debug_dir / "stats_name_bw.png"),   convertToBlackWhite(name_crop))
     cv2.imwrite(str(debug_dir / "stats_value.png"),     cv2.cvtColor(value_crop,             cv2.COLOR_RGB2BGR))
-    cv2.imwrite(str(debug_dir / "stats_value_bw.png"),  convertToBlackWhite(value_crop))
 
     if ocr_data is not None:
         with open(debug_dir / "ocr.json", 'w', encoding='utf-8') as fh:

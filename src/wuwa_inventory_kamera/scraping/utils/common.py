@@ -34,7 +34,7 @@ def savingScraped(exports: dict[str, object] | None = None, START_DATE: str = ''
     savePATH: Path = Path(app_config.exportFolder) / START_DATE
     write_json_exports(exports, savePATH)
 
-def screenshot(left: int = 0, top: int = 0, width: int = 0, height: int = 0, monitor: int = 1, bw: bool = False):
+def screenshot(left: int = 0, top: int = 0, width: int = 0, height: int = 0, monitor: int = 1):
     import mss
     with mss.mss() as sct:
         num_monitors = len(sct.monitors) - 1
@@ -54,9 +54,6 @@ def screenshot(left: int = 0, top: int = 0, width: int = 0, height: int = 0, mon
         image = np.array(sct.grab(region))
         image = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
     
-    if bw:
-        image = convertToBlackWhite(image)
-
     return image
 
 def darken_background_preserve_edges_ndarray(image: np.ndarray, threshold: int = 100) -> np.ndarray:
@@ -80,31 +77,6 @@ def darken_background_preserve_edges_ndarray(image: np.ndarray, threshold: int =
             lut[i] = int((i - threshold) * (255 / (255 - threshold)))
     return cv2.LUT(img, lut)
 
-
-def convertToBlackWhite(image: np.ndarray):
-    if len(image.shape) == 3 and image.shape[2] == 3:
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    elif len(image.shape) == 2:
-        gray = image
-    else:
-        raise ValueError(f"Unsupported image format. Image shape: {image.shape}")
-    
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-    contrasted = clahe.apply(gray)
-    
-    blurred = cv2.GaussianBlur(contrasted, (3, 3), 0)
-    
-    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    
-    if np.mean(thresh) > 127: thresh = cv2.bitwise_not(thresh)
-    
-    kernel = np.ones((2,2), np.uint8)
-    morph = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
-    
-    sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
-    sharpened = cv2.filter2D(morph, -1, sharpen_kernel)
-
-    return sharpened
 
 def isUserAdmin():
     return ctypes.windll.shell32.IsUserAnAdmin()

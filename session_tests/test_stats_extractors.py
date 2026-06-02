@@ -97,18 +97,18 @@ def _run(extractor, stats_case: dict) -> None:
 
 @pytest.fixture(
     scope="module",
-    params=[pytest.param(False, id="colour"), pytest.param(True, id="bw")],
+    params=[pytest.param(False, id="colour")],
 )
 def rapid_extractor(request):
-    return RapidOcrStatsExtractor(use_bw=request.param)
+    return RapidOcrStatsExtractor()
 
 
 @pytest.fixture(
     scope="module",
-    params=[pytest.param(False, id="colour"), pytest.param(True, id="bw")],
+    params=[pytest.param(False, id="colour")],
 )
 def rapid_coord_extractor(request):
-    return RapidOcrCoordStatsExtractor(use_bw=request.param)
+    return RapidOcrCoordStatsExtractor()
 
 
 # ---------------------------------------------------------------------------
