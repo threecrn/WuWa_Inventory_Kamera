@@ -13,6 +13,12 @@ spec_version = "3.3-new-ui-v2-singleline-ocr-v1"
 # =====================================================================
 
 [echoes.echoName.ocr]
+invert = false
+threshold_mode = "none"
+floor_value = 100
+morphology = "none"
+sig_text_floor = 200
+sig_max_spread = 32
 color_space = "hsv"
 single_line = true
 pre_upscale = [512, 64]
@@ -58,6 +64,14 @@ text_color_ranges = [
 ]
 
 [echoes.fullStatsName.ocr]
+color_space = "gray"
+invert = false
+single_line = false
+threshold_mode = "none"
+floor_value = 100
+morphology = "none"
+sig_text_floor = 200
+sig_max_spread = 32
 #color_space = "rgb"
 render_mode = "masked_normalized_anchor_contrast"
 anchor_contrast_sharpness = 4.0
@@ -75,6 +89,14 @@ text_color_ranges = [
 ]
 
 [echoes.fullStatsValue.ocr]
+color_space = "gray"
+invert = false
+single_line = false
+threshold_mode = "none"
+floor_value = 100
+morphology = "none"
+sig_text_floor = 200
+sig_max_spread = 32
 #color_space = "rgb"
 render_mode = "masked_normalized_anchor_contrast"
 anchor_contrast_sharpness = 4.0
@@ -93,6 +115,12 @@ text_color_ranges = [
 ]
 
 [echoes.level.ocr]
+invert = false
+threshold_mode = "none"
+floor_value = 100
+morphology = "none"
+sig_text_floor = 200
+sig_max_spread = 32
 render_mode = "normalized_anchor_contrast"
 #render_mode = "anchor_contrast"
 anchor_contrast_sharpness = 12.0
@@ -122,12 +150,20 @@ text_color_ranges = [
 ]
 
 [echoes.equipped.ocr]
+invert = false
+threshold_mode = "none"
+floor_value = 100
+morphology = "none"
+anchor_contrast_sharpness = 8.0
+sig_text_floor = 200
+sig_max_spread = 32
 single_line = true
 color_space = "hsv"
 render_mode = "masked_normalized_anchor_contrast"
 text_color_ranges = [[[25,70,200],[27,90,255]]]
 
 [echoes.equipped.signature]
+cache_mode = "persistent"
 single_line = true
 color_space = "hsv"
 text_color_ranges = [[[25,70,200],[27,90,255]]]
@@ -137,32 +173,70 @@ text_color_ranges = [[[25,70,200],[27,90,255]]]
 # =====================================================================
 
 [weapons.page.ocr]
+color_space = "gray"
+invert = false
+threshold_mode = "none"
+floor_value = 100
+morphology = "none"
+render_mode = "legacy_binary_rgb"
+anchor_contrast_sharpness = 8.0
+sig_text_floor = 200
+sig_max_spread = 32
 single_line = true
 character_whitelist = "0123456789/"
 
+
+[weapons.page.signature]
+cache_mode = "persistent"
 [weapons.equipped.ocr]
+invert = false
+threshold_mode = "none"
+floor_value = 100
+morphology = "none"
+anchor_contrast_sharpness = 8.0
+sig_text_floor = 200
+sig_max_spread = 32
 single_line = true
 color_space = "hsv"
 render_mode = "masked_normalized_anchor_contrast"
 text_color_ranges = [[[25,70,200],[27,90,255]]]
 
 [weapons.equipped.signature]
+cache_mode = "persistent"
 single_line = true
 color_space = "hsv"
 text_color_ranges = [[[25,70,200],[27,90,255]]]
 
 [weapons.rank.ocr]
+invert = false
+threshold_mode = "none"
+floor_value = 100
+morphology = "none"
+anchor_contrast_sharpness = 8.0
+sig_text_floor = 200
+sig_max_spread = 32
 single_line = true
 color_space = "hsv"
 render_mode = "masked_normalized_anchor_contrast"
 text_color_ranges = [[[25,70,200],[27,90,255]]]
 
+
+[weapons.rank.signature]
+cache_mode = "persistent"
 [weapons.rank.singature]
 single_line = true
 color_space = "hsv"
 text_color_ranges = [[[25,70,200],[27,90,255]]]
 
 [weapons.level.ocr]
+invert = false
+threshold_mode = "none"
+floor_value = 100
+morphology = "none"
+render_mode = "legacy_binary_rgb"
+anchor_contrast_sharpness = 8.0
+sig_text_floor = 200
+sig_max_spread = 32
 single_line = true
 character_whitelist = "0123456789/"
 color_space = "rgb"
@@ -171,7 +245,16 @@ text_color_ranges = [
     [[170, 190, 190], [200, 210, 210]]
 ]
 
+
+[weapons.level.signature]
+cache_mode = "persistent"
 [weapons.name.ocr]
+invert = false
+threshold_mode = "none"
+floor_value = 100
+morphology = "none"
+sig_text_floor = 200
+sig_max_spread = 32
 color_space = "hsv"
 single_line = true
 pre_upscale = [512, 64]
@@ -236,6 +319,12 @@ cache_mode = "persistent"
 # =====================================================================
 
 [items.name.ocr]
+invert = false
+threshold_mode = "none"
+floor_value = 100
+morphology = "none"
+sig_text_floor = 200
+sig_max_spread = 32
 color_space = "hsv"
 single_line = true
 pre_upscale = [512, 64]
@@ -268,6 +357,14 @@ text_color_ranges = [
 ]
 
 [items.value.ocr]
+invert = false
+threshold_mode = "none"
+floor_value = 100
+morphology = "none"
+render_mode = "legacy_binary_rgb"
+anchor_contrast_sharpness = 8.0
+sig_text_floor = 200
+sig_max_spread = 32
 single_line = true
 character_whitelist = "0123456789"
 color_space = "rgb"
@@ -294,12 +391,31 @@ cache_mode = "persistent"
 # =====================================================================
 
 [characters.resonatorName.ocr]
+color_space = "gray"
+invert = false
+single_line = false
+threshold_mode = "none"
+floor_value = 100
+morphology = "none"
+render_mode = "legacy_binary_rgb"
+anchor_contrast_sharpness = 8.0
+sig_text_floor = 200
+sig_max_spread = 32
 text_color_ranges = [[[230, 235, 235], [255, 255, 249]]]
 
 [characters.resonatorName.signature]
+cache_mode = "persistent"
 text_color_ranges = [[[230, 235, 235], [255, 255, 249]]]
 
 [characters.resonatorLevel.ocr]
+invert = false
+threshold_mode = "none"
+floor_value = 100
+morphology = "none"
+render_mode = "legacy_binary_rgb"
+anchor_contrast_sharpness = 8.0
+sig_text_floor = 200
+sig_max_spread = 32
 single_line = true
 allowed_chars = "0123456789/"
 color_space = "rgb"
@@ -324,6 +440,14 @@ background_color_ranges=[
 ]
 
 [characters.weaponName.ocr]
+invert = false
+threshold_mode = "none"
+floor_value = 100
+morphology = "none"
+render_mode = "legacy_binary_rgb"
+anchor_contrast_sharpness = 8.0
+sig_text_floor = 200
+sig_max_spread = 32
 single_line = true
 color_space = "bgr"
 text_color_ranges = [
@@ -347,6 +471,14 @@ text_color_ranges = [
 ]
 
 [characters.weaponLevel.ocr]
+invert = false
+threshold_mode = "none"
+floor_value = 100
+morphology = "none"
+render_mode = "legacy_binary_rgb"
+anchor_contrast_sharpness = 8.0
+sig_text_floor = 200
+sig_max_spread = 32
 single_line = true
 allowed_chars = "0123456789/"
 color_space = "rgb"
@@ -364,6 +496,14 @@ single_line = true
 cache_mode = "persistent"
 
 [characters.weaponRank.ocr]
+invert = false
+threshold_mode = "none"
+floor_value = 100
+morphology = "none"
+render_mode = "legacy_binary_rgb"
+anchor_contrast_sharpness = 8.0
+sig_text_floor = 200
+sig_max_spread = 32
 single_line = true
 allowed_chars = "0123456789"
 color_space = "rgb"
@@ -380,6 +520,15 @@ cache_mode = "persistent"
 
 
 [characters.skillLevel.ocr]
+color_space = "gray"
+invert = false
+threshold_mode = "none"
+floor_value = 100
+morphology = "none"
+render_mode = "legacy_binary_rgb"
+anchor_contrast_sharpness = 8.0
+sig_text_floor = 200
+sig_max_spread = 32
 single_line = true
 allowed_chars = "0123456789"
 
