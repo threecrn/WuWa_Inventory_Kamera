@@ -144,8 +144,8 @@ Per-file summary (where `cv2` is used and replacement notes)
   - Replacement: Most operations map to `skimage` / `scipy.ndimage` functions. Implementing a fully equivalent pipeline without `scikit-image`/`scipy` is possible but more work. Complexity: medium→high (this is the most CV-heavy module).
 
 - [src/wuwa_inventory_kamera/scraping/utils/common.py](src/wuwa_inventory_kamera/scraping/utils/common.py)
-  - Uses: screenshot RGBA→RGB conversion, `createCLAHE`, Gaussian blur, threshold, morphology, filter2D, LUT.
-  - Replacement: `skimage.exposure.equalize_adapthist`, `skimage.filters`, `scipy.ndimage` equivalents; medium effort.
+  - Uses: screenshot RGBA→RGB conversion, RGB→grayscale conversion, and `LUT` mapping.
+  - Replacement: Pillow/numpy equivalents (`arr[..., :3]` for RGBA→RGB, weighted grayscale conversion, `np.take` LUT); low effort.
 
 - [src/wuwa_inventory_kamera/scraping/ocr/batch.py](src/wuwa_inventory_kamera/scraping/ocr/batch.py)
   - Uses: `getPerspectiveTransform` + `warpPerspective` for cropping detected quads.
