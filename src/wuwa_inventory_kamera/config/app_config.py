@@ -75,6 +75,7 @@ class AppConfig:
         self.logLevel: str = 'INFO'
         self.saveRaw: bool = False
         self.writeDebug: bool = False
+        self.imageBackend: str = 'auto'
 
         # Display mode
         self.gameFullscreen: bool = False
@@ -154,6 +155,10 @@ class AppConfig:
             self.saveRaw = _bool(advanced['SaveRaw'])
         if 'WriteDebug' in advanced:
             self.writeDebug = _bool(advanced['WriteDebug'])
+        if 'ImageBackend' in advanced:
+            candidate = str(advanced['ImageBackend']).strip().lower()
+            if candidate in {'auto', 'cv2', 'pillow', 'skimage'}:
+                self.imageBackend = candidate
         if 'GameFullscreenMode' in advanced:
             self.gameFullscreen = _bool(advanced['GameFullscreenMode'])
         elif 'WindowedMode' in advanced:
