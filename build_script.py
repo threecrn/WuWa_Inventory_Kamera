@@ -266,6 +266,20 @@ def _prepare_backend_env(
         cwd=root,
         dry_run=dry_run,
     )
+    # Ensure `sympy` is not present even if installed as an ONNX Runtime dependency.
+    command = [
+        uv_executable,
+        "pip",
+        "uninstall",
+        "--python",
+        str(python_exe),
+        "sympy",
+        #"--yes",
+    ]
+    print(_command_text(command))
+    if not dry_run:
+        # Run without check=True so failure doesn't stop the build when sympy isn't installed.
+        subprocess.run(command, cwd=root)
     return python_exe
 
 
