@@ -12,7 +12,7 @@ license = { file = "LICENSE" }
 
 dependencies = [
     "numpy",
-    "opencv-python",
+    "opencv-python-headless",
     "prompt_toolkit>=3.0; sys_platform == 'win32'",
     "rapidocr-onnxruntime",
     "PyYAML",
@@ -62,6 +62,7 @@ environments = ["sys_platform == 'linux'", "sys_platform == 'win32'"]
 override-dependencies = [
     "onnxruntime-directml; sys_platform == 'win32'",
     "onnxruntime; sys_platform != 'win32'",
+    "opencv-python; sys_platform == 'never'",
 ]
 
 [tool.cxfreeze]
@@ -97,15 +98,15 @@ package_files = [
 
 [tool.wuwa_inventory_kamera.freeze.backends.cpu]
 distribution = "onnxruntime"
-target_name = "wuwa-app-cpu"
+target_name = "WuWa_Inventory_Kamera"
 providers = ["CPUExecutionProvider"]
 
 [tool.wuwa_inventory_kamera.freeze.backends.directml]
 distribution = "onnxruntime-directml"
-target_name = "wuwa-app-directml"
+target_name = "WuWa_Inventory_Kamera"
 providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
 
 [tool.wuwa_inventory_kamera.freeze.backends.cuda]
 distribution = "onnxruntime-gpu"
-target_name = "wuwa-app-cuda"
+target_name = "WuWa_Inventory_Kamera"
 providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
